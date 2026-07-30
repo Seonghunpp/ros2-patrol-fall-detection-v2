@@ -12,9 +12,12 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE TABLE IF NOT EXISTS patients (
     id INT AUTO_INCREMENT PRIMARY KEY,
     name VARCHAR(50) NOT NULL,
-    age INT,
+    phone VARCHAR(20),
+    disease VARCHAR(100),
     room_number VARCHAR(10),
-    marker_id INT,                             
-    guardian_contact VARCHAR(20)
+    age INT,
+    marker_id INT,
+    user_id INT UNIQUE,
+    FOREIGN KEY (user_id) REFERENCES users(id)
 );
 
