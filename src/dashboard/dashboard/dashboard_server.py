@@ -2,7 +2,11 @@ import json
 import os
 import threading
 import time
-from flask import Flask, Response, jsonify, render_template, request
+from functools import wraps
+
+import mysql.connector
+from flask import Flask, Response, jsonify, render_template, request, session
+from werkzeug.security import check_password_hash
 
 try:
     import rclpy
@@ -18,6 +22,29 @@ except Exception:
 
 
 app = Flask(__name__)
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", "dev-secret-change-me")
+
+DB_CONFIG = {
+    "host": os.environ.get("DB_HOST", "127.0.0.1"),
+    "port": int(os.environ.get("DB_PORT", "3306")),
+    "user": os.environ.get("DB_USER", "root"),
+    "password": os.environ.get("DB_PASSWORD", ""),
+    "database": os.environ.get("DB_NAME", "patrol_dashboard"),
+}
+
+
+def get_db():
+    return mysql.connector.connect(**DB_CONFIG)
+
+
+def login_required(view_func):
+    @wraps(view_func)
+    def wrapped(*args, **kwargs):
+        if not session.get("user"):
+            return jsonify({"ok": False, "error": "로그인이 필요합니다"}), 401
+        return view_func(*args, **kwargs)
+    return wrapped
+
 
 latest_frame = None
 latest_annotated_frame = None
@@ -256,7 +283,44 @@ def video_feed_yolo():
     )
 
 
+@app.route("/api/login", methods=["POST"])
+def api_login():
+    body = request.get_json(silent=True) or {}
+    username = str(body.get("username", "")).strip()
+    password = str(body.get("password", ""))
+    remember = bool(body.get("remember"))
+
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("SELECT * FROM users WHERE username = %s", (username,))
+    user = cursor.fetchone()
+    cursor.close()
+    conn.close()
+
+    if user is None or not check_password_hash(user["password_hash"], password):
+        return jsonify({"ok": False, "error": "아이디 또는 비밀번호가 올바르지 않습니다."}), 401
+
+    session.permanent = remember
+    session["user"] = user["username"]
+    session["role"] = user["role"]
+    return jsonify({"ok": True, "username": user["username"], "role": user["role"]})
+
+
+@app.route("/api/logout", methods=["POST"])
+def api_logout():
+    session.clear()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/session")
+def api_session():
+    if session.get("user"):
+        return jsonify({"authenticated": True, "username": session["user"], "role": session.get("role")})
+    return jsonify({"authenticated": False})
+
+
 @app.route("/api/status")
+@login_required
 def api_status():
     # 분석 프레임을 한 번이라도 받은 적 있으면 계속 true (꺼져도 마지막 프레임 유지)
     state["yolo_signal"] = latest_annotated_frame is not None
@@ -286,12 +350,14 @@ def save_events(events):
 
 
 @app.route("/api/events", methods=["GET"])
+@login_required
 def api_events_get():
     with events_lock:
         return jsonify(load_events())
 
 
 @app.route("/api/events", methods=["POST"])
+@login_required
 def api_events_add():
     body = request.get_json(silent=True) or {}
     date = str(body.get("date", "")).strip()
@@ -308,6 +374,7 @@ def api_events_add():
 
 
 @app.route("/api/events/delete", methods=["POST"])
+@login_required
 def api_events_delete():
     body = request.get_json(silent=True) or {}
     date = str(body.get("date", "")).strip()
@@ -351,12 +418,14 @@ def save_notes(notes):
 
 
 @app.route("/api/notes", methods=["GET"])
+@login_required
 def api_notes_get():
     with notes_lock:
         return jsonify(load_notes())
 
 
 @app.route("/api/checklist/add", methods=["POST"])
+@login_required
 def api_checklist_add():
     body = request.get_json(silent=True) or {}
     text = str(body.get("text", "")).strip()
@@ -371,6 +440,7 @@ def api_checklist_add():
 
 
 @app.route("/api/checklist/toggle", methods=["POST"])
+@login_required
 def api_checklist_toggle():
     body = request.get_json(silent=True) or {}
     item_id = body.get("id")
@@ -385,6 +455,7 @@ def api_checklist_toggle():
 
 
 @app.route("/api/checklist/delete", methods=["POST"])
+@login_required
 def api_checklist_delete():
     body = request.get_json(silent=True) or {}
     item_id = body.get("id")
@@ -396,6 +467,7 @@ def api_checklist_delete():
 
 
 @app.route("/api/memo", methods=["POST"])
+@login_required
 def api_memo_save():
     body = request.get_json(silent=True) or {}
     memo = str(body.get("memo", ""))

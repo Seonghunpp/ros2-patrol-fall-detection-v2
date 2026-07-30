@@ -211,39 +211,47 @@ function updateClock() {
 setInterval(updateClock, 1000);
 updateClock();
 
-// ===== 로그인 (테스트용: admin / 1234, DB 미사용) =====
-const AUTH_KEY = "dashboard-auth";
-
-function isAuthed() {
-    return localStorage.getItem(AUTH_KEY) === "1" || sessionStorage.getItem(AUTH_KEY) === "1";
-}
-
+// ===== 로그인 (서버 세션 기반, DB의 users 테이블로 검증) =====
 function doLogin() {
     const id = document.getElementById("login-id").value.trim();
     const pw = document.getElementById("login-pw").value;
     const auto = document.getElementById("login-auto").checked;
-    if (id === "admin" && pw === "1234") {
-        // 자동 로그인 체크 → localStorage(영구), 미체크 → sessionStorage(세션 종료 시 만료)
-        if (auto) localStorage.setItem(AUTH_KEY, "1");
-        else sessionStorage.setItem(AUTH_KEY, "1");
-        document.getElementById("login-error").innerText = "";
-        document.getElementById("login-pw").value = "";
-        document.getElementById("login-overlay").style.display = "none";
-    } else {
-        document.getElementById("login-error").innerText = "아이디 또는 비밀번호가 올바르지 않습니다.";
-    }
+
+    fetch("/api/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: id, password: pw, remember: auto }),
+    })
+        .then(res => res.json())
+        .then(data => {
+            if (data.ok) {
+                document.getElementById("login-error").innerText = "";
+                document.getElementById("login-pw").value = "";
+                document.getElementById("login-overlay").style.display = "none";
+                updateStatus();
+            } else {
+                document.getElementById("login-error").innerText = data.error || "아이디 또는 비밀번호가 올바르지 않습니다.";
+            }
+        })
+        .catch(() => {
+            document.getElementById("login-error").innerText = "서버에 연결할 수 없습니다.";
+        });
 }
 
 function logout() {
-    localStorage.removeItem(AUTH_KEY);
-    sessionStorage.removeItem(AUTH_KEY);
-    document.getElementById("login-overlay").style.display = "flex";
+    fetch("/api/logout", { method: "POST" }).finally(() => {
+        document.getElementById("login-overlay").style.display = "flex";
+    });
 }
 
-// 진입 시 인증 확인 (되어 있으면 로그인창 숨김)
-if (isAuthed()) {
-    document.getElementById("login-overlay").style.display = "none";
-}
+// 진입 시 서버에 로그인 상태 확인 (되어 있으면 로그인창 숨김)
+fetch("/api/session")
+    .then(res => res.json())
+    .then(data => {
+        if (data.authenticated) {
+            document.getElementById("login-overlay").style.display = "none";
+        }
+    });
 // Enter 키로 로그인
 ["login-id", "login-pw"].forEach(id => {
     const el = document.getElementById(id);
@@ -288,6 +296,7 @@ function switchVideo(mode) {
 async function updateStatus() {
     try {
         const res = await fetch("/api/status");
+        if (!res.ok) return;  // 로그인 전(401)에는 갱신하지 않음
         const data = await res.json();
 
         document.querySelectorAll(".room").forEach(room => {
