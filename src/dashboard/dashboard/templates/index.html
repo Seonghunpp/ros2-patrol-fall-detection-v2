@@ -1,0 +1,656 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>병실 모니터링 대시보드</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header class="header">
+    <div class="header-left">
+        <div class="title-wrap">
+            <div class="title-icon">🏥</div>
+            <div>
+                <h1>병실 모니터링 대시보드</h1>
+                <p>실시간 영상 · 병실 위치 · 로봇 상태 · 낙상 감지</p>
+            </div>
+        </div>
+        <div id="clock" class="clock-box">
+            <div class="clock-date" id="clock-date"></div>
+            <div class="clock-time" id="clock-time"></div>
+        </div>
+    </div>
+    <div class="header-right">
+        <button class="tool-btn" id="btn-calendar" title="캘린더" onclick="openCalendar()">📅</button>
+        <button class="tool-btn" id="btn-checklist" title="할 일 체크리스트" onclick="openChecklist()">✅</button>
+        <button class="tool-btn" id="btn-memo" title="메모지" onclick="openMemo()">📝</button>
+        <div class="theme-wrap">
+            <button class="tool-btn" id="btn-theme" title="테마 색상" onclick="toggleThemeMenu()">🎨</button>
+            <div class="theme-menu" id="theme-menu">
+                <div class="theme-menu-title">테마 선택</div>
+                <div class="theme-list" id="theme-list"></div>
+            </div>
+        </div>
+        <div class="header-status">
+            <span class="dot"></span>
+            시스템 연결
+        </div>
+        <button class="logout-btn" onclick="logout()">로그아웃</button>
+    </div>
+</header>
+
+<main class="dashboard">
+    <section class="card video-card">
+        <div class="card-title">실시간 영상</div>
+        <div class="video-box">
+            <img id="video-img" src="/video_feed" alt="실시간 영상">
+            <div class="detect-line"></div>
+            <div class="live-badge">LIVE</div>
+        </div>
+        <div class="video-toggle">
+            <button id="btn-raw" class="toggle-btn active" onclick="switchVideo('raw')">원본 영상</button>
+            <button id="btn-yolo" class="toggle-btn" onclick="switchVideo('yolo')">분석 영상</button>
+        </div>
+    </section>
+
+    <section class="card map-card">
+        <div class="card-title">병실 지도 / 현재 위치</div>
+
+        <div class="map">
+            <div class="room" id="room-101">
+                <strong>병실 101</strong>
+                <span>좌측 상단</span>
+            </div>
+
+            <div class="room" id="room-102">
+                <strong>병실 102</strong>
+                <span>우측 상단</span>
+            </div>
+
+            <div class="room" id="room-103">
+                <strong>병실 103</strong>
+                <span>좌측 하단</span>
+            </div>
+
+            <div class="room" id="room-104">
+                <strong>병실 104</strong>
+                <span>우측 하단</span>
+            </div>
+
+            <div class="robot-marker" id="robot-marker" style="display: none;">🤖</div>
+        </div>
+    </section>
+
+    <section class="card status-card">
+        <div class="card-title">로봇 동작 상태</div>
+
+        <div class="status-grid">
+            <div class="status-item">
+                <span class="label">이동 상태</span>
+                <strong id="robot-status">-</strong>
+            </div>
+            <div class="status-item">
+                <span class="label">배터리</span>
+                <strong id="battery">-</strong>
+            </div>
+            <div class="status-item">
+                <span class="label">카메라</span>
+                <strong id="camera">-</strong>
+            </div>
+            <div class="status-item">
+                <span class="label">네트워크</span>
+                <strong id="network">-</strong>
+            </div>
+        </div>
+
+        <div class="task-line">
+            현재 위치: <strong id="current-room-text">-</strong>
+        </div>
+    </section>
+
+    <section class="card log-card">
+        <div class="card-title">알림 / 이벤트 로그</div>
+        <div class="fall-box">
+            낙상 상태:
+            <strong id="fall-status">-</strong>
+        </div>
+        <div id="event-log" class="event-log"></div>
+    </section>
+</main>
+
+<div id="fall-alert-overlay" class="fall-alert-overlay">
+    <div class="fall-alert-box">
+        <button class="fall-alert-close" onclick="closeFallAlert()">&times;</button>
+        <div class="fall-alert-icon">⚠️</div>
+        <div class="fall-alert-title">낙상 환자 감지</div>
+        <div class="fall-alert-room" id="fall-alert-room"></div>
+        <button class="fall-alert-confirm" onclick="closeFallAlert()">닫기</button>
+    </div>
+</div>
+
+<!-- ===== 캘린더 모달 ===== -->
+<div id="cal-overlay" class="cal-overlay" onclick="if(event.target===this)closeCalendar()">
+    <div class="cal-box">
+        <button class="cal-close" onclick="closeCalendar()">&times;</button>
+        <div class="cal-head">
+            <button class="cal-nav" onclick="calPrev()">‹</button>
+            <div class="cal-title" id="cal-title"></div>
+            <button class="cal-nav" onclick="calNext()">›</button>
+        </div>
+        <div class="cal-weekdays">
+            <div>일</div><div>월</div><div>화</div><div>수</div><div>목</div><div>금</div><div>토</div>
+        </div>
+        <div class="cal-grid" id="cal-grid"></div>
+
+        <div class="cal-day-detail" id="cal-day-detail" style="display:none;">
+            <div class="cal-day-detail-head">
+                <strong id="cal-detail-date"></strong>
+                <button class="cal-close" style="position:static;" onclick="closeDayDetail()">&times;</button>
+            </div>
+            <div class="cal-event-list" id="cal-event-list"></div>
+            <div class="cal-add">
+                <input id="cal-event-input" type="text" placeholder="일정 입력 후 Enter 또는 추가">
+                <button onclick="addEvent()">추가</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ===== 할 일 체크리스트 모달 ===== -->
+<div id="checklist-overlay" class="cal-overlay" onclick="if(event.target===this)closeChecklist()">
+    <div class="cal-box" style="width:min(480px,92vw);">
+        <button class="cal-close" onclick="closeChecklist()">&times;</button>
+        <div class="panel-title">✅ 할 일 체크리스트</div>
+        <div class="cal-add" style="margin-bottom:14px;">
+            <input id="checklist-input" type="text" placeholder="할 일 입력 후 Enter 또는 추가">
+            <button onclick="addChecklistItem()">추가</button>
+        </div>
+        <div id="checklist-list" class="checklist-list"></div>
+    </div>
+</div>
+
+<!-- ===== 로그인 ===== -->
+<div id="login-overlay" class="login-overlay">
+    <div class="login-box">
+        <div class="login-icon">🏥</div>
+        <div class="login-title">병실 모니터링 대시보드</div>
+        <div class="login-sub">로그인이 필요합니다</div>
+        <input id="login-id" class="login-input" type="text" placeholder="아이디" autocomplete="username">
+        <input id="login-pw" class="login-input" type="password" placeholder="비밀번호" autocomplete="current-password">
+        <label class="login-remember">
+            <input id="login-auto" type="checkbox"> 자동 로그인
+        </label>
+        <div id="login-error" class="login-error"></div>
+        <button class="login-btn" onclick="doLogin()">로그인</button>
+    </div>
+</div>
+
+<!-- ===== 메모지 모달 ===== -->
+<div id="memo-overlay" class="cal-overlay" onclick="if(event.target===this)closeMemo()">
+    <div class="cal-box" style="width:min(520px,92vw);">
+        <button class="cal-close" onclick="closeMemo()">&times;</button>
+        <div class="panel-title">📝 메모지 <span id="memo-saved" class="memo-saved"></span></div>
+        <textarea id="memo-text" class="memo-text" placeholder="전달사항·인수인계 메모를 자유롭게 적어주세요"></textarea>
+        <div class="cal-add" style="justify-content:flex-end;">
+            <button onclick="saveMemo()">저장</button>
+        </div>
+    </div>
+</div>
+
+<script>
+function updateClock() {
+    const now = new Date();
+    const h = String(now.getHours()).padStart(2, '0');
+    const m = String(now.getMinutes()).padStart(2, '0');
+    const s = String(now.getSeconds()).padStart(2, '0');
+    const wd = ["일", "월", "화", "수", "목", "금", "토"][now.getDay()];
+    const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} (${wd})`;
+    document.getElementById("clock-time").innerText = `${h}:${m}:${s}`;
+    document.getElementById("clock-date").innerText = dateStr;
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+// ===== 로그인 (테스트용: admin / 1234, DB 미사용) =====
+const AUTH_KEY = "dashboard-auth";
+
+function isAuthed() {
+    return localStorage.getItem(AUTH_KEY) === "1" || sessionStorage.getItem(AUTH_KEY) === "1";
+}
+
+function doLogin() {
+    const id = document.getElementById("login-id").value.trim();
+    const pw = document.getElementById("login-pw").value;
+    const auto = document.getElementById("login-auto").checked;
+    if (id === "admin" && pw === "1234") {
+        // 자동 로그인 체크 → localStorage(영구), 미체크 → sessionStorage(세션 종료 시 만료)
+        if (auto) localStorage.setItem(AUTH_KEY, "1");
+        else sessionStorage.setItem(AUTH_KEY, "1");
+        document.getElementById("login-error").innerText = "";
+        document.getElementById("login-pw").value = "";
+        document.getElementById("login-overlay").style.display = "none";
+    } else {
+        document.getElementById("login-error").innerText = "아이디 또는 비밀번호가 올바르지 않습니다.";
+    }
+}
+
+function logout() {
+    localStorage.removeItem(AUTH_KEY);
+    sessionStorage.removeItem(AUTH_KEY);
+    document.getElementById("login-overlay").style.display = "flex";
+}
+
+// 진입 시 인증 확인 (되어 있으면 로그인창 숨김)
+if (isAuthed()) {
+    document.getElementById("login-overlay").style.display = "none";
+}
+// Enter 키로 로그인
+["login-id", "login-pw"].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener("keydown", e => { if (e.key === "Enter") doLogin(); });
+});
+
+let currentVideoMode = "raw";
+let lastYoloSignal = false;
+let lastSeenAlertId = null;
+
+function showFallAlert(room) {
+    document.getElementById("fall-alert-room").innerText = "병실 " + room;
+    document.getElementById("fall-alert-overlay").style.display = "flex";
+}
+
+function closeFallAlert() {
+    document.getElementById("fall-alert-overlay").style.display = "none";
+}
+
+function switchVideo(mode) {
+    currentVideoMode = mode;
+    const img = document.getElementById("video-img");
+    const btnRaw = document.getElementById("btn-raw");
+    const btnYolo = document.getElementById("btn-yolo");
+    const detectLine = document.querySelector(".detect-line");
+
+    if (mode === "yolo") {
+        img.src = "/video_feed_yolo";
+        img.style.visibility = lastYoloSignal ? "visible" : "hidden";
+        btnYolo.classList.add("active");
+        btnRaw.classList.remove("active");
+        if (detectLine) detectLine.style.display = "block";  // 분석 영상에만 중앙선 표시
+    } else {
+        img.style.visibility = "visible";
+        img.src = "/video_feed";
+        btnRaw.classList.add("active");
+        btnYolo.classList.remove("active");
+        if (detectLine) detectLine.style.display = "none";   // 원본 영상은 깨끗하게
+    }
+}
+
+async function updateStatus() {
+    try {
+        const res = await fetch("/api/status");
+        const data = await res.json();
+
+        document.querySelectorAll(".room").forEach(room => {
+            room.classList.remove("active-room");
+        });
+
+        const room = document.getElementById("room-" + data.current_room);
+        const robotMarker = document.getElementById("robot-marker");
+        if (room) {
+            room.classList.add("active-room");
+            room.appendChild(robotMarker);
+            robotMarker.style.display = "block";
+        } else {
+            robotMarker.style.display = "none";
+        }
+
+        lastYoloSignal = data.yolo_signal;
+        if (currentVideoMode === "yolo") {
+            document.getElementById("video-img").style.visibility = data.yolo_signal ? "visible" : "hidden";
+        }
+
+        if (lastSeenAlertId === null) {
+            lastSeenAlertId = data.fall_alert_id;
+        } else if (data.fall_alert_id !== lastSeenAlertId) {
+            lastSeenAlertId = data.fall_alert_id;
+            showFallAlert(data.current_room);
+        }
+
+        document.getElementById("robot-status").innerText = data.robot_status;
+        document.getElementById("fall-status").innerText = data.fall_status;
+        document.getElementById("battery").innerText = data.battery;
+        document.getElementById("camera").innerText = data.camera;
+        document.getElementById("network").innerText = data.network;
+        document.getElementById("current-room-text").innerText =
+            room ? "병실 " + data.current_room : "위치 확인 중";
+
+        const log = document.getElementById("event-log");
+        log.innerHTML = "";
+
+        data.events.forEach(event => {
+            const item = document.createElement("div");
+            item.className = "event-item";
+            const isFall = event.text.includes("낙상 환자 발견");
+            item.innerHTML = `<span>${event.time}</span><p style="${isFall ? 'color:#dc2626; font-weight:700;' : ''}">${event.text}</p>`;
+            log.appendChild(item);
+        });
+    } catch (err) {
+        console.error(err);
+    }
+}
+
+setInterval(updateStatus, 1000);
+updateStatus();
+
+// ===== 테마 =====
+const THEMES = [
+    { id: "light",    name: "라이트",     dot: "#ffffff" },
+    { id: "dark",     name: "다크",       dot: "#1e293b" },
+    { id: "sky",      name: "스카이",     dot: "#0ea5e9" },
+    { id: "mint",     name: "민트",       dot: "#10b981" },
+    { id: "lavender", name: "라벤더",     dot: "#8b5cf6" },
+    { id: "peach",    name: "피치",       dot: "#f97316" },
+    { id: "rose",     name: "로즈",       dot: "#e11d48" },
+    { id: "sand",     name: "샌드",       dot: "#d97706" },
+    { id: "graphite", name: "그래파이트", dot: "#2a2e33" },
+    { id: "ocean",    name: "오션",       dot: "#123642" },
+];
+
+function applyTheme(id) {
+    document.body.setAttribute("data-theme", id);
+    localStorage.setItem("dashboard-theme", id);
+    renderThemeList();
+}
+
+function renderThemeList() {
+    const cur = document.body.getAttribute("data-theme") || "light";
+    const list = document.getElementById("theme-list");
+    list.innerHTML = "";
+    THEMES.forEach(t => {
+        const el = document.createElement("div");
+        el.className = "theme-swatch" + (t.id === cur ? " selected" : "");
+        el.onclick = () => applyTheme(t.id);
+        el.innerHTML = `<span class="theme-dot" style="background:${t.dot}"></span>${t.name}`;
+        list.appendChild(el);
+    });
+}
+
+function toggleThemeMenu() {
+    document.getElementById("theme-menu").classList.toggle("open");
+}
+
+// 메뉴 바깥 클릭 시 닫기
+document.addEventListener("click", (e) => {
+    const wrap = document.querySelector(".theme-wrap");
+    if (wrap && !wrap.contains(e.target)) {
+        document.getElementById("theme-menu").classList.remove("open");
+    }
+});
+
+// 저장된 테마 적용
+document.body.setAttribute("data-theme", localStorage.getItem("dashboard-theme") || "light");
+renderThemeList();
+
+// ===== 캘린더 =====
+let calYear, calMonth;   // calMonth: 0-based
+let calEvents = {};
+let calSelectedDate = null;
+
+function pad2(n) { return String(n).padStart(2, "0"); }
+function dateKey(y, m, d) { return `${y}-${pad2(m + 1)}-${pad2(d)}`; }
+
+async function fetchEvents() {
+    try {
+        const res = await fetch("/api/events");
+        calEvents = await res.json();
+    } catch (e) {
+        calEvents = {};
+        console.error(e);
+    }
+}
+
+async function openCalendar() {
+    const now = new Date();
+    if (calYear === undefined) { calYear = now.getFullYear(); calMonth = now.getMonth(); }
+    await fetchEvents();
+    renderCalendar();
+    closeDayDetail();
+    document.getElementById("cal-overlay").classList.add("open");
+}
+
+function closeCalendar() {
+    document.getElementById("cal-overlay").classList.remove("open");
+}
+
+function calPrev() { calMonth--; if (calMonth < 0) { calMonth = 11; calYear--; } renderCalendar(); }
+function calNext() { calMonth++; if (calMonth > 11) { calMonth = 0; calYear++; } renderCalendar(); }
+
+function renderCalendar() {
+    document.getElementById("cal-title").innerText = `${calYear}년 ${calMonth + 1}월`;
+    const grid = document.getElementById("cal-grid");
+    grid.innerHTML = "";
+
+    const first = new Date(calYear, calMonth, 1).getDay(); // 0=일
+    const days = new Date(calYear, calMonth + 1, 0).getDate();
+    const today = new Date();
+    const isThisMonth = today.getFullYear() === calYear && today.getMonth() === calMonth;
+
+    for (let i = 0; i < first; i++) {
+        const empty = document.createElement("div");
+        empty.className = "cal-day empty";
+        grid.appendChild(empty);
+    }
+
+    for (let d = 1; d <= days; d++) {
+        const key = dateKey(calYear, calMonth, d);
+        const dow = new Date(calYear, calMonth, d).getDay();
+        const cell = document.createElement("div");
+        cell.className = "cal-day" + (dow === 0 ? " sun" : dow === 6 ? " sat" : "") +
+            (isThisMonth && today.getDate() === d ? " today" : "");
+        const count = (calEvents[key] || []).length;
+        cell.innerHTML = `<div class="day-num">${d}</div>` +
+            (count ? `<span class="cal-badge">${count}</span>` : "");
+        cell.onclick = () => openDayDetail(key);
+        grid.appendChild(cell);
+    }
+}
+
+function openDayDetail(key) {
+    calSelectedDate = key;
+    document.getElementById("cal-detail-date").innerText = key;
+    document.getElementById("cal-day-detail").style.display = "block";
+    renderDayEvents();
+    document.getElementById("cal-event-input").focus();
+}
+
+function closeDayDetail() {
+    calSelectedDate = null;
+    document.getElementById("cal-day-detail").style.display = "none";
+}
+
+function renderDayEvents() {
+    const list = document.getElementById("cal-event-list");
+    list.innerHTML = "";
+    const items = calEvents[calSelectedDate] || [];
+    if (items.length === 0) {
+        list.innerHTML = `<div class="cal-empty-msg">등록된 일정이 없습니다.</div>`;
+        return;
+    }
+    items.forEach(ev => {
+        const row = document.createElement("div");
+        row.className = "cal-event-row";
+        row.innerHTML = `<p></p><button title="삭제">&times;</button>`;
+        row.querySelector("p").innerText = ev.text;
+        row.querySelector("button").onclick = () => deleteEvent(ev.id);
+        list.appendChild(row);
+    });
+}
+
+async function addEvent() {
+    const input = document.getElementById("cal-event-input");
+    const text = input.value.trim();
+    if (!text || !calSelectedDate) return;
+    try {
+        const res = await fetch("/api/events", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ date: calSelectedDate, text }),
+        });
+        const data = await res.json();
+        if (data.ok) {
+            (calEvents[calSelectedDate] = calEvents[calSelectedDate] || []).push(data.event);
+            input.value = "";
+            renderDayEvents();
+            renderCalendar();
+        }
+    } catch (e) { console.error(e); }
+}
+
+async function deleteEvent(id) {
+    if (!calSelectedDate) return;
+    try {
+        await fetch("/api/events/delete", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ date: calSelectedDate, id }),
+        });
+        calEvents[calSelectedDate] = (calEvents[calSelectedDate] || []).filter(e => e.id !== id);
+        renderDayEvents();
+        renderCalendar();
+    } catch (e) { console.error(e); }
+}
+
+// Enter 키로 일정 추가
+const calInput = document.getElementById("cal-event-input");
+if (calInput) calInput.addEventListener("keydown", e => { if (e.key === "Enter") addEvent(); });
+
+// ===== 할 일 체크리스트 =====
+let checklistData = [];
+
+async function fetchNotes() {
+    try {
+        const res = await fetch("/api/notes");
+        return await res.json();
+    } catch (e) {
+        console.error(e);
+        return { checklist: [], memo: "" };
+    }
+}
+
+async function openChecklist() {
+    const notes = await fetchNotes();
+    checklistData = notes.checklist || [];
+    renderChecklist();
+    document.getElementById("checklist-overlay").classList.add("open");
+    document.getElementById("checklist-input").focus();
+}
+
+function closeChecklist() {
+    document.getElementById("checklist-overlay").classList.remove("open");
+}
+
+function renderChecklist() {
+    const list = document.getElementById("checklist-list");
+    list.innerHTML = "";
+    if (checklistData.length === 0) {
+        list.innerHTML = `<div class="cal-empty-msg">할 일이 없습니다.</div>`;
+        return;
+    }
+    checklistData.forEach(it => {
+        const row = document.createElement("div");
+        row.className = "check-row" + (it.done ? " done" : "");
+        const box = document.createElement("input");
+        box.type = "checkbox";
+        box.checked = !!it.done;
+        box.onchange = () => toggleChecklistItem(it.id);
+        const p = document.createElement("p");
+        p.innerText = it.text;
+        const del = document.createElement("button");
+        del.innerHTML = "&times;";
+        del.title = "삭제";
+        del.onclick = () => deleteChecklistItem(it.id);
+        row.appendChild(box);
+        row.appendChild(p);
+        row.appendChild(del);
+        list.appendChild(row);
+    });
+}
+
+async function addChecklistItem() {
+    const input = document.getElementById("checklist-input");
+    const text = input.value.trim();
+    if (!text) return;
+    try {
+        const res = await fetch("/api/checklist/add", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ text }),
+        });
+        const data = await res.json();
+        if (data.ok) {
+            checklistData.push(data.item);
+            input.value = "";
+            renderChecklist();
+        }
+    } catch (e) { console.error(e); }
+}
+
+async function toggleChecklistItem(id) {
+    try {
+        await fetch("/api/checklist/toggle", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id }),
+        });
+        const it = checklistData.find(x => x.id === id);
+        if (it) it.done = !it.done;
+        renderChecklist();
+    } catch (e) { console.error(e); }
+}
+
+async function deleteChecklistItem(id) {
+    try {
+        await fetch("/api/checklist/delete", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id }),
+        });
+        checklistData = checklistData.filter(x => x.id !== id);
+        renderChecklist();
+    } catch (e) { console.error(e); }
+}
+
+const checklistInput = document.getElementById("checklist-input");
+if (checklistInput) checklistInput.addEventListener("keydown", e => { if (e.key === "Enter") addChecklistItem(); });
+
+// ===== 메모지 =====
+async function openMemo() {
+    const notes = await fetchNotes();
+    document.getElementById("memo-text").value = notes.memo || "";
+    document.getElementById("memo-saved").innerText = "";
+    document.getElementById("memo-overlay").classList.add("open");
+}
+
+function closeMemo() {
+    document.getElementById("memo-overlay").classList.remove("open");
+}
+
+async function saveMemo() {
+    const memo = document.getElementById("memo-text").value;
+    try {
+        const res = await fetch("/api/memo", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ memo }),
+        });
+        const data = await res.json();
+        if (data.ok) {
+            const tag = document.getElementById("memo-saved");
+            tag.innerText = "저장됨";
+            setTimeout(() => { tag.innerText = ""; }, 1500);
+        }
+    } catch (e) { console.error(e); }
+}
+</script>
+</body>
+</html>
