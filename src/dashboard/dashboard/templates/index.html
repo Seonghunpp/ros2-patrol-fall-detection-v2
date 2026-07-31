@@ -8,25 +8,14 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
-<script>try{sessionStorage.setItem("dashboard-auth","1")}catch(e){}</script>
 </head>
 <body>
 <!-- ===== 상단바 (Letters 스타일 · 그라디언트 위 투명 오버레이) ===== -->
 <header class="topbar" id="topbar">
     <div class="topbar-inner">
-        <button class="brand" onclick="showTab('home')">DABOM</button>
-        <nav class="topnav">
-            <button class="navlink active" data-tab="home" onclick="showTab('home')">홈</button>
-            <button class="navlink" data-tab="monitoring" onclick="showTab('monitoring')">실시간 모니터링</button>
-            <button class="navlink" data-tab="rooms" onclick="showTab('rooms')">병실 · 환자</button>
-            <button class="navlink" data-tab="falls" onclick="showTab('falls')">낙상 통계</button>
-            <button class="navlink" data-tab="patrol" onclick="showTab('patrol')">순찰 관리</button>
-            <button class="navlink" data-tab="settings" onclick="showTab('settings')">설정</button>
-        </nav>
-        <div class="topbar-right">
-            <button class="nav-login" onclick="openLogin()">로그인</button>
-            <button class="nav-signup" onclick="openLogin()">회원가입</button>
-        </div>
+        <button class="brand" onclick="goHome()">DABOM</button>
+        <nav class="topnav" id="topnav"><!-- renderNav()로 역할별 메뉴 채움 --></nav>
+        <div class="topbar-right" id="topbar-right"><!-- renderNav()로 로그인/계정 채움 --></div>
     </div>
 </header>
 
@@ -35,30 +24,17 @@
 <!-- ===== 탭 1: 실시간 모니터링 (홈) ===== -->
 <section id="tab-home" class="tab-panel active">
 
-    <!-- ===== TILE 1 · 히어로 (Letters 스타일 · 블루 그라디언트 + 떠있는 카드) ===== -->
-    <section class="lp-hero-tile">
-        <div class="lp-inner lp-hero">
-            <span class="lp-eyebrow">DABOM · 24시간 병실 낙상 감시</span>
-            <h1 class="lp-h1">낙상 걱정 없는<br>병실을 만듭니다</h1>
-            <p class="lp-lead">순찰 로봇이 24시간 병실을 돌며 <b>낙상을 즉시 감지</b>하고<br><b>담당 간호사에게 바로 알립니다.</b></p>
-            <div class="lp-cta-row">
-                <button class="lp-btn" onclick="showTab('monitoring')">실시간 모니터링</button>
-                <button class="lp-btn lp-btn--ghost" onclick="showTab('guide')">이용 안내</button>
+    <!-- ===== TILE 1 · 히어로 (병원 건물 배경 · 스크롤에 따라 문구 등장 → 건물 페이드아웃) ===== -->
+    <section class="lp-hero-tile" id="lp-hero-tile">
+        <div class="lp-hero-stage">
+            <div class="lp-hero-media js-dark-under-nav" id="lp-hero-bg"></div>
+            <div class="lp-hero-scrim" id="lp-hero-scrim"></div>
+            <div class="lp-inner lp-hero" id="lp-hero-copy">
+                <span class="lp-eyebrow">DABOM · 24시간 병실 낙상 감시</span>
+                <h1 class="lp-h1">낙상 걱정 없는<br>병실을 만듭니다</h1>
+                <p class="lp-lead">순찰 로봇이 24시간 병실을 돌며 <b>낙상을 즉시 감지</b>하고<br><b>담당 간호사에게 바로 알립니다.</b></p>
             </div>
-
-            <!-- 떠 있는 알림 카드 (Letters의 before/after 카드처럼) -->
-            <div class="hero-float">
-                <div class="hero-float-back"></div>
-                <div class="hero-float-card">
-                    <div class="hf-row">
-                        <span class="hf-badge">⚠️ 낙상 감지</span>
-                        <span class="hf-time">03:20</span>
-                    </div>
-                    <div class="hf-title">병실 101 · 홍길동 님</div>
-                    <div class="hf-desc">낙상이 감지되어 담당 간호사에게 알림을 전송했습니다.</div>
-                    <div class="hf-status">✓ 간호사 호출 완료 · 대응 12초</div>
-                </div>
-            </div>
+            <div class="lp-hero-cue" id="lp-hero-cue"><span>스크롤</span><i>⌄</i></div>
         </div>
     </section>
 
@@ -113,34 +89,28 @@
 
     <!-- 실시간 현황(영상·환자 이벤트 등 개인정보)은 '실시간 모니터링' 탭으로 이동 -->
 
-    <!-- ===== TILE 5 · 바로가기 (parchment) ===== -->
+    <!-- ===== TILE 5 · 더 알아보기 (parchment) ===== -->
     <section class="lp-tile lp-tile--parchment">
         <div class="lp-inner lp-center">
-            <h2 class="lp-h2">필요한 정보로 바로 이동</h2>
-            <p class="lp-sub">각 항목을 눌러 원하는 화면으로 들어가세요.</p>
+            <h2 class="lp-h2">DABOM 더 알아보기</h2>
+            <p class="lp-sub">로봇의 기능을 자세히 확인하고, 로그인하여 시스템을 이용하세요.</p>
             <div class="lp-nav-cards">
-                <button class="lp-nav-card" onclick="showTab('rooms')">
-                    <span class="lp-nav-emoji">🛏️</span>
-                    <span class="lp-nav-title">병실 · 환자</span>
-                    <span class="lp-nav-desc">병실별 환자 정보와 위험도, 최근 낙상 이력</span>
+                <button class="lp-nav-card" onclick="showTab('about')">
+                    <span class="lp-nav-emoji">📋</span>
+                    <span class="lp-nav-title">시스템 소개</span>
+                    <span class="lp-nav-desc">AI 병실 낙상 예방 시스템의 배경과 구성</span>
                     <span class="lp-nav-go">바로가기 →</span>
                 </button>
-                <button class="lp-nav-card" onclick="showTab('falls')">
-                    <span class="lp-nav-emoji">📊</span>
-                    <span class="lp-nav-title">낙상 이력 · 통계</span>
-                    <span class="lp-nav-desc">발생 이력과 대응 시간, 오탐 통계</span>
+                <button class="lp-nav-card" onclick="showTab('features')">
+                    <span class="lp-nav-emoji">✨</span>
+                    <span class="lp-nav-title">주요 기능</span>
+                    <span class="lp-nav-desc">낙상 감지·자율 순찰·실시간 모니터링</span>
                     <span class="lp-nav-go">바로가기 →</span>
                 </button>
-                <button class="lp-nav-card" onclick="showTab('patrol')">
-                    <span class="lp-nav-emoji">🤖</span>
-                    <span class="lp-nav-title">순찰 관리</span>
-                    <span class="lp-nav-desc">순찰 우선순위·스케줄, 충전, 경로</span>
-                    <span class="lp-nav-go">바로가기 →</span>
-                </button>
-                <button class="lp-nav-card" onclick="showTab('settings')">
-                    <span class="lp-nav-emoji">⚙️</span>
-                    <span class="lp-nav-title">설정 · 계정</span>
-                    <span class="lp-nav-desc">계정 권한, 마커–병실 매핑, 테마</span>
+                <button class="lp-nav-card" onclick="openLogin()">
+                    <span class="lp-nav-emoji">🔑</span>
+                    <span class="lp-nav-title">로그인</span>
+                    <span class="lp-nav-desc">간호사·보호자 계정으로 로그인</span>
                     <span class="lp-nav-go">바로가기 →</span>
                 </button>
             </div>
@@ -151,22 +121,283 @@
     <footer class="lp-footer">
         <div class="lp-inner lp-footer-inner">
             <div class="lp-footer-brand">
-                <div class="lp-footer-name">🏥 병실 안전 모니터링</div>
-                <p class="lp-footer-desc">순찰 로봇 기반 실시간 낙상 감지 시스템</p>
+                <div class="lp-footer-name">DABOM</div>
+                <p class="lp-footer-desc">순찰 로봇 기반 AI 병실 낙상 예방 시스템</p>
             </div>
             <nav class="lp-footer-links">
-                <button onclick="showTab('rooms')">병실 · 환자</button>
-                <button onclick="showTab('falls')">낙상 이력 · 통계</button>
-                <button onclick="showTab('patrol')">순찰 관리</button>
-                <button onclick="showTab('settings')">설정 · 계정</button>
+                <button onclick="showTab('about')">시스템 소개</button>
+                <button onclick="showTab('features')">주요 기능</button>
+                <button onclick="openLogin()">로그인</button>
             </nav>
         </div>
-        <div class="lp-footer-legal">© 2026 병실 안전 모니터링 시스템 · 내부 사용 전용</div>
+        <div class="lp-footer-legal">© 2026 DABOM · 병실 낙상 예방 및 순찰 로봇 시스템</div>
     </footer>
 </section>
-<!-- ===== 탭 1 끝 ===== -->
+<!-- ===== 탭 1 끝 (비로그인 랜딩) ===== -->
 
-<!-- ===== 탭 2: 실시간 모니터링 (개인정보 포함 · 메인 비노출) ===== -->
+<!-- ===== 시스템 소개 (비로그인) ===== -->
+<section id="tab-about" class="tab-panel">
+    <div class="page">
+        <div class="page-head">
+            <h2>시스템 소개</h2>
+            <p>AI 병실 낙상 예방 및 순찰 로봇 시스템 DABOM을 소개합니다.</p>
+        </div>
+        <div class="panel" style="margin-bottom:18px;">
+            <div class="panel-head">배경</div>
+            <p class="prose">고령 환자에게 낙상은 큰 부상으로 이어질 수 있지만, 간호 인력이 모든 병실을 24시간 지켜보기는 어렵습니다. DABOM은 자율주행 순찰 로봇과 AI 영상 분석으로 낙상을 실시간 감지하고 즉시 알림을 전달해, 사람의 공백을 메웁니다.</p>
+        </div>
+        <div class="info-grid">
+            <div class="panel"><div class="info-emoji">🤖</div><h3>자율 순찰 로봇</h3><p>정해진 경로를 따라 병실을 스스로 순회하며 상태를 확인합니다.</p></div>
+            <div class="panel"><div class="info-emoji">👁️</div><h3>AI 낙상 감지</h3><p>YOLO 기반 영상 분석으로 쓰러짐을 즉시 인식합니다.</p></div>
+            <div class="panel"><div class="info-emoji">🔔</div><h3>즉시 알림</h3><p>이상 감지 시 간호사와 보호자에게 알림을 전송합니다.</p></div>
+        </div>
+        <div class="panel" style="margin-top:18px;">
+            <div class="panel-head">시스템 구성도</div>
+            <div class="diagram">
+                <div class="diagram-node">순찰 로봇<br><small>카메라 · 자율주행</small></div>
+                <div class="diagram-arrow">→</div>
+                <div class="diagram-node">AI 서버<br><small>YOLO 낙상 감지</small></div>
+                <div class="diagram-arrow">→</div>
+                <div class="diagram-node">웹 대시보드<br><small>모니터링 · 알림</small></div>
+            </div>
+        </div>
+        <div class="panel" style="margin-top:18px;">
+            <div class="panel-head">시연 영상</div>
+            <div class="video-placeholder">▶ 시연 영상 (준비 중)</div>
+        </div>
+        <div class="lp-center" style="margin-top:24px;">
+            <button class="lp-btn" onclick="openLogin()">로그인하고 시작하기</button>
+        </div>
+    </div>
+</section>
+
+<!-- ===== 주요 기능 (비로그인) ===== -->
+<section id="tab-features" class="tab-panel">
+    <div class="page">
+        <div class="page-head">
+            <h2>주요 기능</h2>
+            <p>DABOM이 제공하는 주요 기능입니다.</p>
+        </div>
+        <div class="info-grid">
+            <div class="panel"><div class="info-emoji">📹</div><h3>실시간 모니터링</h3><p>병실 영상과 로봇 위치·상태를 실시간으로 확인합니다.</p></div>
+            <div class="panel"><div class="info-emoji">🧠</div><h3>YOLO 낙상 감지</h3><p>딥러닝 영상 분석으로 낙상 순간을 자동 인식합니다.</p></div>
+            <div class="panel"><div class="info-emoji">🗺️</div><h3>로봇 관제</h3><p>순찰 시작·정지·복귀·비상정지를 원격 제어합니다.</p></div>
+            <div class="panel"><div class="info-emoji">📊</div><h3>통계 분석</h3><p>월별·병실별·시간대별 낙상 통계를 제공합니다.</p></div>
+            <div class="panel"><div class="info-emoji">🗂️</div><h3>이벤트 로그</h3><p>모든 감지·대응 이벤트를 검색·필터로 관리합니다.</p></div>
+            <div class="panel"><div class="info-emoji">👨‍👩‍👧</div><h3>보호자 열람</h3><p>보호자는 자신의 병실 정보만 안전하게 확인합니다.</p></div>
+        </div>
+    </div>
+</section>
+
+<!-- ===== 병실 소개 (비로그인) ===== -->
+<section id="tab-rooms" class="tab-panel">
+
+    <!-- 상단: 선택한 병실 사진 + 이름 -->
+    <section class="rm-hero">
+        <div class="rm-hero-photo js-dark-under-nav" id="rm-photo"></div>
+        <div class="rm-hero-veil"></div>
+        <div class="lp-inner rm-hero-copy">
+            <span class="rm-eyebrow">KJ HOSPITAL</span>
+            <h1 class="rm-title" id="rm-title">4인실</h1>
+            <p class="rm-tagline" id="rm-tagline"></p>
+            <div class="rm-tabs" id="rm-tabs">
+                <button class="rm-tab active" data-room="r4" onclick="showRoom('r4')">4인실</button>
+                <button class="rm-tab" data-room="r2" onclick="showRoom('r2')">2인실</button>
+                <button class="rm-tab" data-room="r1" onclick="showRoom('r1')">1인실 VIP</button>
+            </div>
+            <button class="rm-zoom" onclick="openRoomPhoto()">⛶ 병실 사진 크게 보기</button>
+        </div>
+    </section>
+
+    <!-- 아래: 해당 병실의 제공 서비스 (스크롤하면 하나씩 등장) -->
+    <section class="lp-tile lp-tile--parchment">
+        <div class="lp-inner lp-center">
+            <h2 class="lp-h2"><span id="rm-svc-room">4인실</span> 고객 제공 서비스</h2>
+            <p class="lp-sub" id="rm-svc-sub"></p>
+            <div class="rm-svc-grid" id="rm-svc-grid"><!-- showRoom()으로 채움 --></div>
+        </div>
+    </section>
+
+    <!-- 병실 사진만 크게 보기 -->
+    <div class="rm-lightbox" id="rm-lightbox" onclick="if(event.target===this)closeRoomPhoto()">
+        <button class="rm-lightbox-close" onclick="closeRoomPhoto()">&times;</button>
+        <figure class="rm-lightbox-box">
+            <img id="rm-lightbox-img" alt="병실 사진">
+            <figcaption id="rm-lightbox-cap"></figcaption>
+        </figure>
+    </div>
+</section>
+
+<!-- ============================================================
+     보호자(guardian) 전용 페이지
+     ============================================================ -->
+
+<!-- 보호자 Home: 내 병실 요약 -->
+<section id="tab-ghome" class="tab-panel">
+    <div class="page">
+        <div class="page-head">
+            <h2>안녕하세요, 보호자님</h2>
+            <p>홍길동 님(병실 101)의 오늘 상태 요약입니다.</p>
+        </div>
+        <div class="stat-row">
+            <div class="stat-tile"><span class="stat-tile-label">현재 환자 상태</span><span class="stat-tile-num" style="color:#1a9d43;">안정</span></div>
+            <div class="stat-tile"><span class="stat-tile-label">병실 번호</span><span class="stat-tile-num">101<span class="stat-tile-unit">호</span></span></div>
+            <div class="stat-tile"><span class="stat-tile-label">최근 순찰</span><span class="stat-tile-num">16:20</span></div>
+            <div class="stat-tile"><span class="stat-tile-label">오늘 이벤트</span><span class="stat-tile-num">0<span class="stat-tile-unit">건</span></span></div>
+        </div>
+        <div class="panel" style="margin-top:18px;">
+            <div class="panel-head">최근 이벤트</div>
+            <ul class="timeline">
+                <li><span class="tl-time">16:20</span><span>정기 순찰 완료 · 이상 없음</span></li>
+                <li><span class="tl-time">12:05</span><span>정기 순찰 완료 · 이상 없음</span></li>
+                <li><span class="tl-time">08:00</span><span>오전 순찰 시작</span></li>
+            </ul>
+        </div>
+        <div class="lp-center" style="margin-top:20px;">
+            <button class="lp-btn" onclick="showTab('glive')">실시간 병실 보기</button>
+        </div>
+    </div>
+</section>
+
+<!-- 내 병실 -->
+<section id="tab-myroom" class="tab-panel">
+    <div class="page">
+        <div class="page-head"><h2>내 병실</h2><p>담당 환자의 병실 정보입니다.</p></div>
+        <div class="stat-row">
+            <div class="stat-tile"><span class="stat-tile-label">병실 번호</span><span class="stat-tile-num">101<span class="stat-tile-unit">호</span></span></div>
+            <div class="stat-tile"><span class="stat-tile-label">환자 상태</span><span class="stat-tile-num" style="color:#1a9d43;">안정</span></div>
+            <div class="stat-tile"><span class="stat-tile-label">최근 감지</span><span class="stat-tile-num">없음</span></div>
+            <div class="stat-tile"><span class="stat-tile-label">담당 병동</span><span class="stat-tile-num">3동 A</span></div>
+        </div>
+        <div class="panel" style="margin-top:18px;">
+            <div class="panel-head">환자 정보</div>
+            <dl class="pd-list">
+                <div><dt>이름</dt><dd>홍길동</dd></div>
+                <div><dt>나이 · 성별</dt><dd>78세 · 남</dd></div>
+                <div><dt>병명</dt><dd>뇌졸중 후유증</dd></div>
+                <div><dt>위험도</dt><dd><span class="risk-chip risk-high">위험</span></dd></div>
+                <div><dt>최근 낙상</dt><dd>2026-07-14 03:20</dd></div>
+            </dl>
+        </div>
+    </div>
+</section>
+
+<!-- 실시간 병실 (보호자) -->
+<section id="tab-glive" class="tab-panel">
+    <div class="page">
+        <div class="page-head"><h2>실시간 병실</h2><p>병실 101 실시간 영상과 상태입니다.</p></div>
+        <div class="glive-grid">
+            <div class="card video-card">
+                <div class="card-title">실시간 영상 · 병실 101</div>
+                <div class="video-box">
+                    <img src="/video_feed" alt="실시간 병실 영상" onerror="this.style.visibility='hidden'">
+                    <div class="live-badge">LIVE</div>
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-title">환자 상태</div>
+                <div class="status-grid" style="grid-template-columns:1fr;">
+                    <div class="status-item"><span class="label">환자</span><strong>홍길동 님</strong></div>
+                    <div class="status-item"><span class="label">낙상 감지</span><strong style="color:#1a9d43;">정상</strong></div>
+                    <div class="status-item"><span class="label">최근 순찰</span><strong>16:20</strong></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- 통계 (보호자 · 내 병실 기준) -->
+<section id="tab-gstats" class="tab-panel">
+    <div class="page">
+        <div class="page-head"><h2>통계</h2><p>병실 101 기준 통계입니다.</p></div>
+        <div class="stat-row">
+            <div class="stat-tile"><span class="stat-tile-label">최근 7일 이벤트</span><span class="stat-tile-num">1<span class="stat-tile-unit">건</span></span></div>
+            <div class="stat-tile"><span class="stat-tile-label">최근 7일 순찰</span><span class="stat-tile-num">42<span class="stat-tile-unit">회</span></span></div>
+            <div class="stat-tile"><span class="stat-tile-label">평균 대응 시간</span><span class="stat-tile-num">14<span class="stat-tile-unit">초</span></span></div>
+        </div>
+        <div class="panel" style="margin-top:18px;">
+            <div class="panel-head">최근 7일 이벤트</div>
+            <div class="bar-chart">
+                <div class="bar"><span class="bar-fill" style="height:20%"></span><span class="bar-label">월</span></div>
+                <div class="bar"><span class="bar-fill" style="height:0%"></span><span class="bar-label">화</span></div>
+                <div class="bar"><span class="bar-fill" style="height:60%"></span><span class="bar-label">수</span></div>
+                <div class="bar"><span class="bar-fill" style="height:0%"></span><span class="bar-label">목</span></div>
+                <div class="bar"><span class="bar-fill" style="height:0%"></span><span class="bar-label">금</span></div>
+                <div class="bar"><span class="bar-fill" style="height:0%"></span><span class="bar-label">토</span></div>
+                <div class="bar"><span class="bar-fill" style="height:0%"></span><span class="bar-label">일</span></div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- 내 정보 (보호자) -->
+<section id="tab-myinfo" class="tab-panel">
+    <div class="page">
+        <div class="page-head"><h2>내 정보</h2><p>계정 정보를 관리합니다.</p></div>
+        <div class="panel" style="max-width:460px;">
+            <div class="panel-head">계정</div>
+            <dl class="pd-list" style="margin-bottom:16px;">
+                <div><dt>이름</dt><dd>박보호</dd></div>
+                <div><dt>구분</dt><dd><span class="risk-chip risk-low">보호자</span></dd></div>
+                <div><dt>담당 병실</dt><dd>병실 101</dd></div>
+            </dl>
+            <label class="form-label">비밀번호 변경</label>
+            <input class="form-input" type="password" placeholder="새 비밀번호">
+            <input class="form-input" type="password" placeholder="새 비밀번호 확인">
+            <button class="mini-btn" style="margin-top:6px;">비밀번호 변경</button>
+            <div style="border-top:1px solid var(--border); margin-top:18px; padding-top:16px;">
+                <button class="lp-btn" onclick="logout()" style="background:var(--danger);">로그아웃</button>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- ============================================================
+     관리자(admin) 전용 페이지
+     ============================================================ -->
+
+<!-- 관리자 Home: 전체 현황 -->
+<section id="tab-ahome" class="tab-panel">
+    <div class="page">
+        <div class="page-head"><h2>병원 전체 현황</h2><p>실시간 운영 상태를 한눈에 확인합니다.</p></div>
+        <div class="stat-row stat-row-6">
+            <div class="stat-tile"><span class="stat-tile-label">전체 병실</span><span class="stat-tile-num">4<span class="stat-tile-unit">실</span></span></div>
+            <div class="stat-tile"><span class="stat-tile-label">위험 병실</span><span class="stat-tile-num" style="color:#e5484d;">2<span class="stat-tile-unit">실</span></span></div>
+            <div class="stat-tile"><span class="stat-tile-label">오늘 낙상</span><span class="stat-tile-num">1<span class="stat-tile-unit">건</span></span></div>
+            <div class="stat-tile"><span class="stat-tile-label">Robot 상태</span><span class="stat-tile-num" style="color:#1a9d43;">순찰 중</span></div>
+            <div class="stat-tile"><span class="stat-tile-label">배터리</span><span class="stat-tile-num">82<span class="stat-tile-unit">%</span></span></div>
+            <div class="stat-tile"><span class="stat-tile-label">긴급 알림</span><span class="stat-tile-num" style="color:#e5484d;">0<span class="stat-tile-unit">건</span></span></div>
+        </div>
+        <div class="ahome-grid">
+            <div class="panel">
+                <div class="panel-head">최근 이벤트</div>
+                <ul class="timeline">
+                    <li><span class="tl-time">14:32</span><span><span class="risk-chip risk-high">낙상</span> 병실 101 낙상 감지</span></li>
+                    <li><span class="tl-time">14:35</span><span>병실 101 간호사 호출</span></li>
+                    <li><span class="tl-time">14:40</span><span>순찰 완료</span></li>
+                </ul>
+            </div>
+            <div class="panel">
+                <div class="panel-head">최근 낙상</div>
+                <ul class="timeline">
+                    <li><span class="tl-time">07-15</span><span>병실 103 · 대응 12초</span></li>
+                    <li><span class="tl-time">07-14</span><span>병실 101 · 대응 9초</span></li>
+                </ul>
+            </div>
+            <div class="panel">
+                <div class="panel-head">최근 통계</div>
+                <div class="bar-chart bar-chart-sm">
+                    <div class="bar"><span class="bar-fill" style="height:40%"></span><span class="bar-label">4월</span></div>
+                    <div class="bar"><span class="bar-fill" style="height:70%"></span><span class="bar-label">5월</span></div>
+                    <div class="bar"><span class="bar-fill" style="height:55%"></span><span class="bar-label">6월</span></div>
+                    <div class="bar"><span class="bar-fill" style="height:85%"></span><span class="bar-label">7월</span></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- ===== 병실 모니터링 (관리자) ===== -->
 <section id="tab-monitoring" class="tab-panel">
     <div class="mon-head">
         <h2>실시간 모니터링</h2>
@@ -245,26 +476,14 @@
     </main>
 </section>
 
-<!-- ===== 탭 3: 병실 / 환자 ===== -->
-<section id="tab-rooms" class="tab-panel">
-    <div class="page">
-        <div class="page-head">
-            <h2>병실 · 환자</h2>
-            <p>병실을 선택하면 환자 상세 정보를 확인할 수 있습니다. (※ 더미 데이터 — 실제 값은 환자 API 연동)</p>
-        </div>
-        <div class="rooms-layout">
-            <div class="rooms-list" id="rooms-list"><!-- JS(renderRooms)로 채움 --></div>
-            <aside class="patient-detail" id="patient-detail"><!-- JS(renderPatient)로 채움 --></aside>
-        </div>
-    </div>
-</section>
+<!-- (병실·환자 목록은 '병실 모니터링'과 '내 병실'로 통합) -->
 
-<!-- ===== 탭 3: 낙상 이력 · 통계 (자리표시자) ===== -->
-<section id="tab-falls" class="tab-panel">
+<!-- ===== 통계 (관리자) ===== -->
+<section id="tab-astats" class="tab-panel">
     <div class="page">
         <div class="page-head">
-            <h2>낙상 이력 · 통계</h2>
-            <p>낙상 발생 이력과 대응 통계입니다. (※ 더미 데이터 — 실제 값은 낙상 이력 API 연동)</p>
+            <h2>통계</h2>
+            <p>낙상 발생과 순찰·대응 통계입니다. (※ 더미 데이터 — 실제 값은 통계 API 연동)</p>
         </div>
 
         <!-- 통계 카드 -->
@@ -287,6 +506,47 @@
             </div>
         </div>
 
+        <!-- 차트 -->
+        <div class="chart-grid">
+            <div class="panel">
+                <div class="panel-head">월별 낙상 발생</div>
+                <div class="bar-chart">
+                    <div class="bar"><span class="bar-fill" style="height:40%"></span><span class="bar-label">4월</span></div>
+                    <div class="bar"><span class="bar-fill" style="height:70%"></span><span class="bar-label">5월</span></div>
+                    <div class="bar"><span class="bar-fill" style="height:55%"></span><span class="bar-label">6월</span></div>
+                    <div class="bar"><span class="bar-fill" style="height:100%"></span><span class="bar-label">7월</span></div>
+                </div>
+            </div>
+            <div class="panel">
+                <div class="panel-head">병실별 낙상 발생</div>
+                <div class="bar-chart">
+                    <div class="bar"><span class="bar-fill" style="height:80%"></span><span class="bar-label">101</span></div>
+                    <div class="bar"><span class="bar-fill" style="height:30%"></span><span class="bar-label">102</span></div>
+                    <div class="bar"><span class="bar-fill" style="height:60%"></span><span class="bar-label">103</span></div>
+                    <div class="bar"><span class="bar-fill" style="height:20%"></span><span class="bar-label">104</span></div>
+                </div>
+            </div>
+            <div class="panel">
+                <div class="panel-head">시간대별 낙상</div>
+                <div class="bar-chart">
+                    <div class="bar"><span class="bar-fill" style="height:30%"></span><span class="bar-label">새벽</span></div>
+                    <div class="bar"><span class="bar-fill" style="height:50%"></span><span class="bar-label">오전</span></div>
+                    <div class="bar"><span class="bar-fill" style="height:40%"></span><span class="bar-label">오후</span></div>
+                    <div class="bar"><span class="bar-fill" style="height:90%"></span><span class="bar-label">야간</span></div>
+                </div>
+            </div>
+            <div class="panel">
+                <div class="panel-head">일별 순찰 횟수</div>
+                <div class="bar-chart">
+                    <div class="bar"><span class="bar-fill" style="height:70%"></span><span class="bar-label">월</span></div>
+                    <div class="bar"><span class="bar-fill" style="height:80%"></span><span class="bar-label">화</span></div>
+                    <div class="bar"><span class="bar-fill" style="height:75%"></span><span class="bar-label">수</span></div>
+                    <div class="bar"><span class="bar-fill" style="height:85%"></span><span class="bar-label">목</span></div>
+                    <div class="bar"><span class="bar-fill" style="height:90%"></span><span class="bar-label">금</span></div>
+                </div>
+            </div>
+        </div>
+
         <!-- 이력 테이블 -->
         <div class="table-wrap">
             <table class="data-table" id="falls-table">
@@ -305,76 +565,114 @@
     </div>
 </section>
 
-<!-- ===== 탭 4: 순찰 관리 (자리표시자) ===== -->
-<section id="tab-patrol" class="tab-panel">
+<!-- ===== Robot Control (관리자 · 핵심 관제 화면) ===== -->
+<section id="tab-robot" class="tab-panel">
     <div class="page">
         <div class="page-head">
-            <h2>순찰 관리</h2>
-            <p>순찰 우선순위·스케줄과 충전 상태, 경로를 관리합니다. (※ 더미 데이터 — 실제 값은 순찰 API 연동)</p>
+            <h2>Robot Control</h2>
+            <p>순찰 로봇을 실시간으로 제어합니다. (※ 데모 — 실제 제어는 로봇 API 연동)</p>
         </div>
-
-        <div class="patrol-grid">
-            <!-- 순찰 우선순위 -->
-            <div class="panel">
-                <div class="panel-head">순찰 우선순위</div>
-                <ul class="priority-list">
-                    <li><span class="rank">1</span><span class="p-room">병실 101</span><span class="risk-chip risk-high">위험</span></li>
-                    <li><span class="rank">2</span><span class="p-room">병실 103</span><span class="risk-chip risk-mid">주의</span></li>
-                    <li><span class="rank">3</span><span class="p-room">병실 102</span><span class="risk-chip risk-low">안정</span></li>
-                    <li><span class="rank">4</span><span class="p-room">병실 104</span><span class="risk-chip risk-low">안정</span></li>
-                </ul>
-            </div>
-
-            <!-- 충전 상태 -->
-            <div class="panel">
-                <div class="panel-head">충전 상태</div>
-                <div class="charge">
-                    <div class="charge-num">82<span class="stat-tile-unit">%</span></div>
-                    <div class="charge-bar"><div class="charge-fill" style="width:82%"></div></div>
-                    <div class="charge-note">순찰 중 · 예상 잔여 3시간 20분</div>
+        <div class="robot-layout">
+            <!-- 병실 지도 + 로봇 위치 -->
+            <div class="panel robot-map-panel">
+                <div class="panel-head">병실 지도 · Robot 위치</div>
+                <div class="robot-map">
+                    <div class="rm-room">병실 101<span>좌측 상단</span></div>
+                    <div class="rm-room">병실 102<span>우측 상단</span></div>
+                    <div class="rm-room">병실 103<span>좌측 하단</span></div>
+                    <div class="rm-room">병실 104<span>우측 하단</span></div>
+                    <div class="rm-robot" id="rm-robot">🤖</div>
                 </div>
+                <div class="rc-toast" id="rc-toast"></div>
             </div>
 
-            <!-- 순찰 스케줄 -->
-            <div class="panel panel-wide">
-                <div class="panel-head">순찰 스케줄</div>
-                <ul class="schedule-list">
-                    <li><span class="sch-time">08:00</span><span>오전 정기 순찰</span><span class="risk-chip risk-low">완료</span></li>
-                    <li><span class="sch-time">12:00</span><span>점심 시간 집중 순찰</span><span class="risk-chip risk-low">완료</span></li>
-                    <li><span class="sch-time">16:00</span><span>오후 정기 순찰</span><span class="risk-chip risk-mid">진행 중</span></li>
-                    <li><span class="sch-time">20:00</span><span>야간 집중 순찰</span><span class="risk-chip risk-idle">예정</span></li>
-                </ul>
-            </div>
-
-            <!-- 순찰 경로 (레이아웃 자리) -->
-            <div class="panel panel-wide">
-                <div class="panel-head">순찰 경로</div>
-                <div class="route-placeholder">경로 맵 영역 (레이아웃)</div>
+            <!-- 제어 사이드 -->
+            <div class="robot-side">
+                <div class="panel">
+                    <div class="panel-head">Robot 상태</div>
+                    <div class="robot-stats">
+                        <div class="rs"><span class="rs-label">연결 상태</span><span class="rs-val ok"><span class="conn-dot"></span>연결됨</span></div>
+                        <div class="rs"><span class="rs-label">배터리</span><span class="rs-val">82%</span></div>
+                        <div class="rs"><span class="rs-label">현재 속도</span><span class="rs-val">0.4 m/s</span></div>
+                        <div class="rs"><span class="rs-label">현재 위치</span><span class="rs-val">병실 101</span></div>
+                    </div>
+                </div>
+                <div class="panel">
+                    <div class="panel-head">목적지 선택</div>
+                    <select class="form-input" id="rc-dest">
+                        <option>병실 101</option>
+                        <option>병실 102</option>
+                        <option>병실 103</option>
+                        <option>병실 104</option>
+                        <option>충전 스테이션</option>
+                    </select>
+                    <button class="ctrl-btn ctrl-go" onclick="rcToast('선택한 목적지로 이동합니다')">목적지로 이동</button>
+                </div>
+                <div class="panel">
+                    <div class="panel-head">순찰 제어</div>
+                    <div class="ctrl-grid">
+                        <button class="ctrl-btn ctrl-start" onclick="rcToast('순찰을 시작합니다')">▶ Start Patrol</button>
+                        <button class="ctrl-btn ctrl-pause" onclick="rcToast('순찰을 일시정지합니다')">⏸ Pause</button>
+                        <button class="ctrl-btn ctrl-home" onclick="rcToast('충전 스테이션으로 복귀합니다')">⌂ Return Home</button>
+                        <button class="ctrl-btn ctrl-stop" onclick="rcToast('비상 정지되었습니다')">■ Emergency Stop</button>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
 </section>
 
-<!-- ===== 탭 5: 설정 / 계정 (자리표시자) ===== -->
-<section id="tab-settings" class="tab-panel">
+<!-- ===== 이벤트 (관리자) ===== -->
+<section id="tab-events" class="tab-panel">
     <div class="page">
         <div class="page-head">
-            <h2>설정 · 계정</h2>
-            <p>계정 권한과 마커–병실 매핑, 테마를 설정합니다. (※ 더미 데이터 — 실제 값은 계정/설정 API 연동)</p>
+            <h2>이벤트</h2>
+            <p>감지·대응 이벤트 로그입니다. 검색과 날짜 필터를 사용할 수 있습니다.</p>
+        </div>
+        <div class="events-toolbar">
+            <input class="form-input" id="ev-search" placeholder="🔍 병실·유형·내용 검색" oninput="filterEvents()">
+            <input class="form-input" id="ev-date" type="date" onchange="filterEvents()">
+            <button class="mini-btn" onclick="clearEventFilter()">초기화</button>
+        </div>
+        <div class="table-wrap">
+            <table class="data-table">
+                <thead><tr><th>시각</th><th>병실</th><th>유형</th><th>내용</th></tr></thead>
+                <tbody id="events-tbody"><!-- JS(renderEvents)로 채움 --></tbody>
+            </table>
+        </div>
+    </div>
+</section>
+
+<!-- ===== 계정 관리 (관리자) ===== -->
+<section id="tab-accounts" class="tab-panel">
+    <div class="page">
+        <div class="page-head">
+            <h2>계정 관리</h2>
+            <p>간호사·보호자 계정을 생성·수정·삭제합니다. (※ 데모 — 실제 반영은 계정 API 연동)</p>
         </div>
 
-        <!-- 계정 권한 -->
+        <!-- 간호사 계정 -->
         <div class="panel">
-            <div class="panel-head">계정 권한</div>
+            <div class="panel-head panel-head-row">간호사 계정<button class="mini-btn" onclick="rcToast('계정 생성 (데모)')">+ 계정 생성</button></div>
             <div class="table-wrap">
                 <table class="data-table">
-                    <thead>
-                        <tr><th>이름</th><th>구분</th><th>연락처</th><th>권한</th></tr>
-                    </thead>
+                    <thead><tr><th>이름</th><th>아이디</th><th>연락처</th><th>권한</th><th>관리</th></tr></thead>
                     <tbody>
-                        <tr><td>김간호</td><td><span class="risk-chip risk-mid">간호사</span></td><td>010-1234-5678</td><td>전체 열람 · 관리</td></tr>
-                        <tr><td>이간호</td><td><span class="risk-chip risk-mid">간호사</span></td><td>010-2345-6789</td><td>전체 열람</td></tr>
-                        <tr><td>박보호</td><td><span class="risk-chip risk-low">지인</span></td><td>010-3456-7890</td><td>병실 101 알림만</td></tr>
+                        <tr><td>김간호</td><td>admin</td><td>010-1234-5678</td><td>전체 관리</td><td class="row-actions"><button class="mini-btn" onclick="rcToast('권한 변경 (데모)')">권한변경</button><button class="mini-btn mini-danger" onclick="rcToast('삭제 (데모)')">삭제</button></td></tr>
+                        <tr><td>이간호</td><td>nurse2</td><td>010-2345-6789</td><td>전체 열람</td><td class="row-actions"><button class="mini-btn" onclick="rcToast('권한 변경 (데모)')">권한변경</button><button class="mini-btn mini-danger" onclick="rcToast('삭제 (데모)')">삭제</button></td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- 보호자 계정 -->
+        <div class="panel" style="margin-top:18px;">
+            <div class="panel-head panel-head-row">보호자 계정<button class="mini-btn" onclick="rcToast('계정 생성 (데모)')">+ 계정 생성</button></div>
+            <div class="table-wrap">
+                <table class="data-table">
+                    <thead><tr><th>이름</th><th>아이디</th><th>담당 병실</th><th>관리</th></tr></thead>
+                    <tbody>
+                        <tr><td>박보호</td><td>cus</td><td>병실 101</td><td class="row-actions"><button class="mini-btn" onclick="rcToast('권한 변경 (데모)')">권한변경</button><button class="mini-btn mini-danger" onclick="rcToast('삭제 (데모)')">삭제</button></td></tr>
                     </tbody>
                 </table>
             </div>
@@ -509,41 +807,90 @@ updateClock();
 
 // ===== 상단 탭 전환 (SPA: JS show/hide) =====
 function showTab(name) {
+    // 권한 없는 탭은 접근 차단 → 역할 홈으로
+    if (!tabAllowed(name)) name = homeTab();
+    const panel = document.getElementById("tab-" + name);
+    if (!panel) return;
     document.querySelectorAll(".tab-panel").forEach(p => p.classList.remove("active"));
     document.querySelectorAll(".navlink").forEach(b => b.classList.remove("active"));
-    document.getElementById("tab-" + name).classList.add("active");
+    panel.classList.add("active");
     const link = document.querySelector(`.navlink[data-tab="${name}"]`);
     if (link) link.classList.add("active");
     window.scrollTo(0, 0);
     updateNav();
 }
 
-// 상단바: 홈 최상단에서는 투명(그라디언트 위), 그 외/스크롤 시 솔리드
+// 상단바: 맨 위 = 투명(배경 일체), 스크롤 시 = 프로스티드 띠
+// 홈 히어로(건물 사진) 위에서는 흰 글자(over-hero) 유지, 건물이 사라지면 어두운 글자
 function updateNav() {
     const tb = document.getElementById("topbar");
     if (!tb) return;
-    const homeActive = document.getElementById("tab-home").classList.contains("active");
-    if (homeActive && window.scrollY < 40) tb.classList.remove("solid");
-    else tb.classList.add("solid");
+    const atTop = window.scrollY < 40;
+    // 상단바 뒤에 어두운 사진(홈 건물 / 병실 사진)이 충분히 진하게 깔려 있으면 투명·흰 글자 유지
+    const heroBg = document.querySelector(".tab-panel.active .js-dark-under-nav");
+    let overHero = false;
+    if (heroBg) {
+        const r = heroBg.getBoundingClientRect();
+        overHero = r.bottom > 70 && parseFloat(getComputedStyle(heroBg).opacity) > 0.55;
+    }
+    tb.classList.toggle("solid", !atTop && !overHero);
+    tb.classList.toggle("over-hero", overHero);
 }
 window.addEventListener("scroll", updateNav);
+
+// 히어로 스크롤 연동
+//   맨 위      : 건물 사진만 (문구 숨김)
+//   살짝 내리면 : .hero-in 을 붙여 문구가 한 번에 부드럽게 올라오게 함 (전환은 CSS 담당)
+//   더 내리면   : 문구가 내려가고, 사진이 점점 투명해지며 아래 섹션이 올라옴
+function initHeroScroll() {
+    const tile = document.getElementById("lp-hero-tile");
+    const stage = tile && tile.querySelector(".lp-hero-stage");
+    if (!tile || !stage) return;
+
+    const ramp = (p, a, b) => Math.min(1, Math.max(0, (p - a) / (b - a)));
+
+    function apply() {
+        const range = tile.offsetHeight - window.innerHeight; // sticky가 붙어 있는 거리
+        // 히어로가 화면보다 낮은 예외 상황(창 높이 측정 불가 등)에서는 사진+문구를 그냥 노출
+        if (range <= 0) {
+            stage.classList.add("hero-in");
+            stage.classList.remove("hero-past");
+            tile.style.setProperty("--hero-bg-o", "1");
+            updateNav();
+            return;
+        }
+        const p = Math.min(1, Math.max(0, window.scrollY / range));
+
+        // 문구: 스크롤이 시작되면 켜고, 아래 섹션이 올라올 즈음 끔 (전환은 CSS 0.85s)
+        stage.classList.toggle("hero-in", p > 0.04 && p < 0.66);
+        stage.classList.toggle("hero-past", p >= 0.66);   // 스크롤 안내는 다시 띄우지 않음
+
+        // 사진: 0.58부터 옅어지되 완전히 지우지 않고 0.22 정도로 남김
+        tile.style.setProperty("--hero-bg-o", (1 - 0.78 * ramp(p, 0.58, 1)).toFixed(3));
+        updateNav();   // 상단바 색은 사진이 얼마나 진하게 남았는지를 보고 결정
+    }
+
+    apply();
+    window.addEventListener("scroll", apply, { passive: true });
+    window.addEventListener("resize", apply);
+}
 
 function openLogin() {
     document.getElementById("login-overlay").style.display = "flex";
 }
 
-// 스크롤 시 홈 섹션이 페이드+슬라이드업으로 등장 (스크롤 위치 기반 · 확실)
+// 스크롤 시 섹션이 페이드+슬라이드업으로 등장 (스크롤 위치 기반 · 확실)
+const REVEAL_SEL =
+    "#tab-home .lp-h2, #tab-home .lp-sub, #tab-home .lp-feature, " +
+    "#tab-home .lp-stat, #tab-home .lp-nav-card, #tab-home .lp-footer-inner, " +
+    "#tab-rooms .lp-h2, #tab-rooms .lp-sub, #tab-rooms .rm-svc-card";
+
+// 병실을 바꿔 카드를 다시 그린 뒤에도 애니메이션이 걸리도록 밖에서 호출한다
+let refreshReveal = () => {};
+
 function initReveal() {
-    const els = [...document.querySelectorAll(
-        "#tab-home .lp-h2, #tab-home .lp-sub, #tab-home .lp-feature, " +
-        "#tab-home .lp-stat, #tab-home .lp-nav-card, #tab-home .lp-footer-inner"
-    )];
-    // 모션 최소화 설정이면 애니메이션 없이 그대로 표시
-    if (!els.length || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-        return;
-    }
+    let els = [];
     document.documentElement.classList.add("reveal-on");
-    els.forEach(e => e.classList.add("reveal"));
 
     // 뷰포트에 들어오면 표시, 벗어나면 다시 숨김 → 재진입 때마다 애니메이션 반복
     function check() {
@@ -554,44 +901,232 @@ function initReveal() {
             el.classList.toggle("in", inView);
         });
     }
-    check();
+
+    refreshReveal = function () {
+        els = [...document.querySelectorAll(REVEAL_SEL)];
+        els.forEach(e => e.classList.add("reveal"));
+        check();
+    };
+
+    refreshReveal();
     window.addEventListener("scroll", check, { passive: true });
     window.addEventListener("resize", check);
 }
 
-// ===== 로그인 (테스트용: admin / 1234, DB 미사용) =====
-const AUTH_KEY = "dashboard-auth";
+// ===== 병실 소개 =====
+// 아이콘은 1인실 서비스 시트(rooms/room1-svc.png) 한 장에서 잘라 쓰고 색을 반전시켜
+// 세 병실 모두 같은 남색 톤으로 통일한다. (ico-* 클래스의 좌표는 style.css 참고)
+const ROOMS = {
+    r4: {
+        name: "4인실",
+        photo: "rooms/room4-photo.png",
+        // 사진 하단 평균색 rgb(136,123,114)에서 뽑은 이음색 (진한 쪽 45% / 옅은 쪽 8%)
+        blend: "#c9c4c0", tint: "#f6f4f4",
+        tagline: "쾌적하고 안전한 환경에서 함께하는 회복의 공간",
+        sub: "환자의 빠른 회복과 편안한 입원 생활을 위해 KJ병원이 세심하게 준비했습니다.",
+        svc: [
+            { ico: "bed",       t: "쾌적한 입원 환경",     d: "넓고 깨끗한 병실 공간과<br>개별 커튼으로 편안한 휴식 보장" },
+            { ico: "shield",    t: "24시간 전문 의료 케어", d: "전문의·간호 인력의<br>신속하고 체계적인 진료 및 모니터링" },
+            { ico: "food",      t: "영양 맞춤형 식사 제공", d: "환자 상태에 맞춘<br>균형 잡힌 건강식 식단 제공" },
+            { ico: "tv",        t: "편의시설 지원",        d: "개인 침상별 TV, 냉장고,<br>전원·USB 등 편리한 생활 환경 제공" },
+            { ico: "care",      t: "안전한 병원 생활",     d: "낙상 방지 시스템과 정기적 순찰로<br>안전하고 안심할 수 있는 입원 환경" }
+        ]
+    },
+    r2: {
+        name: "2인실",
+        photo: "rooms/room2-photo.png",
+        // 사진 하단 평균색 rgb(136,113,90)
+        blend: "#c9bfb5", tint: "#f6f4f2",
+        tagline: "프라이버시와 품격을 고려한 더 편안하고, 더 집중되는 회복의 공간",
+        sub: "더 세심한 케어와 다양한 편의 서비스를 통해 입원 기간 동안 최상의 만족을 드립니다.",
+        svc: [
+            { ico: "bed",       t: "쾌적한 입원 환경",      d: "넓고 프라이빗한 공간과 개별 냉·난방 시스템,<br>고급 침구류 제공" },
+            { ico: "shield",    t: "24시간 전문 의료 케어",  d: "전문의·간호 인력의 1:1 맞춤 케어와<br>신속하고 체계적인 진료 및 모니터링" },
+            { ico: "food",      t: "맞춤형 식단 서비스",     d: "영양사와 상담 후 환자 상태에 맞춘<br>프리미엄 맞춤 식단을 1:1 제공" },
+            { ico: "concierge", t: "전담 컨시어지 서비스",   d: "입원 안내, 예약, 외부 업무 대행 등<br>전담 직원의 맞춤 지원" },
+            { ico: "lounge",    t: "보호자 편의 시설",      d: "보호자 전용 휴게 공간, 리클라이너 침대,<br>개별 수납장 및 샤워실 제공" },
+            { ico: "tv",        t: "첨단 편의시설 지원",     d: "스마트 TV, 개인 태블릿, 고속 Wi-Fi,<br>무선 충전기, 공기청정기 등 최신 시설 제공" },
+            { ico: "car",       t: "주차 및 발렛 서비스",    d: "보호자 전용 주차 공간 및<br>발렛 서비스 제공" },
+            { ico: "care",      t: "안전 & 케어 서비스",     d: "낙상 감지 시스템, 비상 호출 시스템 등<br>안전 관리 강화" }
+        ]
+    },
+    r1: {
+        name: "1인실 (VIP)",
+        photo: "rooms/room1-photo.png",
+        // 사진 하단 평균색 rgb(86,63,44)
+        blend: "#b3a9a0", tint: "#f2f0ee",
+        tagline: "가장 높은 수준의 케어를 제공하는 프라이빗 VIP 공간",
+        sub: "호텔식 환경과 전담 케어로 입원 기간 내내 최상의 편안함을 제공합니다.",
+        svc: [
+            { ico: "bed",       t: "최고급 입원 환경",      d: "호텔식 프라이빗 인테리어,<br>최상급 침구류 제공" },
+            { ico: "shield",    t: "24시간 전담 의료 케어",  d: "전문의·간호 전문팀의<br>1:1 맞춤 케어" },
+            { ico: "food",      t: "프리미엄 식사 서비스",   d: "맞춤형 영양 식단,<br>셰프의 프리미엄 메뉴" },
+            { ico: "concierge", t: "전담 컨시어지 서비스",   d: "입원 안내, 예약, 일정 관리<br>및 각종 요청 지원" },
+            { ico: "lounge",    t: "VIP 휴게 공간",         d: "환자 및 보호자를 위한<br>프라이빗 라운지" },
+            { ico: "tv",        t: "스마트 엔터테인먼트",    d: "85인치 TV, OTT, 고속 Wi-Fi,<br>블루투스 사운드 시스템" },
+            { ico: "car",       t: "발렛 & 전용 주차",       d: "전용 주차 공간 및<br>발렛 서비스 제공" },
+            { ico: "care",      t: "통합 케어 & 보안",       d: "24시간 보안, 감염 관리,<br>정기 케어 프로그램" }
+        ]
+    }
+};
 
-function isAuthed() {
-    return localStorage.getItem(AUTH_KEY) === "1" || sessionStorage.getItem(AUTH_KEY) === "1";
+let currentRoom = "r4";
+
+function showRoom(key) {
+    const room = ROOMS[key];
+    if (!room) return;
+    currentRoom = key;
+
+    document.querySelectorAll(".rm-tab").forEach(b => {
+        b.classList.toggle("active", b.dataset.room === key);
+    });
+
+    // 사진에서 뽑은 이음색을 탭 전체에 뿌려 히어로 아래와 서비스 섹션이 같은 색으로 이어지게
+    const panel = document.getElementById("tab-rooms");
+    panel.style.setProperty("--rm-blend", room.blend);
+    panel.style.setProperty("--rm-tint", room.tint);
+
+    document.getElementById("rm-photo").style.backgroundImage = `url('${room.photo}')`;
+    document.getElementById("rm-title").innerText = room.name;
+    document.getElementById("rm-tagline").innerText = room.tagline;
+    document.getElementById("rm-svc-room").innerText = room.name;
+    document.getElementById("rm-svc-sub").innerText = room.sub;
+
+    const grid = document.getElementById("rm-svc-grid");
+    // 카드 개수에 맞춰 열 수를 정한다 (5개 = 한 줄, 8개 = 4+4)
+    grid.className = "rm-svc-grid n" + room.svc.length;
+    grid.innerHTML = "";
+    room.svc.forEach(s => {
+        const card = document.createElement("div");
+        card.className = "rm-svc-card";
+        card.innerHTML =
+            `<span class="svc-ico ico-${s.ico}"></span>` +
+            `<h3>${s.t}</h3>` +
+            `<p>${s.d}</p>`;
+        grid.appendChild(card);
+    });
+
+    // 새로 그린 카드에도 스크롤 등장 애니메이션을 다시 걸어준다
+    refreshReveal();
+}
+
+// 병실 사진만 크게 보기 (잘림 없이 사진 전체)
+function openRoomPhoto() {
+    const room = ROOMS[currentRoom];
+    document.getElementById("rm-lightbox-img").src = room.photo;
+    document.getElementById("rm-lightbox-cap").innerText = room.name + " 병실";
+    document.getElementById("rm-lightbox").classList.add("open");
+}
+
+function closeRoomPhoto() {
+    document.getElementById("rm-lightbox").classList.remove("open");
+}
+
+document.addEventListener("keydown", e => {
+    if (e.key === "Escape") closeRoomPhoto();
+});
+
+// ===== 로그인 / 권한 (테스트용: admin·cus / 1234, DB 미사용) =====
+const AUTH_KEY = "dashboard-auth";
+const ROLE_KEY = "dabom-role";
+const NAME_KEY = "dabom-name";
+
+// 데모 계정
+const USERS = {
+    admin: { pw: "1234", role: "admin", name: "김간호 · 관리자" },
+    cus:   { pw: "1234", role: "guardian", name: "박보호 · 보호자" }
+};
+
+// 역할별 상단 메뉴 (id = 탭 패널 id 접미사)
+const NAV = {
+    guest: [
+        { id: "home", label: "Home" },
+        { id: "about", label: "시스템 소개" },
+        { id: "features", label: "주요 기능" },
+        { id: "rooms", label: "병실 소개" }
+    ],
+    guardian: [
+        { id: "ghome", label: "Home" },
+        { id: "myroom", label: "내 병실" },
+        { id: "glive", label: "실시간 병실" },
+        { id: "gstats", label: "통계" },
+        { id: "myinfo", label: "내 정보" }
+    ],
+    admin: [
+        { id: "ahome", label: "Home" },
+        { id: "monitoring", label: "병실 모니터링" },
+        { id: "robot", label: "Robot Control" },
+        { id: "astats", label: "통계" },
+        { id: "events", label: "이벤트" },
+        { id: "accounts", label: "계정 관리" }
+    ]
+};
+
+function currentRole() {
+    return localStorage.getItem(ROLE_KEY) || sessionStorage.getItem(ROLE_KEY) || "guest";
+}
+function currentName() {
+    return localStorage.getItem(NAME_KEY) || sessionStorage.getItem(NAME_KEY) || "";
+}
+function homeTab() { return NAV[currentRole()][0].id; }
+function goHome() { showTab(homeTab()); }
+function tabAllowed(name) { return NAV[currentRole()].some(t => t.id === name); }
+
+// 역할에 맞는 상단 메뉴 + 우측(로그인/계정) 렌더
+function renderNav() {
+    const role = currentRole();
+    const nav = document.getElementById("topnav");
+    const right = document.getElementById("topbar-right");
+    if (!nav || !right) return;
+    nav.innerHTML = "";
+    NAV[role].forEach(t => {
+        const b = document.createElement("button");
+        b.className = "navlink";
+        b.dataset.tab = t.id;
+        b.textContent = t.label;
+        b.onclick = () => showTab(t.id);
+        nav.appendChild(b);
+    });
+    if (role === "guest") {
+        right.innerHTML =
+            '<button class="nav-login" onclick="openLogin()">로그인</button>' +
+            '<button class="nav-signup" onclick="openLogin()">회원가입</button>';
+    } else {
+        right.innerHTML =
+            '<span class="nav-user">' + currentName() + '</span>' +
+            '<button class="nav-signup nav-logout" onclick="logout()">로그아웃</button>';
+    }
 }
 
 function doLogin() {
     const id = document.getElementById("login-id").value.trim();
     const pw = document.getElementById("login-pw").value;
     const auto = document.getElementById("login-auto").checked;
-    if (id === "admin" && pw === "1234") {
-        // 자동 로그인 체크 → localStorage(영구), 미체크 → sessionStorage(세션 종료 시 만료)
-        if (auto) localStorage.setItem(AUTH_KEY, "1");
-        else sessionStorage.setItem(AUTH_KEY, "1");
+    const u = USERS[id];
+    if (u && u.pw === pw) {
+        // 자동 로그인 → localStorage(영구), 미체크 → sessionStorage
+        const store = auto ? localStorage : sessionStorage;
+        store.setItem(AUTH_KEY, "1");
+        store.setItem(ROLE_KEY, u.role);
+        store.setItem(NAME_KEY, u.name);
         document.getElementById("login-error").innerText = "";
         document.getElementById("login-pw").value = "";
         document.getElementById("login-overlay").style.display = "none";
+        renderNav();
+        goHome();
     } else {
         document.getElementById("login-error").innerText = "아이디 또는 비밀번호가 올바르지 않습니다.";
     }
 }
 
 function logout() {
-    localStorage.removeItem(AUTH_KEY);
-    sessionStorage.removeItem(AUTH_KEY);
-    document.getElementById("login-overlay").style.display = "flex";
+    [localStorage, sessionStorage].forEach(s => {
+        s.removeItem(AUTH_KEY); s.removeItem(ROLE_KEY); s.removeItem(NAME_KEY);
+    });
+    renderNav();
+    goHome();
 }
 
-// 진입 시 인증 확인 (되어 있으면 로그인창 숨김)
-if (isAuthed()) {
-    document.getElementById("login-overlay").style.display = "none";
-}
 // Enter 키로 로그인
 ["login-id", "login-pw"].forEach(id => {
     const el = document.getElementById(id);
@@ -1106,12 +1641,70 @@ function renderSettingsTheme() {
     });
 }
 
+// ===== Robot Control 토스트 =====
+function rcToast(msg) {
+    const el = document.getElementById("rc-toast");
+    if (!el) { return; }
+    el.textContent = msg;
+    el.classList.add("show");
+    clearTimeout(rcToast._t);
+    rcToast._t = setTimeout(() => el.classList.remove("show"), 1800);
+}
+
+// ===== 이벤트 로그 =====  ※ TODO: 이벤트 API 연동
+const EVENTS = [
+    { time: "2026-07-16 14:40", room: "101", type: "순찰", text: "순찰 완료" },
+    { time: "2026-07-16 14:35", room: "101", type: "호출", text: "간호사 호출" },
+    { time: "2026-07-16 14:32", room: "101", type: "낙상", text: "낙상 감지" },
+    { time: "2026-07-16 12:05", room: "103", type: "순찰", text: "순찰 완료" },
+    { time: "2026-07-15 22:10", room: "102", type: "낙상", text: "낙상 감지 (오탐)" },
+    { time: "2026-07-15 16:20", room: "104", type: "순찰", text: "순찰 완료" }
+];
+function evTypeChip(t) {
+    if (t === "낙상") return '<span class="risk-chip risk-high">낙상</span>';
+    if (t === "호출") return '<span class="risk-chip risk-mid">호출</span>';
+    return '<span class="risk-chip risk-low">순찰</span>';
+}
+function renderEvents(list) {
+    const tb = document.getElementById("events-tbody");
+    if (!tb) return;
+    const rows = list || EVENTS;
+    tb.innerHTML = "";
+    if (!rows.length) {
+        tb.innerHTML = '<tr><td colspan="4" style="color:var(--text-muted);">검색 결과가 없습니다.</td></tr>';
+        return;
+    }
+    rows.forEach(e => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `<td>${e.time}</td><td>병실 ${e.room}</td><td>${evTypeChip(e.type)}</td><td>${e.text}</td>`;
+        tb.appendChild(tr);
+    });
+}
+function filterEvents() {
+    const q = (document.getElementById("ev-search").value || "").trim();
+    const d = document.getElementById("ev-date").value;
+    renderEvents(EVENTS.filter(e => {
+        const matchQ = !q || (e.room + e.type + e.text).includes(q);
+        const matchD = !d || e.time.startsWith(d);
+        return matchQ && matchD;
+    }));
+}
+function clearEventFilter() {
+    document.getElementById("ev-search").value = "";
+    document.getElementById("ev-date").value = "";
+    renderEvents();
+}
+
 renderRooms();
 renderPatient(selectedPatient);
 renderFalls();
+renderEvents();
 renderSettingsTheme();
-updateNav();
+renderNav();
+goHome();
+showRoom("r4");     // 병실 소개 기본값 = 4인실
 initReveal();
+initHeroScroll();
 </script>
 </body>
 </html>

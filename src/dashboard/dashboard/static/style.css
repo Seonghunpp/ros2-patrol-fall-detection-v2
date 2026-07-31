@@ -867,7 +867,7 @@ body {
 
 /* ===== 로그인 ===== */
 .login-overlay {
-    display: flex;               /* 기본 표시. 인증되면 JS가 숨김 */
+    display: none;               /* 기본 숨김. 로그인 버튼(openLogin)으로만 표시 */
     position: fixed;
     inset: 0;
     background: var(--bg);
@@ -1331,8 +1331,10 @@ body {
 /* 바로가기 유틸리티 카드 */
 .lp-nav-cards {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(3, 1fr);
     gap: 20px;
+    max-width: 900px;
+    margin: 0 auto;
     text-align: left;
 }
 
@@ -1815,40 +1817,113 @@ body {
 .tools-label { font-size: 12px; font-weight: 700; color: var(--text-muted); margin: 2px 2px 8px; }
 
 /* ============================================================
-   홈 히어로 (Letters 스타일) — 블루 그라디언트 + 떠있는 카드
+   홈 히어로 — 병원 건물 사진 배경 + 스크롤 연동 문구 등장
+   구조: .lp-hero-tile(스크롤 여유 높이) > .lp-hero-stage(sticky 한 화면)
+   --hero-* 변수는 JS(initHeroScroll)가 스크롤 위치로 계산해 넣음
    ============================================================ */
 .lp-hero-tile {
     position: relative;
-    padding: 124px 0 200px;
-    background: linear-gradient(180deg, #6c97de 0%, #8fb3ec 42%, #d9e6fa 78%, #ffffff 100%);
+    height: 150vh;            /* 100vh는 고정 화면, 나머지 50vh가 애니메이션 구간 */
+    /* 사진이 옅어지며 드러나는 바탕: 사진의 하늘색에서 다음 섹션 색으로 자연스럽게 이어짐 */
+    background: linear-gradient(180deg,
+        #2e8fe9 0%, #7db4ee 18%, #c2daf7 38%, #e9f0fc 56%, #f6f9ff 72%);
     text-align: center;
-    overflow: hidden;
 }
 
-/* 히어로 배경 애니메이션: 은은하게 떠다니는 빛 번짐 */
-.lp-hero-tile::before {
-    content: "";
+.lp-hero-stage {
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+}
+
+/* 건물 사진: 위쪽 하늘(#2e8fe9)이 상단바까지 그대로 이어짐.
+   앞 레이어 = 세로를 화면에 맞춰 아래가 잘리지 않는 원본,
+   뒤 레이어 = 화면을 채우는 같은 사진 → 화면이 가로로 길 때 좌우 빈 띠를 같은 사진으로 메움.
+   아래쪽 끝은 마스크로 부드럽게 풀어 다음 섹션으로 넘어갈 때 잘린 선이 보이지 않게 함 */
+.lp-hero-media {
     position: absolute;
-    inset: -25%;
-    z-index: 0;
-    background:
-        radial-gradient(38% 38% at 20% 28%, rgba(255, 255, 255, 0.38), transparent 70%),
-        radial-gradient(34% 34% at 82% 18%, rgba(150, 195, 255, 0.45), transparent 70%),
-        radial-gradient(46% 46% at 72% 74%, rgba(255, 255, 255, 0.28), transparent 70%);
-    animation: heroDrift 20s ease-in-out infinite alternate;
+    inset: -14px;       /* 흐림 처리된 가장자리가 화면 밖으로 나가게 */
+    background-color: #2e8fe9;
+    background-image: url('hospital.png'), url('hospital.png');
+    background-size: auto 100%, cover;
+    background-position: center top, center top;
+    background-repeat: no-repeat, no-repeat;
+    opacity: var(--hero-bg-o, 1);
+    filter: blur(0px);
+    -webkit-mask-image: linear-gradient(180deg, #000 0%, #000 95%, rgba(0, 0, 0, 0) 100%);
+    mask-image: linear-gradient(180deg, #000 0%, #000 95%, rgba(0, 0, 0, 0) 100%);
+    transition: filter 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+    will-change: opacity, filter;
+}
+
+/* 문구가 올라올 때만 깔리는 파란 어둠막 (상단바 색과 같은 계열) */
+.lp-hero-scrim {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: linear-gradient(180deg, rgba(9, 44, 88, 0.46) 0%, rgba(9, 44, 88, 0.56) 100%);
+    opacity: 0;
+    transition: opacity 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* 히어로 문구: 처음엔 안 보이고, 스크롤이 시작되면 세 줄이 함께 부드럽게 올라옴 */
+.lp-hero {
+    position: relative;
+    z-index: 1;
+    opacity: 0;
+    transform: translate3d(0, 42px, 0);
+    transition: opacity 0.85s cubic-bezier(0.16, 1, 0.3, 1),
+                transform 0.85s cubic-bezier(0.16, 1, 0.3, 1);
+    will-change: opacity, transform;
+}
+
+/* JS(initHeroScroll)가 스크롤 시작을 감지해 .hero-in 을 붙임 → 나머지는 CSS가 처리 */
+.lp-hero-stage.hero-in .lp-hero { opacity: 1; transform: none; }
+.lp-hero-stage.hero-in .lp-hero-scrim { opacity: 1; }
+.lp-hero-stage.hero-in .lp-hero-media { filter: blur(2.5px); }
+
+/* 스크롤 안내 (맨 위에서만 보임) */
+.lp-hero-cue {
+    position: absolute;
+    bottom: 34px;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    color: rgba(255, 255, 255, 0.85);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-shadow: 0 1px 10px rgba(6, 17, 38, 0.6);
+    opacity: 1;
+    transition: opacity 0.45s ease-out;
     pointer-events: none;
 }
 
-@keyframes heroDrift {
-    0%   { transform: translate3d(0, 0, 0) scale(1); }
-    100% { transform: translate3d(-5%, -4%, 0) scale(1.1); }
+.lp-hero-stage.hero-in .lp-hero-cue,
+.lp-hero-stage.hero-past .lp-hero-cue { opacity: 0; }
+
+.lp-hero-cue i {
+    font-style: normal;
+    font-size: 20px;
+    line-height: 1;
+    animation: heroCue 1.8s ease-in-out infinite;
 }
 
-/* 히어로 콘텐츠는 빛 번짐 위에 */
-.lp-hero { position: relative; z-index: 1; }
+@keyframes heroCue {
+    0%, 100% { transform: translateY(0); opacity: 0.6; }
+    50%      { transform: translateY(5px); opacity: 1; }
+}
 
+/* 반복 재생되는 화살표 흔들림만 모션 최소화 설정을 따름 (스크롤 연동 연출은 항상 동작) */
 @media (prefers-reduced-motion: reduce) {
-    .lp-hero-tile::before { animation: none; }
+    .lp-hero-cue i { animation: none; }
 }
 
 .lp-hero-tile .lp-eyebrow {
@@ -1952,8 +2027,294 @@ body {
 /* 히어로 아래 섹션 제목 강조 */
 .lp-h2 { font-weight: 800; }
 
-@media (max-width: 960px) {
-    .lp-hero-tile { padding: 96px 0 150px; }
+@media (max-width: 820px) {
+    .lp-hero-cue { bottom: 24px; }
+}
+
+/* 모바일 주소창 때문에 100vh가 튀는 것 방지 */
+@supports (height: 100svh) {
+    .lp-hero-tile { height: 150svh; }
+    .lp-hero-stage { height: 100svh; }
+}
+
+/* ============================================================
+   병실 소개 탭
+   ============================================================ */
+.rm-hero {
+    position: relative;
+    min-height: 64vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    background: #0e1a2e;
+    text-align: center;
+}
+
+.rm-hero-photo {
+    position: absolute;
+    inset: 0;
+    background-position: center 55%;
+    background-size: cover;
+    background-repeat: no-repeat;
+    transition: opacity 0.45s ease, transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* 위: 상단바 글자용 어둠 / 가운데: 병실 이름용 어둠 /
+   아래: 다음 섹션 색(#f6f9ff)으로 녹아들어 화면이 끊기지 않게 함 */
+.rm-hero-veil {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background:
+        linear-gradient(180deg, rgba(8, 22, 44, 0.62) 0%, rgba(8, 22, 44, 0) 30%),
+        linear-gradient(180deg, rgba(8, 22, 44, 0) 30%, rgba(8, 22, 44, 0.42) 62%),
+        linear-gradient(0deg, var(--rm-blend, #f6f9ff) 0%, transparent 26%);
+}
+
+.rm-hero-copy {
+    position: relative;
+    z-index: 1;
+    padding-top: 60px;
+    padding-bottom: 96px;   /* 아래 밝아지는 구간을 피해 문구를 위로 */
+}
+
+.rm-eyebrow {
+    display: block;
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 0.22em;
+    color: rgba(255, 255, 255, 0.82);
+    margin-bottom: 12px;
+}
+
+.rm-title {
+    margin: 0 0 14px;
+    font-size: clamp(38px, 5.6vw, 66px);
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    line-height: 1.05;
+    color: #ffffff;
+    text-shadow: 0 2px 24px rgba(6, 20, 42, 0.5);
+}
+
+.rm-tagline {
+    margin: 0 auto 30px;
+    max-width: 640px;
+    font-size: clamp(16px, 1.7vw, 20px);
+    line-height: 1.45;
+    color: rgba(255, 255, 255, 0.92);
+    text-shadow: 0 1px 14px rgba(6, 20, 42, 0.55);
+}
+
+/* 병실 선택 (중앙 세그먼트) */
+.rm-tabs {
+    display: inline-flex;
+    gap: 4px;
+    padding: 5px;
+    border-radius: 9999px;
+    background: rgba(255, 255, 255, 0.16);
+    border: 1px solid rgba(255, 255, 255, 0.32);
+    -webkit-backdrop-filter: blur(10px);
+    backdrop-filter: blur(10px);
+}
+
+.rm-tab {
+    padding: 10px 22px;
+    border: none;
+    border-radius: 9999px;
+    background: transparent;
+    color: rgba(255, 255, 255, 0.86);
+    font-family: inherit;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+}
+
+.rm-tab:hover { background: rgba(255, 255, 255, 0.16); color: #ffffff; }
+
+.rm-tab.active {
+    background: #ffffff;
+    color: #0f2a52;
+    box-shadow: 0 6px 18px -8px rgba(6, 20, 42, 0.6);
+}
+
+/* 병실 사진 크게 보기 버튼 */
+.rm-zoom {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 16px;
+    padding: 9px 18px;
+    border: 1px solid rgba(255, 255, 255, 0.45);
+    border-radius: 9999px;
+    background: rgba(8, 22, 44, 0.28);
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+    color: #ffffff;
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s, border-color 0.2s;
+}
+
+.rm-zoom:hover { background: rgba(8, 22, 44, 0.5); border-color: #ffffff; }
+
+/* 사진만 크게 보기 (잘림 없이 전체) */
+.rm-lightbox {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 2000;
+    background: rgba(6, 16, 34, 0.92);
+    padding: 40px 24px;
+    align-items: center;
+    justify-content: center;
+}
+
+.rm-lightbox.open { display: flex; }
+
+.rm-lightbox-box {
+    margin: 0;
+    max-width: 100%;
+    max-height: 100%;
+    text-align: center;
+}
+
+.rm-lightbox-box img {
+    display: block;
+    max-width: 100%;
+    max-height: calc(100vh - 128px);
+    width: auto;
+    height: auto;
+    border-radius: 14px;
+    box-shadow: 0 40px 90px -40px rgba(0, 0, 0, 0.9);
+}
+
+.rm-lightbox-box figcaption {
+    margin-top: 14px;
+    color: rgba(255, 255, 255, 0.88);
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+}
+
+.rm-lightbox-close {
+    position: absolute;
+    top: 18px;
+    right: 22px;
+    width: 42px;
+    height: 42px;
+    border: none;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.14);
+    color: #ffffff;
+    font-size: 26px;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.rm-lightbox-close:hover { background: rgba(255, 255, 255, 0.28); }
+
+/* 서비스 카드 — 카드 수에 맞춰 균일하게 배치 (5개는 한 줄, 8개는 4+4) */
+.rm-svc-grid {
+    display: grid;
+    gap: 18px;
+    text-align: center;
+}
+
+/* 카드 5개가 한 줄에 편하게 들어가도록 이 섹션만 조금 넓게 */
+#tab-rooms .lp-tile .lp-inner { max-width: 1240px; }
+
+/* 서비스 섹션: 히어로 아래 끝 색(--rm-blend)에서 그대로 시작해 옅은 톤으로 풀린다
+   → 사진에서 섹션으로 넘어갈 때 경계선이 생기지 않음 */
+#tab-rooms .lp-tile--parchment {
+    background: linear-gradient(180deg,
+        var(--rm-blend, #f6f9ff) 0%,
+        var(--rm-tint, #f6f9ff) 260px);
+}
+
+/* 따뜻한 배경에 맞춰 카드 테두리도 중립 톤으로 */
+#tab-rooms .rm-svc-card { border-color: rgba(45, 35, 25, 0.09); }
+
+.rm-svc-grid.n5 { grid-template-columns: repeat(5, 1fr); }
+.rm-svc-grid.n8 { grid-template-columns: repeat(4, 1fr); }
+
+/* 중간 폭: 5개는 3 + 가운데 2, 8개는 2+2+2+2 */
+@media (max-width: 1080px) {
+    .rm-svc-grid.n5 { grid-template-columns: repeat(6, 1fr); }
+    .rm-svc-grid.n5 .rm-svc-card { grid-column: span 2; }
+    .rm-svc-grid.n5 .rm-svc-card:nth-child(4) { grid-column: 2 / span 2; }
+    .rm-svc-grid.n5 .rm-svc-card:nth-child(5) { grid-column: 4 / span 2; }
+    .rm-svc-grid.n8 { grid-template-columns: repeat(2, 1fr); }
+}
+
+.rm-svc-card {
+    background: #ffffff;
+    border: 1px solid #e6edfa;
+    border-radius: 18px;
+    padding: 30px 20px 26px;
+    box-shadow: 0 18px 40px -28px rgba(23, 48, 94, 0.35);
+}
+
+.rm-svc-card h3 {
+    margin: 18px 0 12px;
+    font-size: 17px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    color: var(--lp-ink);
+}
+
+.rm-svc-card p {
+    margin: 0;
+    font-size: 14px;
+    line-height: 1.6;
+    color: var(--lp-muted);
+}
+
+/* 아이콘: 1인실 서비스 시트(2075px 폭) 한 장에서 148x148 정사각형을 잘라 쓰고
+   invert 로 금색→남색으로 뒤집어 세 병실 색을 통일한다 */
+.svc-ico {
+    --s: 58;      /* 화면에 보일 크기(px) */
+    --src: 148;   /* 원본에서 잘라낼 정사각형(px) */
+    display: block;
+    width: calc(var(--s) * 1px);
+    height: calc(var(--s) * 1px);
+    margin: 0 auto;
+    border-radius: 50%;
+    background-image: url('rooms/room1-svc.png');
+    background-repeat: no-repeat;
+    background-size: calc(2075px * var(--s) / var(--src)) auto;
+    background-position: calc(-1px * var(--sx) * var(--s) / var(--src))
+                         calc(-1px * var(--sy) * var(--s) / var(--src));
+    filter: invert(1);
+}
+
+.ico-bed       { --sx: 84;   --sy: 205; }
+.ico-shield    { --sx: 336;  --sy: 205; }
+.ico-food      { --sx: 590;  --sy: 205; }
+.ico-concierge { --sx: 838;  --sy: 205; }
+.ico-lounge    { --sx: 1079; --sy: 205; }
+.ico-tv        { --sx: 1335; --sy: 205; }
+.ico-car       { --sx: 1588; --sy: 205; }
+.ico-care      { --sx: 1843; --sy: 205; }
+
+/* 좁은 화면: 두 개씩, 5개짜리는 마지막 하나를 가운데로 */
+@media (max-width: 760px) {
+    .rm-hero { min-height: 58vh; }
+    .rm-svc-grid { gap: 12px; }
+    .rm-svc-grid.n5,
+    .rm-svc-grid.n8 { grid-template-columns: repeat(4, 1fr); }
+    .rm-svc-grid.n5 .rm-svc-card,
+    .rm-svc-grid.n8 .rm-svc-card { grid-column: span 2; }
+    .rm-svc-grid.n5 .rm-svc-card:nth-child(4) { grid-column: auto / span 2; }
+    .rm-svc-grid.n5 .rm-svc-card:nth-child(5) { grid-column: 2 / span 2; }
+    .rm-svc-card { padding: 22px 14px 20px; }
+    .rm-svc-card p { font-size: 13px; }
+    .rm-tab { padding: 9px 16px; font-size: 14px; }
+    .rm-hero-copy { padding-bottom: 78px; }
 }
 
 /* ===== 상단바 (Letters 스타일) ===== */
@@ -1969,8 +2330,10 @@ body {
 }
 
 .topbar.solid {
-    background: var(--header-bg);
-    border-bottom-color: var(--border);
+    background: rgba(248, 251, 255, 0.82);
+    -webkit-backdrop-filter: saturate(180%) blur(14px);
+    backdrop-filter: saturate(180%) blur(14px);
+    border-bottom-color: rgba(23, 48, 94, 0.08);
 }
 
 .topbar-inner {
@@ -2086,6 +2449,307 @@ html.reveal-on .lp-nav-cards .lp-nav-card:nth-child(2) { transition-delay: 0.07s
 html.reveal-on .lp-nav-cards .lp-nav-card:nth-child(3) { transition-delay: 0.14s; }
 html.reveal-on .lp-nav-cards .lp-nav-card:nth-child(4) { transition-delay: 0.21s; }
 
-@media (prefers-reduced-motion: reduce) {
-    html.reveal-on .reveal { opacity: 1; transform: none; transition: none; }
+/* 병실 서비스 카드: 최대 8개까지 하나씩 순차 등장 */
+html.reveal-on .rm-svc-grid .rm-svc-card:nth-child(2) { transition-delay: 0.07s; }
+html.reveal-on .rm-svc-grid .rm-svc-card:nth-child(3) { transition-delay: 0.14s; }
+html.reveal-on .rm-svc-grid .rm-svc-card:nth-child(4) { transition-delay: 0.21s; }
+html.reveal-on .rm-svc-grid .rm-svc-card:nth-child(5) { transition-delay: 0.28s; }
+html.reveal-on .rm-svc-grid .rm-svc-card:nth-child(6) { transition-delay: 0.35s; }
+html.reveal-on .rm-svc-grid .rm-svc-card:nth-child(7) { transition-delay: 0.42s; }
+html.reveal-on .rm-svc-grid .rm-svc-card:nth-child(8) { transition-delay: 0.49s; }
+
+
+/* ============================================================
+   역할별 페이지 공통 컴포넌트
+   ============================================================ */
+
+/* 상단바 우측: 로그인 사용자 이름 */
+.nav-user { font-size: 14px; font-weight: 600; color: var(--text); }
+.topbar:not(.solid) .nav-user { color: #ffffff; }
+.nav-logout { background: transparent !important; color: #ffffff !important; border: 1px solid rgba(255,255,255,0.6) !important; }
+.topbar.solid .nav-logout { color: var(--text) !important; border-color: var(--border) !important; }
+
+/* 본문 문단 */
+.prose { margin: 0; font-size: 15px; line-height: 1.7; color: var(--text-muted); }
+
+/* 정보 카드 그리드 (소개/기능/홈) */
+.info-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+.info-emoji { font-size: 30px; margin-bottom: 8px; }
+.panel h3 { margin: 0 0 6px; font-size: 17px; font-weight: 700; }
+.panel > p { margin: 0; font-size: 14px; line-height: 1.6; color: var(--text-muted); }
+
+/* 시스템 구성도 */
+.diagram { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.diagram-node { flex: 1; min-width: 120px; text-align: center; padding: 18px 14px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; font-weight: 700; font-size: 15px; }
+.diagram-node small { display: block; margin-top: 4px; font-weight: 500; font-size: 12px; color: var(--text-muted); }
+.diagram-arrow { color: var(--accent); font-size: 20px; font-weight: 800; }
+
+/* 시연 영상 자리 */
+.video-placeholder { height: 240px; display: flex; align-items: center; justify-content: center; background: #0f172a; color: #cbd5e1; border-radius: 8px; font-size: 15px; }
+
+/* 타임라인 */
+.timeline { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.timeline li { display: flex; gap: 12px; align-items: center; font-size: 14px; }
+.tl-time { min-width: 54px; color: var(--text-muted); font-weight: 700; font-family: 'Courier New', monospace; font-size: 13px; }
+
+/* 통계 카드 6열 / 홈 그리드 */
+.stat-row-6 { grid-template-columns: repeat(6, 1fr); }
+.ahome-grid { display: grid; grid-template-columns: 1.1fr 1fr 1fr; gap: 18px; margin-top: 18px; }
+
+/* 막대 차트 (CSS) */
+.bar-chart { display: flex; align-items: flex-end; gap: 10px; height: 160px; padding-top: 8px; }
+.bar-chart-sm { height: 120px; }
+.bar { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 6px; height: 100%; }
+.bar-fill { width: 100%; max-width: 34px; background: linear-gradient(180deg, var(--accent), #7fb0f5); border-radius: 6px 6px 0 0; min-height: 3px; }
+.bar-label { font-size: 12px; color: var(--text-muted); }
+.chart-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; margin-bottom: 22px; }
+
+/* 폼 요소 */
+.form-label { display: block; font-size: 13px; font-weight: 600; color: var(--text-muted); margin: 6px 0; }
+.form-input { width: 100%; padding: 10px 12px; margin-bottom: 10px; border-radius: 6px; border: 1px solid var(--surface-border); background: var(--surface); color: var(--text); font-size: 14px; font-family: inherit; }
+
+/* 보호자 실시간 병실 */
+.glive-grid { display: grid; grid-template-columns: 1.5fr 1fr; gap: 18px; }
+.glive-grid .video-card { display: flex; flex-direction: column; }
+.glive-grid .video-box { aspect-ratio: 16 / 10; margin-top: 4px; }
+
+/* 패널 헤더에 버튼 */
+.panel-head-row { display: flex; align-items: center; justify-content: space-between; }
+.row-actions { display: flex; gap: 6px; white-space: nowrap; }
+.mini-danger { color: var(--danger); border-color: var(--danger); }
+
+/* 이벤트 툴바 */
+.events-toolbar { display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
+.events-toolbar .form-input { margin-bottom: 0; max-width: 260px; }
+.events-toolbar #ev-date { max-width: 170px; }
+
+/* ============================================================
+   Robot Control (관제)
+   ============================================================ */
+.robot-layout { display: grid; grid-template-columns: 1.5fr 1fr; gap: 18px; align-items: start; }
+.robot-map-panel { position: relative; }
+.robot-map {
+    position: relative;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: 1fr 1fr;
+    gap: 14px;
+    min-height: 440px;
+    padding: 14px;
+    background: #0e1626;
+    border-radius: 10px;
 }
+.rm-room {
+    border: 1px solid #2a3a55;
+    border-radius: 8px;
+    background: #16233b;
+    color: #dbe6f5;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 16px;
+    gap: 4px;
+}
+.rm-room span { font-size: 12px; font-weight: 500; color: #7f92ad; }
+.rm-robot {
+    position: absolute;
+    left: 26%;
+    top: 26%;
+    transform: translate(-50%, -50%);
+    font-size: 30px;
+    filter: drop-shadow(0 0 10px rgba(80, 160, 255, 0.8));
+    animation: rmPulse 2s ease-in-out infinite;
+}
+@keyframes rmPulse { 0%,100% { transform: translate(-50%, -50%) scale(1); } 50% { transform: translate(-50%, -50%) scale(1.12); } }
+
+.robot-side { display: flex; flex-direction: column; gap: 16px; }
+.robot-stats { display: flex; flex-direction: column; gap: 10px; }
+.rs { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; font-size: 14px; }
+.rs-label { color: var(--text-muted); }
+.rs-val { font-weight: 700; }
+.rs-val.ok { color: #1a9d43; }
+.conn-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #1a9d43; margin-right: 6px; }
+
+.ctrl-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.ctrl-btn {
+    padding: 13px 14px;
+    border: none;
+    border-radius: 8px;
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+    color: #ffffff;
+    transition: filter 0.15s, transform 0.1s;
+}
+.ctrl-btn:active { transform: scale(0.97); }
+.ctrl-btn:hover { filter: brightness(1.06); }
+.ctrl-go { width: 100%; margin-top: 10px; background: var(--accent); }
+.ctrl-start { background: #1a9d43; }
+.ctrl-pause { background: #d97706; }
+.ctrl-home { background: #475569; }
+.ctrl-stop { background: #d70015; grid-column: 1 / -1; }
+
+.rc-toast {
+    position: absolute;
+    left: 50%;
+    bottom: 18px;
+    transform: translateX(-50%) translateY(10px);
+    background: rgba(15, 23, 42, 0.92);
+    color: #fff;
+    padding: 10px 18px;
+    border-radius: 9999px;
+    font-size: 13px;
+    font-weight: 600;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s, transform 0.2s;
+    z-index: 5;
+}
+.rc-toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+/* 역할 페이지 반응형 */
+@media (max-width: 960px) {
+    .info-grid { grid-template-columns: 1fr; }
+    .stat-row-6 { grid-template-columns: repeat(3, 1fr); }
+    .ahome-grid { grid-template-columns: 1fr; }
+    .chart-grid { grid-template-columns: 1fr; }
+    .glive-grid { grid-template-columns: 1fr; }
+    .robot-layout { grid-template-columns: 1fr; }
+    .diagram { flex-direction: column; }
+    .diagram-arrow { transform: rotate(90deg); }
+}
+@media (max-width: 560px) {
+    .stat-row-6 { grid-template-columns: repeat(2, 1fr); }
+    .ctrl-grid { grid-template-columns: 1fr; }
+    .ctrl-stop { grid-column: auto; }
+}
+
+/* ============================================================
+   대시보드 Letters 스킨 — 부드러운 둥근 카드 + 정돈된 버튼
+   (보호자·관리자 페이지를 랜딩과 같은 톤으로 통일)
+   ============================================================ */
+
+/* 카드류: 큰 라운드 + 은은한 그림자 + 옅은 블루 보더 */
+.panel,
+.stat-tile,
+.table-wrap,
+.card,
+.room-card,
+.patient-detail {
+    border-radius: 16px;
+    border: 1px solid #e8eefc;
+    box-shadow: 0 16px 36px -22px rgba(23, 48, 94, 0.22);
+}
+
+.panel { padding: 22px; }
+.stat-tile { padding: 20px 22px; }
+
+/* 지표 숫자 살짝 더 크게/타이트하게 */
+.stat-tile-num { letter-spacing: -0.03em; }
+
+/* 페이지 제목 */
+.page-head h2 { font-weight: 800; letter-spacing: -0.03em; }
+
+/* 영상·지도 라운드 통일 */
+.video-box { border-radius: 16px; }
+.robot-map { border-radius: 18px; }
+.rm-room { border-radius: 12px; }
+
+/* 입력 */
+.form-input {
+    border-radius: 11px;
+    border-color: #e2e8f4;
+}
+.form-input:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(0, 102, 204, 0.12);
+}
+
+/* 보조 버튼(mini): 흰 카드형 pill */
+.mini-btn {
+    background: #ffffff;
+    border: 1px solid #e2e8f4;
+    border-radius: 9px;
+    box-shadow: 0 4px 12px -8px rgba(23, 48, 94, 0.4);
+    transition: background 0.14s, box-shadow 0.14s, transform 0.1s;
+}
+.mini-btn:hover { background: #f4f8ff; box-shadow: 0 8px 18px -10px rgba(23, 48, 94, 0.45); }
+.mini-btn:active { transform: scale(0.97); }
+.mini-danger { color: var(--danger); border-color: #f3c8cd; }
+.mini-danger:hover { background: #fff5f6; }
+
+/* 제어 버튼: 라운드 + 소프트 섀도우 */
+.ctrl-btn {
+    border-radius: 12px;
+    box-shadow: 0 12px 24px -14px rgba(23, 48, 94, 0.5);
+}
+
+/* 상단바 계정 버튼 정돈 */
+.nav-signup { box-shadow: 0 8px 20px -12px rgba(15, 23, 42, 0.5); }
+.nav-logout { box-shadow: none !important; }
+.topbar.solid .nav-logout { background: #ffffff !important; }
+.topbar.solid .nav-logout:hover { background: #f4f8ff !important; }
+
+/* 상세 목록(dl) 카드 안 여백 */
+.pd-list dd { color: var(--text); }
+
+/* 타임라인 항목 살짝 카드처럼 */
+.timeline li {
+    padding: 10px 12px;
+    background: #ffffff;
+    border: 1px solid #eef2fb;
+    border-radius: 10px;
+}
+
+/* ===== 상단바 글자색: 홈 히어로 위(over-hero)만 화이트, 그 외 어둡게 =====
+   → 모든 페이지에서 '맨 위 투명 → 스크롤 시 띠' 동작 통일 */
+.topbar:not(.over-hero) .brand { color: var(--text); }
+.topbar:not(.over-hero) .navlink { color: var(--text-muted); }
+.topbar:not(.over-hero) .navlink:hover,
+.topbar:not(.over-hero) .navlink.active { color: var(--text); }
+.topbar:not(.over-hero) .nav-login { color: var(--text); }
+.topbar:not(.over-hero) .nav-signup { background: #0f172a; color: #ffffff; }
+.topbar:not(.over-hero) .nav-user { color: var(--text); }
+.topbar:not(.over-hero) .nav-logout { color: var(--text) !important; border-color: var(--border) !important; background: #ffffff !important; }
+
+/* 건물 사진 위 상단바: 사진 하늘색(#2e8fe9)과 같은 계열로 살짝만 눌러 글자만 읽히게 */
+.topbar.over-hero {
+    background: linear-gradient(180deg, rgba(15, 84, 163, 0.42) 0%, rgba(15, 84, 163, 0) 100%);
+    border-bottom-color: transparent;
+}
+
+.topbar.over-hero .brand,
+.topbar.over-hero .navlink,
+.topbar.over-hero .nav-login,
+.topbar.over-hero .nav-user { text-shadow: 0 1px 8px rgba(8, 46, 92, 0.45); }
+
+.topbar.over-hero .brand { color: #ffffff; }
+.topbar.over-hero .navlink { color: rgba(255, 255, 255, 0.85); }
+.topbar.over-hero .navlink:hover,
+.topbar.over-hero .navlink.active { color: #ffffff; }
+.topbar.over-hero .nav-login { color: #ffffff; }
+.topbar.over-hero .nav-signup { background: #ffffff; color: #0f172a; }
+.topbar.over-hero .nav-user { color: #ffffff; }
+.topbar.over-hero .nav-logout { color: #ffffff !important; border-color: rgba(255,255,255,0.6) !important; background: transparent !important; }
+
+/* 로그인 후 대시보드도 랜딩과 같은 블루 분위기 배경 */
+.tab-content {
+    background: linear-gradient(180deg, #d7e4fa 0%, #e8f0fd 190px, #f4f7fd 430px, #f4f7fd 100%);
+    min-height: 100vh;
+}
+/* 랜딩(홈)은 자체 배경을 쓰므로 그라디언트 위에 흰 배경으로 덮어 기존 유지 */
+#tab-home { position: relative; z-index: 0; }
+
+/* 대시보드 페이지 제목을 랜딩처럼 크고 볼드하게 */
+.page-head { padding-top: 4px; }
+.page-head h2,
+.mon-head h2 {
+    font-size: clamp(24px, 2.7vw, 32px);
+    font-weight: 800;
+    letter-spacing: -0.03em;
+}
+.mon-head h2 { font-weight: 800; }
