@@ -1,4 +1,3 @@
-import json
 import os
 import threading
 import time
@@ -302,6 +301,7 @@ def api_login():
 
     session.permanent = remember
     session["user"] = user["username"]
+    session["user_id"] = user["id"]
     session["role"] = user["role"]
     return jsonify({"ok": True, "username": user["username"], "role": user["role"]})
 
@@ -327,33 +327,29 @@ def api_status():
     return jsonify(state)
 
 
-# ===== 캘린더 일정: 서버 JSON 파일에 저장 (여러 브라우저가 같은 일정을 공유) =====
-EVENTS_FILE = os.path.expanduser("~/dashboard_events.json")
-events_lock = threading.Lock()
-
-
-def load_events():
-    # 반환 형식: { "YYYY-MM-DD": [ {"id": <int>, "text": <str>}, ... ], ... }
-    if not os.path.exists(EVENTS_FILE):
-        return {}
-    try:
-        with open(EVENTS_FILE, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        return data if isinstance(data, dict) else {}
-    except Exception:
-        return {}
-
-
-def save_events(events):
-    with open(EVENTS_FILE, "w", encoding="utf-8") as f:
-        json.dump(events, f, ensure_ascii=False, indent=2)
-
+# ===== 캘린더 일정: DB(calendar_events)에 저장 (여러 브라우저가 같은 일정을 공유) =====
 
 @app.route("/api/events", methods=["GET"])
 @login_required
 def api_events_get():
-    with events_lock:
-        return jsonify(load_events())
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT ce.id, ce.event_date, ce.text, u.username
+        FROM calendar_events ce
+        LEFT JOIN users u ON u.id = ce.created_by
+        ORDER BY ce.event_date, ce.id
+    """)
+    rows = cursor.fetchall()
+    cursor.close()
+    conn.close()
+
+    events = {}
+    for event_id, event_date, text, created_by in rows:
+        events.setdefault(event_date.isoformat(), []).append(
+            {"id": event_id, "text": text, "created_by": created_by}
+        )
+    return jsonify(events)
 
 
 @app.route("/api/events", methods=["POST"])
@@ -365,11 +361,16 @@ def api_events_add():
     if not date or not text:
         return jsonify({"ok": False, "error": "date와 text가 필요합니다"}), 400
 
-    with events_lock:
-        events = load_events()
-        event = {"id": int(time.time() * 1000), "text": text}
-        events.setdefault(date, []).append(event)
-        save_events(events)
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute(
+        "INSERT INTO calendar_events (event_date, text, created_by) VALUES (%s, %s, %s)",
+        (date, text, session.get("user_id")),
+    )
+    conn.commit()
+    event = {"id": cursor.lastrowid, "text": text, "created_by": session.get("user")}
+    cursor.close()
+    conn.close()
     return jsonify({"ok": True, "date": date, "event": event})
 
 
@@ -377,51 +378,29 @@ def api_events_add():
 @login_required
 def api_events_delete():
     body = request.get_json(silent=True) or {}
-    date = str(body.get("date", "")).strip()
     event_id = body.get("id")
 
-    with events_lock:
-        events = load_events()
-        if date in events:
-            events[date] = [e for e in events[date] if e.get("id") != event_id]
-            if not events[date]:
-                del events[date]
-            save_events(events)
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM calendar_events WHERE id = %s", (event_id,))
+    conn.commit()
+    cursor.close()
+    conn.close()
     return jsonify({"ok": True})
 
 
-# ===== 체크리스트 / 메모: 서버 JSON 파일에 저장 (여러 브라우저 공유) =====
-NOTES_FILE = os.path.expanduser("~/dashboard_notes.json")
-notes_lock = threading.Lock()
-
-
-def load_notes():
-    # 형식: { "checklist": [ {"id": <int>, "text": <str>, "done": <bool>} ], "memo": <str> }
-    default = {"checklist": [], "memo": ""}
-    if not os.path.exists(NOTES_FILE):
-        return default
-    try:
-        with open(NOTES_FILE, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        if not isinstance(data, dict):
-            return default
-        data.setdefault("checklist", [])
-        data.setdefault("memo", "")
-        return data
-    except Exception:
-        return default
-
-
-def save_notes(notes):
-    with open(NOTES_FILE, "w", encoding="utf-8") as f:
-        json.dump(notes, f, ensure_ascii=False, indent=2)
-
+# ===== 체크리스트: DB(checklist)에 저장 (여러 브라우저 공유) =====
 
 @app.route("/api/notes", methods=["GET"])
 @login_required
 def api_notes_get():
-    with notes_lock:
-        return jsonify(load_notes())
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, text, done FROM checklist ORDER BY id")
+    checklist = [{"id": r[0], "text": r[1], "done": bool(r[2])} for r in cursor.fetchall()]
+    cursor.close()
+    conn.close()
+    return jsonify({"checklist": checklist})
 
 
 @app.route("/api/checklist/add", methods=["POST"])
@@ -431,11 +410,14 @@ def api_checklist_add():
     text = str(body.get("text", "")).strip()
     if not text:
         return jsonify({"ok": False, "error": "text가 필요합니다"}), 400
-    with notes_lock:
-        notes = load_notes()
-        item = {"id": int(time.time() * 1000), "text": text, "done": False}
-        notes["checklist"].append(item)
-        save_notes(notes)
+
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("INSERT INTO checklist (text, done) VALUES (%s, FALSE)", (text,))
+    conn.commit()
+    item = {"id": cursor.lastrowid, "text": text, "done": False}
+    cursor.close()
+    conn.close()
     return jsonify({"ok": True, "item": item})
 
 
@@ -444,13 +426,13 @@ def api_checklist_add():
 def api_checklist_toggle():
     body = request.get_json(silent=True) or {}
     item_id = body.get("id")
-    with notes_lock:
-        notes = load_notes()
-        for it in notes["checklist"]:
-            if it.get("id") == item_id:
-                it["done"] = not it.get("done", False)
-                break
-        save_notes(notes)
+
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("UPDATE checklist SET done = NOT done WHERE id = %s", (item_id,))
+    conn.commit()
+    cursor.close()
+    conn.close()
     return jsonify({"ok": True})
 
 
@@ -459,22 +441,13 @@ def api_checklist_toggle():
 def api_checklist_delete():
     body = request.get_json(silent=True) or {}
     item_id = body.get("id")
-    with notes_lock:
-        notes = load_notes()
-        notes["checklist"] = [it for it in notes["checklist"] if it.get("id") != item_id]
-        save_notes(notes)
-    return jsonify({"ok": True})
 
-
-@app.route("/api/memo", methods=["POST"])
-@login_required
-def api_memo_save():
-    body = request.get_json(silent=True) or {}
-    memo = str(body.get("memo", ""))
-    with notes_lock:
-        notes = load_notes()
-        notes["memo"] = memo
-        save_notes(notes)
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM checklist WHERE id = %s", (item_id,))
+    conn.commit()
+    cursor.close()
+    conn.close()
     return jsonify({"ok": True})
 
 

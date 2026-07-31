@@ -23,7 +23,6 @@
     <div class="header-right">
         <button class="tool-btn" id="btn-calendar" title="캘린더" onclick="openCalendar()">📅</button>
         <button class="tool-btn" id="btn-checklist" title="할 일 체크리스트" onclick="openChecklist()">✅</button>
-        <button class="tool-btn" id="btn-memo" title="메모지" onclick="openMemo()">📝</button>
         <div class="theme-wrap">
             <button class="tool-btn" id="btn-theme" title="테마 색상" onclick="toggleThemeMenu()">🎨</button>
             <div class="theme-menu" id="theme-menu">
@@ -182,18 +181,6 @@
         </label>
         <div id="login-error" class="login-error"></div>
         <button class="login-btn" onclick="doLogin()">로그인</button>
-    </div>
-</div>
-
-<!-- ===== 메모지 모달 ===== -->
-<div id="memo-overlay" class="cal-overlay" onclick="if(event.target===this)closeMemo()">
-    <div class="cal-box" style="width:min(520px,92vw);">
-        <button class="cal-close" onclick="closeMemo()">&times;</button>
-        <div class="panel-title">📝 메모지 <span id="memo-saved" class="memo-saved"></span></div>
-        <textarea id="memo-text" class="memo-text" placeholder="전달사항·인수인계 메모를 자유롭게 적어주세요"></textarea>
-        <div class="cal-add" style="justify-content:flex-end;">
-            <button onclick="saveMemo()">저장</button>
-        </div>
     </div>
 </div>
 
@@ -542,7 +529,7 @@ async function fetchNotes() {
         return await res.json();
     } catch (e) {
         console.error(e);
-        return { checklist: [], memo: "" };
+        return { checklist: [] };
     }
 }
 
@@ -631,35 +618,6 @@ async function deleteChecklistItem(id) {
 
 const checklistInput = document.getElementById("checklist-input");
 if (checklistInput) checklistInput.addEventListener("keydown", e => { if (e.key === "Enter") addChecklistItem(); });
-
-// ===== 메모지 =====
-async function openMemo() {
-    const notes = await fetchNotes();
-    document.getElementById("memo-text").value = notes.memo || "";
-    document.getElementById("memo-saved").innerText = "";
-    document.getElementById("memo-overlay").classList.add("open");
-}
-
-function closeMemo() {
-    document.getElementById("memo-overlay").classList.remove("open");
-}
-
-async function saveMemo() {
-    const memo = document.getElementById("memo-text").value;
-    try {
-        const res = await fetch("/api/memo", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ memo }),
-        });
-        const data = await res.json();
-        if (data.ok) {
-            const tag = document.getElementById("memo-saved");
-            tag.innerText = "저장됨";
-            setTimeout(() => { tag.innerText = ""; }, 1500);
-        }
-    } catch (e) { console.error(e); }
-}
 </script>
 </body>
 </html>

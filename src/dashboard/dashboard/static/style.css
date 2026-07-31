@@ -849,28 +849,6 @@ body {
     cursor: pointer;
 }
 
-.memo-saved {
-    font-size: 13px;
-    font-weight: 700;
-    color: var(--success);
-    margin-left: 8px;
-}
-
-.memo-text {
-    width: 100%;
-    min-height: 240px;
-    resize: vertical;
-    padding: 14px;
-    border-radius: 12px;
-    border: 1px solid var(--surface-border);
-    background: var(--surface);
-    color: var(--text);
-    font-size: 14px;
-    font-family: inherit;
-    line-height: 1.5;
-    margin-bottom: 12px;
-}
-
 /* ===== 로그인 ===== */
 .login-overlay {
     display: flex;               /* 기본 표시. 인증되면 JS가 숨김 */
