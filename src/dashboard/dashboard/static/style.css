@@ -1860,6 +1860,7 @@ body {
     font-weight: 700;
 }
 
+.risk-critical { background: rgba(153, 0, 18, 0.18); color: #b3111f; }
 .risk-high { background: rgba(215, 0, 21, 0.12); color: #e5484d; }
 .risk-mid  { background: rgba(217, 119, 6, 0.16); color: #e08c1a; }
 .risk-low  { background: rgba(26, 157, 67, 0.15); color: #1a9d43; }
@@ -2140,7 +2141,7 @@ body {
     content: "";
     position: absolute;
     inset: 14px;                 /* 부모가 -14px 이므로 화면과 정확히 일치시킨다 */
-    background-image: url('hospital.png'),
+    background-image: url('/static/hospital.png'),
                       linear-gradient(90deg, #348fe7 0%, #278ce5 50%, #3294ef 100%);
     background-size: 100% auto, 100% 100%;
     /* --hero-shift 만큼 사진을 아래로 내린다 (위쪽 하늘 여백이 그만큼 넓어짐) */
@@ -2572,7 +2573,7 @@ body {
     height: calc(var(--s) * 1px);
     margin: 0 auto;
     border-radius: 50%;
-    background-image: url('rooms/room1-svc.png');
+    background-image: url('/static/rooms/room1-svc.png');
     background-repeat: no-repeat;
     background-size: calc(2075px * var(--s) / var(--src)) auto;
     background-position: calc(-1px * var(--sx) * var(--s) / var(--src))
@@ -3126,7 +3127,7 @@ html.reveal-on .rm-svc-grid .rm-svc-card:nth-child(8) { transition-delay: 0.49s;
     position: relative;
     overflow: hidden;
     border: none;
-    background: #0e1a2e url('rooms/room4-photo.png') center 58% / cover no-repeat;
+    background: #0e1a2e url('/static/rooms/room4-photo.png') center 58% / cover no-repeat;
     min-height: 190px;
 }
 

@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
 <!-- ===== 상단바 (Letters 스타일 · 그라디언트 위 투명 오버레이) ===== -->
@@ -47,15 +47,15 @@
             <div class="feat-carousel" id="feat-carousel">
                 <button class="feat-arrow feat-arrow-prev" type="button" onclick="featMove(-1)" aria-label="이전 기능">‹</button>
                 <div class="feat-stage" id="feat-stage">
-                    <article class="feat-card" style="--feat-img:url('features/detect.jpg');">
+                    <article class="feat-card" style="--feat-img:url('/static/features/detect.jpg');">
                         <h3>낙상 실시간 감지</h3>
                         <p>영상 분석으로 환자가 쓰러지는 순간을 즉시 인식합니다.</p>
                     </article>
-                    <article class="feat-card" style="--feat-img:url('features/patrol.jpg');">
+                    <article class="feat-card" style="--feat-img:url('/static/features/patrol.jpg');">
                         <h3>자동 병실 순찰</h3>
                         <p>정해진 경로를 따라 병실을 스스로 돌며 빈틈 없이 살핍니다.</p>
                     </article>
-                    <article class="feat-card" style="--feat-img:url('features/alert.jpg');">
+                    <article class="feat-card" style="--feat-img:url('/static/features/alert.jpg');">
                         <h3>간호사 즉시 알림</h3>
                         <p>이상이 감지되면 담당 간호사에게 곧바로 알림을 전달합니다.</p>
                     </article>
@@ -249,7 +249,7 @@
                     <li><strong>원격 제어 및 주행 예외 처리</strong>웹·앱을 통한 순찰 시작·정지·복귀 원격 제어와 복도 장애물 발생 시 우회 및 복귀 알고리즘을 제공합니다.</li>
                 </ul>
             </div>
-            <figure class="fx-visual"><img src="icons/patrol.svg" alt="" width="96" height="96"></figure>
+            <figure class="fx-visual"><img src="/static/icons/patrol.svg" alt="" width="96" height="96"></figure>
         </div>
     </section>
 
@@ -265,7 +265,7 @@
                     <li><strong>10프레임 확정 및 자동 저장</strong>연속 10프레임 이상 낙상 자세가 검출되면 비상 상태로 확정하며, 당시의 캡처 이미지와 짧은 영상을 자동 저장합니다.</li>
                 </ul>
             </div>
-            <figure class="fx-visual"><img src="icons/detect.svg" alt="" width="96" height="96"></figure>
+            <figure class="fx-visual"><img src="/static/icons/detect.svg" alt="" width="96" height="96"></figure>
         </div>
     </section>
 
@@ -281,7 +281,7 @@
                     <li><strong>다중 비상 알림</strong>이상이 감지되면 대시보드 팝업과 경고음은 물론, 아두이노 부저·LED 모듈과 연동해 현장 비상 신호를 발생시킵니다.</li>
                 </ul>
             </div>
-            <figure class="fx-visual"><img src="icons/dashboard.svg" alt="" width="96" height="96"></figure>
+            <figure class="fx-visual"><img src="/static/icons/dashboard.svg" alt="" width="96" height="96"></figure>
         </div>
     </section>
 
@@ -297,7 +297,7 @@
                     <li><strong>이벤트 검색과 필터</strong>병실별·날짜별·상황별로 지난 이벤트를 손쉽게 찾아볼 수 있습니다.</li>
                 </ul>
             </div>
-            <figure class="fx-visual"><img src="icons/response.svg" alt="" width="96" height="96"></figure>
+            <figure class="fx-visual"><img src="/static/icons/response.svg" alt="" width="96" height="96"></figure>
         </div>
     </section>
 
@@ -312,7 +312,7 @@
                     <li><strong>다차원 통계 리포트</strong>월별, 시간대별(야간 등), 병실별 낙상 발생 패턴을 관리자 화면에 그래프로 제공합니다.</li>
                 </ul>
             </div>
-            <figure class="fx-visual"><img src="icons/stats.svg" alt="" width="96" height="96"></figure>
+            <figure class="fx-visual"><img src="/static/icons/stats.svg" alt="" width="96" height="96"></figure>
         </div>
     </section>
 
@@ -328,7 +328,7 @@
                     <li><strong>모바일 푸시 알림</strong>대시보드를 보기 어려운 이동 중에도 모바일 푸시 알림으로 비상 상황을 즉시 확인할 수 있습니다.</li>
                 </ul>
             </div>
-            <figure class="fx-visual"><img src="icons/access.svg" alt="" width="96" height="96"></figure>
+            <figure class="fx-visual"><img src="/static/icons/access.svg" alt="" width="96" height="96"></figure>
         </div>
     </section>
 
@@ -387,7 +387,7 @@
             <div class="g-hero-copy">
                 <span class="g-hero-eyebrow">보호자 전용 · 3동 A구역 101호</span>
                 <h2>안녕하세요, <span id="g-greet-name">보호자</span> 님</h2>
-                <p><strong>홍길동</strong> 님의 오늘 상태를 한눈에 확인하세요.</p>
+                <p><strong class="js-my-patient-name">-</strong> 님의 오늘 상태를 한눈에 확인하세요.</p>
             </div>
             <span class="g-chip g-chip-ok"><i></i>현재 안정</span>
         </header>
@@ -449,7 +449,7 @@
             <div class="panel">
                 <div class="panel-head">담당 환자 프로필</div>
                 <dl class="pd-list">
-                    <div><dt>이름</dt><dd>홍길동</dd></div>
+                    <div><dt>이름</dt><dd class="js-my-patient-name">-</dd></div>
                     <div><dt>나이 · 성별</dt><dd>78세 · 남</dd></div>
                     <div><dt>주요 질환</dt><dd>뇌졸중 후유증</dd></div>
                     <div><dt>낙상 위험도</dt><dd><span class="risk-chip risk-high">위험</span></dd></div>
@@ -513,7 +513,7 @@
             <div class="card">
                 <div class="card-title">환자 · 로봇 상태 <span class="g-readonly">열람 전용</span></div>
                 <div class="status-grid" style="grid-template-columns:1fr;">
-                    <div class="status-item"><span class="label">환자</span><strong>홍길동 님</strong></div>
+                    <div class="status-item"><span class="label">환자</span><strong><span class="js-my-patient-name">-</span> 님</strong></div>
                     <div class="status-item"><span class="label">낙상 감지</span><strong class="g-ok" id="g-fall-state">정상</strong></div>
                     <div class="status-item"><span class="label">로봇 상태</span><strong id="g-robot-state">순찰 중</strong></div>
                     <div class="status-item"><span class="label">로봇 위치</span><strong id="g-robot-loc">101호 순찰 중</strong></div>
@@ -531,7 +531,7 @@
                 <div class="gmap-row">
                     <div class="gmap-room mine" id="gmap-101">
                         <strong>101호</strong>
-                        <span>내 병실 · 홍길동 님</span>
+                        <span>내 병실 · <span class="js-my-patient-name">-</span> 님</span>
                         <span class="gmap-robot" id="gmap-robot">🤖</span>
                     </div>
                     <div class="gmap-room locked"><strong>102호</strong><span>열람 권한 없음</span></div>
@@ -558,7 +558,7 @@
             <div class="g-hero-copy">
                 <span class="g-hero-eyebrow">보호자 전용</span>
                 <h2>통계</h2>
-                <p>홍길동 님(101호)의 안전 기록과 순찰 이력입니다.</p>
+                <p><span class="js-my-patient-name">-</span> 님(<span class="js-my-patient-room">-</span>호)의 안전 기록과 순찰 이력입니다.</p>
             </div>
             <span class="g-chip g-chip-ok"><i></i>최근 30일 낙상 0건</span>
         </header>
@@ -648,9 +648,9 @@
             <div class="panel">
                 <div class="panel-head">보호자 프로필</div>
                 <dl class="pd-list" style="margin-bottom:16px;">
-                    <div><dt>성함</dt><dd>박보호</dd></div>
+                    <div><dt>아이디</dt><dd id="myinfo-username">-</dd></div>
                     <div><dt>구분</dt><dd><span class="risk-chip risk-low">보호자</span></dd></div>
-                    <div><dt>연락처</dt><dd>010-3456-7890</dd></div>
+                    <div><dt>연락처</dt><dd class="js-my-patient-phone">-</dd></div>
                 </dl>
                 <label class="form-label">비밀번호 변경</label>
                 <input class="form-input" type="password" placeholder="새 비밀번호">
@@ -662,7 +662,7 @@
             <div class="panel">
                 <div class="panel-head">환자 연동 정보</div>
                 <dl class="pd-list">
-                    <div><dt>연동된 환자</dt><dd>홍길동 (101호)</dd></div>
+                    <div><dt>연동된 환자</dt><dd><span class="js-my-patient-name">-</span> (<span class="js-my-patient-room">-</span>호)</dd></div>
                     <div><dt>담당 병동</dt><dd>3동 A구역</dd></div>
                     <div><dt>인증 상태</dt><dd><span class="g-verified">✓ 연동 완료</span></dd></div>
                     <div><dt>매핑 코드</dt><dd><code class="g-code">KJ-101-7A2F</code></dd></div>
@@ -1184,17 +1184,7 @@
             <div class="table-wrap">
                 <table class="data-table">
                     <thead><tr><th>이름</th><th>아이디</th><th>연동 환자</th><th>매핑 코드</th><th>권한(Role)</th><th>관리</th></tr></thead>
-                    <tbody>
-                        <tr>
-                            <td>박보호</td><td>cus</td><td>홍길동 (101호)</td>
-                            <td><code class="g-code">KJ-101-7A2F</code></td>
-                            <td><select class="form-input form-input-sm" onchange="rcToast('권한이 변경되었습니다 (데모)')"><option>GUARDIAN</option><option>NURSE</option><option>ADMIN</option></select></td>
-                            <td class="row-actions">
-                                <button class="mini-btn" onclick="rcToast('매핑 코드를 재발행했습니다 (데모)')">코드 재발행</button>
-                                <button class="mini-btn mini-danger" onclick="rcToast('접근이 차단되었습니다 (데모)')">접근 차단</button>
-                            </td>
-                        </tr>
-                    </tbody>
+                    <tbody id="acc-guardian-tbody"><!-- renderGuardianAccounts()로 채움 --></tbody>
                 </table>
             </div>
         </div>
@@ -1630,7 +1620,7 @@ function initFeatures() {
 const ROOMS = {
     r4: {
         name: "4인실",
-        photo: "rooms/room4-photo.png",
+        photo: "/static/rooms/room4-photo.png",
         // 사진 하단 평균색 rgb(136,123,114)에서 뽑은 이음색 (진한 쪽 45% / 옅은 쪽 8%)
         blend: "#c9c4c0", tint: "#f6f4f4",
         tagline: "쾌적하고 안전한 환경에서 함께하는 회복의 공간",
@@ -1645,7 +1635,7 @@ const ROOMS = {
     },
     r2: {
         name: "2인실",
-        photo: "rooms/room2-photo.png",
+        photo: "/static/rooms/room2-photo.png",
         // 사진 하단 평균색 rgb(136,113,90)
         blend: "#c9bfb5", tint: "#f6f4f2",
         tagline: "프라이버시와 품격을 고려한 더 편안하고, 더 집중되는 회복의 공간",
@@ -1663,7 +1653,7 @@ const ROOMS = {
     },
     r1: {
         name: "1인실 (VIP)",
-        photo: "rooms/room1-photo.png",
+        photo: "/static/rooms/room1-photo.png",
         // 사진 하단 평균색 rgb(86,63,44)
         blend: "#b3a9a0", tint: "#f2f0ee",
         tagline: "가장 높은 수준의 케어를 제공하는 프라이빗 VIP 공간",
@@ -1739,16 +1729,15 @@ document.addEventListener("keydown", e => {
     closeLogin();
 });
 
-// ===== 로그인 / 권한 (테스트용: admin·cus / 1234, DB 미사용) =====
+// ===== 로그인 / 권한 (서버 세션 기반, DB의 users 테이블로 검증) =====
 const AUTH_KEY = "dashboard-auth";
 const ROLE_KEY = "dabom-role";
 const NAME_KEY = "dabom-name";
 
-// 데모 계정
-const USERS = {
-    admin: { pw: "1234", role: "admin", name: "김간호 · 관리자" },
-    cus:   { pw: "1234", role: "guardian", name: "박보호 · 보호자" }
-};
+// DB의 role('admin'/'user')을 화면 메뉴 role(NAV의 키)로 매핑
+function mapDbRole(dbRole) {
+    return dbRole === "admin" ? "admin" : "guardian";
+}
 
 // 역할별 상단 메뉴 (id = 탭 패널 id 접미사)
 const NAV = {
@@ -1912,6 +1901,31 @@ function renderPending() {
     if (badge) badge.innerText = n;
 }
 
+// 보호자 계정 목록 — users + patients 실제 DB 조회 (매핑 코드/권한 변경은 아직 데모)
+async function renderGuardianAccounts() {
+    const tb = document.getElementById("acc-guardian-tbody");
+    if (!tb) return;
+    try {
+        const res = await fetch("/api/guardian-accounts");
+        if (!res.ok) return;
+        const data = await res.json();
+        tb.innerHTML = "";
+        (data.accounts || []).forEach(a => {
+            const tr = document.createElement("tr");
+            const patientText = a.name ? `${a.name} (${a.room_number || "-"}호)` : "미연동";
+            tr.innerHTML =
+                `<td>${a.name || "-"}</td><td>${a.username}</td><td>${patientText}</td>` +
+                `<td>-</td>` +
+                `<td><select class="form-input form-input-sm" onchange="rcToast('권한이 변경되었습니다 (데모)')"><option>GUARDIAN</option><option>NURSE</option><option>ADMIN</option></select></td>` +
+                `<td class="row-actions"><button class="mini-btn mini-danger" onclick="rcToast('접근이 차단되었습니다 (데모)')">접근 차단</button></td>`;
+            tb.appendChild(tr);
+        });
+        if (!data.accounts || !data.accounts.length) {
+            tb.innerHTML = '<tr><td colspan="6" style="color:var(--text-muted);">등록된 보호자 계정이 없습니다.</td></tr>';
+        }
+    } catch (e) { console.error(e); }
+}
+
 // 승인하면 보호자–환자 매핑 코드를 발행한다
 function approveGuardian(i) {
     const p = PENDING[i];
@@ -1983,30 +1997,67 @@ function doLogin() {
     const id = document.getElementById("login-id").value.trim();
     const pw = document.getElementById("login-pw").value;
     const auto = document.getElementById("login-auto").checked;
-    const u = USERS[id];
-    if (u && u.pw === pw) {
-        // 자동 로그인 → localStorage(영구), 미체크 → sessionStorage
-        const store = auto ? localStorage : sessionStorage;
-        store.setItem(AUTH_KEY, "1");
-        store.setItem(ROLE_KEY, u.role);
-        store.setItem(NAME_KEY, u.name);
-        document.getElementById("login-error").innerText = "";
-        document.getElementById("login-pw").value = "";
-        closeLogin();
-        renderNav();
-        renderGuardian();
-        goHome();
-    } else {
-        document.getElementById("login-error").innerText = "아이디 또는 비밀번호가 올바르지 않습니다.";
-    }
+
+    fetch("/api/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: id, password: pw, remember: auto }),
+    })
+        .then(res => res.json())
+        .then(data => {
+            if (data.ok) {
+                // 자동 로그인 → localStorage(영구), 미체크 → sessionStorage
+                const store = auto ? localStorage : sessionStorage;
+                store.setItem(AUTH_KEY, "1");
+                store.setItem(ROLE_KEY, mapDbRole(data.role));
+                store.setItem(NAME_KEY, data.username);
+                document.getElementById("login-error").innerText = "";
+                document.getElementById("login-pw").value = "";
+                closeLogin();
+                renderNav();
+                renderGuardian();
+                goHome();
+                loadMyPatient();
+            } else {
+                document.getElementById("login-error").innerText = data.error || "아이디 또는 비밀번호가 올바르지 않습니다.";
+            }
+        })
+        .catch(() => {
+            document.getElementById("login-error").innerText = "서버에 연결할 수 없습니다.";
+        });
+}
+
+// 로그인한 계정(patients.user_id)과 연결된 실제 환자 정보를 불러와 화면에 채움
+async function loadMyPatient() {
+    const usernameEl = document.getElementById("myinfo-username");
+    if (usernameEl) usernameEl.innerText = currentName() || "-";
+
+    if (currentRole() !== "guardian") return;
+    try {
+        const res = await fetch("/api/my-patient");
+        if (!res.ok) return;
+        const data = await res.json();
+        const p = data.patient;
+        const name = p ? p.name : "-";
+        const room = p ? p.room_number : "-";
+        const phone = p ? p.phone : "-";
+        document.querySelectorAll(".js-my-patient-name").forEach(el => { el.innerText = name; });
+        document.querySelectorAll(".js-my-patient-room").forEach(el => { el.innerText = room; });
+        document.querySelectorAll(".js-my-patient-phone").forEach(el => { el.innerText = phone || "-"; });
+
+        const greetEl = document.getElementById("g-greet-name");
+        if (greetEl && p && p.guardian) greetEl.innerText = p.guardian;
+    } catch (e) { console.error(e); }
 }
 
 function logout() {
-    [localStorage, sessionStorage].forEach(s => {
-        s.removeItem(AUTH_KEY); s.removeItem(ROLE_KEY); s.removeItem(NAME_KEY);
+    fetch("/api/logout", { method: "POST" }).finally(() => {
+        [localStorage, sessionStorage].forEach(s => {
+            s.removeItem(AUTH_KEY); s.removeItem(ROLE_KEY); s.removeItem(NAME_KEY);
+        });
+        renderNav();
+        goHome();
     });
-    renderNav();
-    goHome();
 }
 
 // Enter 키로 로그인
@@ -2431,14 +2482,17 @@ async function saveMemo() {
 }
 
 // ===== 탭 콘텐츠 (더미 데이터 · 실제 값은 각 API 연동) =====
-const RISK_LABEL = { high: "위험", mid: "주의", low: "안정" };
+// 위험도 4단계: 값 자체가 화면에 보이는 한글 라벨이고, CSS 클래스만 별도로 매핑 (공백 있는 값이라 클래스명으로 못 씀)
+const RISK_LEVELS = ["낮음", "보통", "높음", "매우 높음"];
+const RISK_CLASS = { "낮음": "low", "보통": "mid", "높음": "high", "매우 높음": "critical" };
+function riskClass(level) { return RISK_CLASS[level] || "low"; }
 
 // --- 병실 / 환자 ---  ※ TODO: 환자 정보 API 연동
 const PATIENTS = [
-    { room: "101", pos: "좌측 상단", name: "홍길동", age: 78, sex: "남", bed: "1-A", diagnosis: "뇌졸중 후유증", risk: "high", lastFall: "2026-07-14 03:20" },
-    { room: "102", pos: "우측 상단", name: "김영희", age: 72, sex: "여", bed: "2-B", diagnosis: "고관절 골절 회복", risk: "mid", lastFall: "2026-07-02 21:10" },
-    { room: "103", pos: "좌측 하단", name: "박철수", age: 81, sex: "남", bed: "3-A", diagnosis: "파킨슨병", risk: "high", lastFall: "2026-07-15 11:05" },
-    { room: "104", pos: "우측 하단", name: "이순자", age: 69, sex: "여", bed: "4-C", diagnosis: "당뇨 · 저혈압", risk: "low", lastFall: "낙상 이력 없음" },
+    { room: "101", pos: "좌측 상단", name: "홍길동", age: 78, sex: "남", bed: "1-A", diagnosis: "뇌졸중 후유증", risk: "높음", lastFall: "2026-07-14 03:20" },
+    { room: "102", pos: "우측 상단", name: "김영희", age: 72, sex: "여", bed: "2-B", diagnosis: "고관절 골절 회복", risk: "보통", lastFall: "2026-07-02 21:10" },
+    { room: "103", pos: "좌측 하단", name: "박철수", age: 81, sex: "남", bed: "3-A", diagnosis: "파킨슨병", risk: "매우 높음", lastFall: "2026-07-15 11:05" },
+    { room: "104", pos: "우측 하단", name: "이순자", age: 69, sex: "여", bed: "4-C", diagnosis: "당뇨 · 저혈압", risk: "낮음", lastFall: "낙상 이력 없음" },
 ];
 let selectedPatient = 0;
 
@@ -2451,7 +2505,7 @@ function renderRooms() {
         c.className = "room-card" + (i === selectedPatient ? " selected" : "");
         c.onclick = () => selectPatient(i);
         c.innerHTML =
-            `<div class="rc-top"><strong>병실 ${p.room}</strong><span class="risk-chip risk-${p.risk}">${RISK_LABEL[p.risk]}</span></div>` +
+            `<div class="rc-top"><strong>병실 ${p.room}</strong><span class="risk-chip risk-${riskClass(p.risk)}">${p.risk}</span></div>` +
             `<div class="rc-name">${p.name} <span class="rc-sub">${p.age}세 · ${p.sex}</span></div>` +
             `<div class="rc-diag">${p.diagnosis}</div>`;
         list.appendChild(c);
@@ -2469,12 +2523,12 @@ function renderPatient(i) {
     if (!d) return;
     const p = PATIENTS[i];
     d.innerHTML =
-        `<div class="pd-head"><span class="risk-chip risk-${p.risk}">${RISK_LABEL[p.risk]}</span>` +
+        `<div class="pd-head"><span class="risk-chip risk-${riskClass(p.risk)}">${p.risk}</span>` +
         `<h3>${p.name}</h3><span class="pd-room">병실 ${p.room} · ${p.bed}</span></div>` +
         `<dl class="pd-list">` +
         `<div><dt>나이 · 성별</dt><dd>${p.age}세 · ${p.sex}</dd></div>` +
         `<div><dt>병명</dt><dd>${p.diagnosis}</dd></div>` +
-        `<div><dt>위험도</dt><dd>${RISK_LABEL[p.risk]}</dd></div>` +
+        `<div><dt>위험도</dt><dd>${p.risk}</dd></div>` +
         `<div><dt>최근 낙상</dt><dd>${p.lastFall}</dd></div>` +
         `<div><dt>병실 위치</dt><dd>${p.pos}</dd></div>` +
         `</dl>`;
@@ -2601,9 +2655,11 @@ renderEvents();
 renderSettingsTheme();
 renderWardGrid();
 renderPending();
+renderGuardianAccounts();
 renderNav();
 renderGuardian();
 goHome();
+loadMyPatient();
 showRoom("r4");     // 병실 소개 기본값 = 4인실
 initReveal();
 initHeroScroll();

@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS patients (
     risk_level VARCHAR(10),   
     marker_id INT,
     user_id INT UNIQUE,
+    guardian VARCHAR(50),
     FOREIGN KEY (user_id) REFERENCES users(id)
 );
 

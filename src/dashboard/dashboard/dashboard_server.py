@@ -327,13 +327,31 @@ def api_status():
     return jsonify(state)
 
 
+@app.route("/api/guardian-accounts")
+@login_required
+def api_guardian_accounts():
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("""
+        SELECT u.id, u.username, p.name, p.room_number
+        FROM users u
+        LEFT JOIN patients p ON p.user_id = u.id
+        WHERE u.role != 'admin'
+        ORDER BY u.id
+    """)
+    accounts = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return jsonify({"ok": True, "accounts": accounts})
+
+
 @app.route("/api/my-patient")
 @login_required
 def api_my_patient():
     conn = get_db()
     cursor = conn.cursor(dictionary=True)
     cursor.execute(
-        "SELECT name, room_number, age, disease, phone FROM patients WHERE user_id = %s",
+        "SELECT name, room_number, age, disease, phone, guardian FROM patients WHERE user_id = %s",
         (session.get("user_id"),),
     )
     patient = cursor.fetchone()
