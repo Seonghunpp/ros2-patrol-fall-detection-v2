@@ -62,6 +62,7 @@ class MarkerListener(Node):
         self.aruco_cli = self.create_client(SetBool, 'aruco_enable')
         self.fall_cli = self.create_client(SetBool, 'fall_enable')
         self.cmd_pub = self.create_publisher(Twist, '/cmd_vel', 10)
+        self.complete_pub = self.create_publisher(String, '/patrol_complete', 10)
     
     def _id_cb(self, msg):
         self.latest_ids = list(msg.data)
@@ -337,6 +338,9 @@ def main():
                     nav.get_logger().info(f'   Holding on patient until cleared...')
                     marker.hold_position()
                     nav.get_logger().info(f'   Patient cleared — resuming patrol')
+
+                # 이 병실 관찰(낙상 스캔) 종료 → 대시보드에 순찰 완료 신호 발행
+                marker.complete_pub.publish(String(data=name))
 
                 # ── 5. 복도로 나오기 (다음 병실로 가기 전 복도 복귀) ──
                 if hall is not None:

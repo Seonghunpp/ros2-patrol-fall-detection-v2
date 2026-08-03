@@ -40,3 +40,10 @@ CREATE TABLE IF NOT EXISTS checklist (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- 순찰 완료 로그 (로봇이 병실을 순찰하고 떠날 때마다 자동 기록)
+CREATE TABLE IF NOT EXISTS patrol_log (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    room_number VARCHAR(10) NOT NULL,
+    patrolled_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+

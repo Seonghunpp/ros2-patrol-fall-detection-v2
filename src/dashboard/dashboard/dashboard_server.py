@@ -74,6 +74,14 @@ MARKER_TO_ROOM = {
     3: "104",
 }
 
+# my_patrol의 rooms.yaml 방 이름(room1~4) -> 병실 번호 매핑
+PATROL_ROOM_NAME_TO_NUMBER = {
+    "room1": "101",
+    "room2": "102",
+    "room3": "103",
+    "room4": "104",
+}
+
 state = {
     "current_room": None,
     "robot_status": "대기 중",
@@ -90,6 +98,18 @@ def add_event(text):
     now = time.strftime("%H:%M:%S")
     state["events"].insert(0, {"time": now, "text": text})
     state["events"] = state["events"][:10]
+
+
+def log_patrol_complete(room):
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute("INSERT INTO patrol_log (room_number) VALUES (%s)", (room,))
+        conn.commit()
+        cursor.close()
+        conn.close()
+    except mysql.connector.Error as e:
+        print(f"[dashboard] patrol_log 기록 실패: {e}")
 
 
 class DashboardBridge(Node):
@@ -151,6 +171,13 @@ class DashboardBridge(Node):
             10
         )
 
+        self.create_subscription(
+            String,
+            "/patrol_complete",
+            self.patrol_complete_callback,
+            10
+        )
+
         self.create_timer(1.0, self.check_network_callback)
         self.create_timer(1.0, self.check_movement_callback)
 
@@ -188,6 +215,14 @@ class DashboardBridge(Node):
 
         if old_room != new_room:
             add_event(f"로봇이 병실 {new_room}에 입장했습니다.")
+
+    def patrol_complete_callback(self, msg):
+        # my_patrol의 patrol_node가 한 병실 관찰(scan_for_fall)을 끝내고
+        # 복도로 돌아가기 직전에 쏘는 신호. 이 시점이 "이 병실 순찰 완료".
+        room_name = str(msg.data).strip()
+        room_number = PATROL_ROOM_NAME_TO_NUMBER.get(room_name, room_name)
+        log_patrol_complete(room_number)
+        add_event(f"병실 {room_number} 순찰을 완료했습니다.")
 
     def odom_callback(self, msg):
         global last_heartbeat, last_odom_linear, last_odom_angular
@@ -345,13 +380,40 @@ def api_guardian_accounts():
     return jsonify({"ok": True, "accounts": accounts})
 
 
+@app.route("/api/patrol-log")
+@login_required
+def api_patrol_log():
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
+    if session.get("role") == "admin":
+        cursor.execute(
+            "SELECT room_number, patrolled_at FROM patrol_log ORDER BY patrolled_at DESC LIMIT 50"
+        )
+    else:
+        cursor.execute(
+            """
+            SELECT pl.room_number, pl.patrolled_at
+            FROM patrol_log pl
+            JOIN patients p ON p.room_number = pl.room_number
+            WHERE p.user_id = %s
+            ORDER BY pl.patrolled_at DESC
+            LIMIT 20
+            """,
+            (session.get("user_id"),),
+        )
+    logs = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return jsonify({"ok": True, "logs": logs})
+
+
 @app.route("/api/my-patient")
 @login_required
 def api_my_patient():
     conn = get_db()
     cursor = conn.cursor(dictionary=True)
     cursor.execute(
-        "SELECT name, room_number, age, disease, phone, guardian FROM patients WHERE user_id = %s",
+        "SELECT name, room_number, age, sex, disease, risk_level, phone, guardian FROM patients WHERE user_id = %s",
         (session.get("user_id"),),
     )
     patient = cursor.fetchone()

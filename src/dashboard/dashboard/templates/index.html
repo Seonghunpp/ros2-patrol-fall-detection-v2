@@ -406,7 +406,7 @@
             </div>
             <div class="stat-tile">
                 <span class="stat-tile-label">최근 순찰 시각</span>
-                <span class="stat-tile-num">16:20</span>
+                <span class="stat-tile-num" id="ghome-last-patrol">-</span>
                 <span class="stat-tile-sub">정기 순찰 완료</span>
             </div>
             <div class="stat-tile">
@@ -418,12 +418,7 @@
 
         <div class="panel" style="margin-top:18px;">
             <div class="panel-head">오늘의 순찰 기록</div>
-            <ul class="timeline">
-                <li><span class="tl-time">16:20</span><span>정기 순찰 완료 · <span class="g-ok">이상 없음</span></span></li>
-                <li><span class="tl-time">12:05</span><span>정기 순찰 완료 · <span class="g-ok">이상 없음</span></span></li>
-                <li><span class="tl-time">10:40</span><span>정기 순찰 완료 · <span class="g-ok">이상 없음</span></span></li>
-                <li><span class="tl-time">08:00</span><span>오전 순찰 시작</span></li>
-            </ul>
+            <ul class="timeline" id="ghome-patrol-log"><!-- loadPatrolLog()로 채움 --></ul>
         </div>
 
         <div class="lp-center" style="margin-top:20px;">
@@ -450,10 +445,10 @@
                 <div class="panel-head">담당 환자 프로필</div>
                 <dl class="pd-list">
                     <div><dt>이름</dt><dd class="js-my-patient-name">-</dd></div>
-                    <div><dt>나이 · 성별</dt><dd>78세 · 남</dd></div>
-                    <div><dt>주요 질환</dt><dd>뇌졸중 후유증</dd></div>
-                    <div><dt>낙상 위험도</dt><dd><span class="risk-chip risk-high">위험</span></dd></div>
-                    <div><dt>최근 낙상 기록</dt><dd>2026-07-14 03:20</dd></div>
+                    <div><dt>나이 · 성별</dt><dd><span class="js-my-patient-age">-</span>세 · <span class="js-my-patient-sex">-</span></dd></div>
+                    <div><dt>주요 질환</dt><dd class="js-my-patient-disease">-</dd></div>
+                    <div><dt>낙상 위험도</dt><dd><span class="risk-chip js-my-patient-risk-chip">-</span></dd></div>
+                    <div><dt>최근 낙상 기록</dt><dd>기록 없음</dd></div>
                 </dl>
                 <div class="g-alert-note">
                     고위험군 환자입니다. 순찰 로봇이 야간에도 집중 감시합니다.
@@ -464,7 +459,7 @@
             <div class="panel">
                 <div class="panel-head">병실 상세 정보</div>
                 <dl class="pd-list">
-                    <div><dt>병실 번호</dt><dd>101호</dd></div>
+                    <div><dt>병실 번호</dt><dd><span class="js-my-patient-room">-</span>호</dd></div>
                     <div><dt>담당 병동</dt><dd>3동 A구역</dd></div>
                     <div><dt>현재 환자 상태</dt><dd><span class="g-ok">안정</span></dd></div>
                     <div><dt>최근 감지</dt><dd>없음</dd></div>
@@ -2041,12 +2036,53 @@ async function loadMyPatient() {
         const name = p ? p.name : "-";
         const room = p ? p.room_number : "-";
         const phone = p ? p.phone : "-";
+        const age = p ? p.age : "-";
+        const sex = p ? p.sex : "-";
+        const disease = p ? p.disease : "-";
+        const risk = p ? p.risk_level : null;
         document.querySelectorAll(".js-my-patient-name").forEach(el => { el.innerText = name; });
         document.querySelectorAll(".js-my-patient-room").forEach(el => { el.innerText = room; });
         document.querySelectorAll(".js-my-patient-phone").forEach(el => { el.innerText = phone || "-"; });
+        document.querySelectorAll(".js-my-patient-age").forEach(el => { el.innerText = age; });
+        document.querySelectorAll(".js-my-patient-sex").forEach(el => { el.innerText = sex || "-"; });
+        document.querySelectorAll(".js-my-patient-disease").forEach(el => { el.innerText = disease || "-"; });
+        document.querySelectorAll(".js-my-patient-risk-chip").forEach(el => {
+            el.innerText = risk || "-";
+            el.className = "risk-chip js-my-patient-risk-chip" + (risk ? " risk-" + riskClass(risk) : "");
+        });
 
         const greetEl = document.getElementById("g-greet-name");
         if (greetEl && p && p.guardian) greetEl.innerText = p.guardian;
+    } catch (e) { console.error(e); }
+
+    loadPatrolLog();
+}
+
+function formatHHMM(value) {
+    const t = new Date(value);
+    return `${String(t.getHours()).padStart(2, "0")}:${String(t.getMinutes()).padStart(2, "0")}`;
+}
+
+async function loadPatrolLog() {
+    const list = document.getElementById("ghome-patrol-log");
+    if (!list) return;
+    try {
+        const res = await fetch("/api/patrol-log");
+        if (!res.ok) return;
+        const data = await res.json();
+        const logs = data.logs || [];
+        list.innerHTML = "";
+        if (!logs.length) {
+            list.innerHTML = '<li><span class="tl-time">-</span><span>아직 순찰 기록이 없습니다.</span></li>';
+        } else {
+            logs.forEach(l => {
+                const li = document.createElement("li");
+                li.innerHTML = `<span class="tl-time">${formatHHMM(l.patrolled_at)}</span><span>정기 순찰 완료 · 병실 ${l.room_number}</span>`;
+                list.appendChild(li);
+            });
+        }
+        const lastEl = document.getElementById("ghome-last-patrol");
+        if (lastEl && logs.length) lastEl.innerText = formatHHMM(logs[0].patrolled_at);
     } catch (e) { console.error(e); }
 }
 
