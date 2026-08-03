@@ -16,6 +16,8 @@ CREATE TABLE IF NOT EXISTS patients (
     disease VARCHAR(100),
     room_number VARCHAR(10),
     age INT,
+    sex VARCHAR(5),
+    risk_level VARCHAR(10),   
     marker_id INT,
     user_id INT UNIQUE,
     FOREIGN KEY (user_id) REFERENCES users(id)

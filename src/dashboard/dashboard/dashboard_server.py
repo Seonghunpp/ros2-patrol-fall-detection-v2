@@ -327,6 +327,21 @@ def api_status():
     return jsonify(state)
 
 
+@app.route("/api/my-patient")
+@login_required
+def api_my_patient():
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute(
+        "SELECT name, room_number, age, disease, phone FROM patients WHERE user_id = %s",
+        (session.get("user_id"),),
+    )
+    patient = cursor.fetchone()
+    cursor.close()
+    conn.close()
+    return jsonify({"ok": True, "patient": patient})
+
+
 # ===== 캘린더 일정: DB(calendar_events)에 저장 (여러 브라우저가 같은 일정을 공유) =====
 
 @app.route("/api/events", methods=["GET"])
