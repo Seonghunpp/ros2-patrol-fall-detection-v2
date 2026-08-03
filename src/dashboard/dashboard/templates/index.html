@@ -385,7 +385,7 @@
     <div class="page g-page">
         <header class="g-hero g-hero--photo">
             <div class="g-hero-copy">
-                <span class="g-hero-eyebrow">보호자 전용 · 3동 A구역 101호</span>
+                <span class="g-hero-eyebrow">보호자 전용 · 101호</span>
                 <h2>안녕하세요, <span id="g-greet-name">보호자</span> 님</h2>
                 <p><strong class="js-my-patient-name">-</strong> 님의 오늘 상태를 한눈에 확인하세요.</p>
             </div>
@@ -402,7 +402,6 @@
             <div class="stat-tile">
                 <span class="stat-tile-label">병실 번호</span>
                 <span class="stat-tile-num">101<span class="stat-tile-unit">호</span></span>
-                <span class="stat-tile-sub">담당 병동 3동 A구역</span>
             </div>
             <div class="stat-tile">
                 <span class="stat-tile-label">최근 순찰 시각</span>
@@ -472,7 +471,7 @@
                 <div class="panel-head">담당 의료진 · 케어 안내</div>
                 <dl class="pd-list">
                     <div><dt>담당 간호사</dt><dd>김간호</dd></div>
-                    <div><dt>간호사 스테이션</dt><dd>3동 A · 02-1234-5678</dd></div>
+                    <div><dt>간호사 번호</dt><dd>02-1234-5678</dd></div>
                     <div><dt>면회 가능 시간</dt><dd>10:00 ~ 20:00</dd></div>
                 </dl>
                 <div class="g-care-note">
@@ -491,37 +490,27 @@
             <div class="g-hero-copy">
                 <span class="g-hero-eyebrow">보호자 전용 · 열람 전용</span>
                 <h2>실시간 병실</h2>
-                <p>101호의 실시간 영상과 순찰 로봇 위치입니다.</p>
+                <p>101호의 순찰 로봇 위치와 환자 상태입니다.</p>
             </div>
-            <span class="g-chip g-chip-live"><i></i>LIVE</span>
+            <span class="g-chip g-chip-live"><i></i>실시간 갱신</span>
         </header>
 
-        <div class="glive-grid">
-            <div class="card video-card">
-                <div class="card-title">실시간 영상 · 병실 101호</div>
-                <div class="video-box">
-                    <img src="/video_feed" alt="실시간 병실 영상" onerror="this.style.visibility='hidden'">
-                    <div class="live-badge">LIVE</div>
-                </div>
+        <div class="card">
+            <div class="card-title">환자 · 로봇 상태 <span class="g-readonly">열람 전용</span></div>
+            <div class="status-grid">
+                <div class="status-item"><span class="label">환자</span><strong><span class="js-my-patient-name">-</span> 님</strong></div>
+                <div class="status-item"><span class="label">낙상 감지</span><strong class="g-ok" id="g-fall-state">정상</strong></div>
+                <div class="status-item"><span class="label">로봇 상태</span><strong id="g-robot-state">순찰 중</strong></div>
+                <div class="status-item"><span class="label">로봇 위치</span><strong id="g-robot-loc">101호 순찰 중</strong></div>
+                <div class="status-item"><span class="label">카메라</span><strong class="g-ok" id="g-camera">정상 연결</strong></div>
+                <div class="status-item"><span class="label">최근 순찰</span><strong>16:20</strong></div>
             </div>
-
-            <div class="card">
-                <div class="card-title">환자 · 로봇 상태 <span class="g-readonly">열람 전용</span></div>
-                <div class="status-grid" style="grid-template-columns:1fr;">
-                    <div class="status-item"><span class="label">환자</span><strong><span class="js-my-patient-name">-</span> 님</strong></div>
-                    <div class="status-item"><span class="label">낙상 감지</span><strong class="g-ok" id="g-fall-state">정상</strong></div>
-                    <div class="status-item"><span class="label">로봇 상태</span><strong id="g-robot-state">순찰 중</strong></div>
-                    <div class="status-item"><span class="label">로봇 위치</span><strong id="g-robot-loc">101호 순찰 중</strong></div>
-                    <div class="status-item"><span class="label">카메라</span><strong class="g-ok" id="g-camera">정상 연결</strong></div>
-                    <div class="status-item"><span class="label">최근 순찰</span><strong>16:20</strong></div>
-                </div>
-                <p class="g-readonly-note">보호자 계정은 조회만 가능하며, 로봇 제어 기능은 제공되지 않습니다.</p>
-            </div>
+            <p class="g-readonly-note">보호자 계정은 조회만 가능하며, 병실 영상과 로봇 제어 기능은 제공되지 않습니다.</p>
         </div>
 
-        <!-- 3동 A구역 병실 구조도 · 내 병실만 활성 -->
+        <!-- 병실 구조도 · 내 병실만 활성 -->
         <div class="panel" style="margin-top:18px;">
-            <div class="panel-head">3동 A구역 구조도 · 로봇 실시간 위치</div>
+            <div class="panel-head">병실 구조도 · 로봇 실시간 위치</div>
             <div class="gmap">
                 <div class="gmap-row">
                     <div class="gmap-room mine" id="gmap-101">
@@ -660,10 +649,10 @@
                     <div><dt>연동된 환자</dt><dd><span class="js-my-patient-name">-</span> (<span class="js-my-patient-room">-</span>호)</dd></div>
                     <div><dt>담당 병동</dt><dd>3동 A구역</dd></div>
                     <div><dt>인증 상태</dt><dd><span class="g-verified">✓ 연동 완료</span></dd></div>
-                    <div><dt>매핑 코드</dt><dd><code class="g-code">KJ-101-7A2F</code></dd></div>
+                    <div><dt>매핑 코드</dt><dd><code class="g-code">KJ-3E91-A47C</code></dd></div>
                 </dl>
                 <div class="g-care-note">
-                    <p>연동된 환자의 정보만 열람할 수 있습니다. 다른 병실의 영상·기록에는 접근할 수 없습니다.</p>
+                    <p>연동된 환자의 정보만 열람할 수 있습니다. 다른 병실의 기록에는 접근할 수 없습니다.</p>
                 </div>
             </div>
         </div>
@@ -692,10 +681,6 @@
                 </label>
             </div>
         </div>
-
-        <div style="margin-top:18px;">
-            <button class="lp-btn" onclick="logout()" style="background:var(--danger);">로그아웃</button>
-        </div>
     </div>
 </section>
 
@@ -722,8 +707,8 @@
             <div class="stat-tile"><span class="stat-tile-label">전체 병실</span><span class="stat-tile-num">4<span class="stat-tile-unit">실</span></span><span class="stat-tile-sub">등록 병실</span></div>
             <div class="stat-tile a-tile-danger"><span class="stat-tile-label">위험 병실</span><span class="stat-tile-num" style="color:#e5484d;">2<span class="stat-tile-unit">실</span></span><span class="stat-tile-sub">고위험군 재실</span></div>
             <div class="stat-tile"><span class="stat-tile-label">오늘 낙상</span><span class="stat-tile-num">1<span class="stat-tile-unit">건</span></span><span class="stat-tile-sub">당일 누적</span></div>
-            <div class="stat-tile"><span class="stat-tile-label">Robot 상태</span><span class="stat-tile-num" style="color:#1a9d43;" id="stat-robot-state">순찰 중</span><span class="stat-tile-sub" id="stat-current-room">병실 101</span></div>
-            <div class="stat-tile"><span class="stat-tile-label">배터리</span><span class="stat-tile-num" id="stat-battery">82%</span><span class="stat-tile-sub">충전 복귀 20% 이하</span></div>
+            <div class="stat-tile"><span class="stat-tile-label">Robot 상태</span><span class="stat-tile-num" style="color:#1a9d43;" id="stat-robot-state">순찰 중</span><span class="stat-tile-sub" id="stat-current-room">101호 순찰</span></div>
+            <div class="stat-tile"><span class="stat-tile-label">배터리</span><span class="stat-tile-num" id="stat-battery">82%</span><span class="stat-tile-sub">충전 복귀 30% 이하</span></div>
             <div class="stat-tile"><span class="stat-tile-label">긴급 알림</span><span class="stat-tile-num" style="color:#e5484d;">0<span class="stat-tile-unit">건</span></span><span class="stat-tile-sub">미처리 기준</span></div>
         </div>
         <div class="ahome-grid">
@@ -738,12 +723,12 @@
             <div class="panel">
                 <div class="panel-head">최근 낙상</div>
                 <ul class="timeline">
-                    <li><span class="tl-time">07-15</span><span>병실 103 · 대응 12초</span></li>
-                    <li><span class="tl-time">07-14</span><span>병실 101 · 대응 9초</span></li>
+                    <li><span class="tl-time">07-15</span><span>병실 103</span></li>
+                    <li><span class="tl-time">07-14</span><span>병실 101</span></li>
                 </ul>
             </div>
             <div class="panel">
-                <div class="panel-head">최근 통계</div>
+                <div class="panel-head">최근 낙상 통계</div>
                 <div class="bar-chart bar-chart-sm">
                     <div class="bar"><span class="bar-fill" style="height:40%"></span><span class="bar-label">4월</span></div>
                     <div class="bar"><span class="bar-fill" style="height:70%"></span><span class="bar-label">5월</span></div>
@@ -1123,6 +1108,75 @@
     </div>
 </section>
 
+<!-- ===== 환자 관리 (관리자) ===== -->
+<section id="tab-patients" class="tab-panel a-scope">
+    <div class="page a-page">
+        <header class="a-hero">
+            <div class="a-hero-copy">
+                <span class="a-hero-eyebrow">DABOM ADMIN · 환자 정보</span>
+                <h2>환자 관리</h2>
+                <p>입원 환자의 병명과 위험도를 등록·수정합니다. 여기서 정한 값이 병실 모니터링에 그대로 반영됩니다.</p>
+            </div>
+            <span class="a-chip"><i></i>재원 <strong id="pt-count">4</strong>명</span>
+        </header>
+
+        <!-- 환자 등록 -->
+        <div class="panel">
+            <div class="panel-head panel-head-row">
+                환자 등록
+                <span class="a-hint">보호자 연동 신청에는 이름과 병실만 담기므로, 병명·위험도는 여기서 채웁니다</span>
+            </div>
+            <div class="pt-form">
+                <div>
+                    <label class="form-label" for="pt-room">병실</label>
+                    <input id="pt-room" class="form-input" inputmode="numeric" maxlength="4"
+                           placeholder="105" oninput="onlyDigits(this, 4)">
+                </div>
+                <div>
+                    <label class="form-label" for="pt-name">이름</label>
+                    <input id="pt-name" class="form-input" maxlength="20" placeholder="홍길동">
+                </div>
+                <div>
+                    <label class="form-label" for="pt-age">나이</label>
+                    <input id="pt-age" class="form-input" inputmode="numeric" maxlength="3"
+                           placeholder="78" oninput="onlyDigits(this, 3)">
+                </div>
+                <div>
+                    <label class="form-label" for="pt-sex">성별</label>
+                    <select id="pt-sex" class="form-input"><option>남</option><option>여</option></select>
+                </div>
+                <div class="pt-form-wide">
+                    <label class="form-label" for="pt-diag">병명</label>
+                    <input id="pt-diag" class="form-input" maxlength="40" placeholder="뇌졸중 후유증">
+                </div>
+                <div>
+                    <label class="form-label" for="pt-risk">위험도</label>
+                    <select id="pt-risk" class="form-input">
+                        <option value="high">고위험</option>
+                        <option value="mid">중위험</option>
+                        <option value="low" selected>일반</option>
+                    </select>
+                </div>
+                <div class="pt-form-action">
+                    <button class="ctrl-btn ctrl-go" onclick="addPatient()">환자 등록</button>
+                </div>
+            </div>
+            <div id="pt-error" class="pt-error"></div>
+        </div>
+
+        <!-- 재원 환자 -->
+        <div class="panel" style="margin-top:18px;">
+            <div class="panel-head">재원 환자</div>
+            <div class="table-wrap">
+                <table class="data-table">
+                    <thead><tr><th>병실</th><th>이름</th><th>나이 · 성별</th><th>병명</th><th>위험도</th><th>최근 낙상</th><th>관리</th></tr></thead>
+                    <tbody id="pt-tbody"><!-- renderPatients()로 채움 --></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</section>
+
 <!-- ===== 계정 관리 (관리자) ===== -->
 <section id="tab-accounts" class="tab-panel a-scope">
     <div class="page a-page">
@@ -1139,7 +1193,7 @@
         <div class="panel">
             <div class="panel-head panel-head-row">
                 보호자 가입 승인 요청
-                <span class="a-hint">환자 연동 신청을 확인하고 승인하면 매핑 코드가 발행됩니다</span>
+                <span class="a-hint">승인하면 매핑 코드가 발급되고, 보호자가 그 코드로 직접 계정을 만듭니다 (Approved → Registered)</span>
             </div>
             <div class="table-wrap">
                 <table class="data-table">
@@ -1175,11 +1229,11 @@
 
         <!-- 보호자 계정 -->
         <div class="panel" style="margin-top:18px;">
-            <div class="panel-head panel-head-row">보호자 계정<button class="mini-btn" onclick="rcToast('계정 생성 (데모)')">+ 계정 생성</button></div>
+            <div class="panel-head panel-head-row">보호자 계정<span class="a-hint">보호자가 매핑 코드로 직접 가입하면 여기에 등록됩니다</span></div>
             <div class="table-wrap">
                 <table class="data-table">
                     <thead><tr><th>이름</th><th>아이디</th><th>연동 환자</th><th>매핑 코드</th><th>권한(Role)</th><th>관리</th></tr></thead>
-                    <tbody id="acc-guardian-tbody"><!-- renderGuardianAccounts()로 채움 --></tbody>
+                    <tbody id="acc-guardian-tbody"><!-- renderGuardianAccounts()로 채움 (실제 DB 조회) --></tbody>
                 </table>
             </div>
         </div>
@@ -1318,8 +1372,145 @@
             <aside class="login-aside">
                 <h2 id="login-aside-title">간호사 계정으로 로그인하면</h2>
                 <ul id="login-aside-list"><!-- setLoginRole()로 채움 --></ul>
-                <p class="login-aside-note">계정이 없으신가요?<br>병동 관리자가 계정을 만들어 드립니다.</p>
+                <p class="login-aside-note" id="login-aside-note"><!-- setLoginRole()로 채움 --></p>
             </aside>
+        </div>
+    </div>
+</div>
+
+<!-- ===== 보호자 연동 신청 =====
+     보호자는 계정을 스스로 만들지 않는다. 여기서 신청하면 관리자 '승인 대기'에 쌓이고,
+     승인 시점에 계정과 매핑 코드가 함께 발급된다 (approveGuardian) -->
+<div id="apply-overlay" class="login-overlay">
+    <div class="login-bar">
+        <button class="login-brand" onclick="closeApply()">DABOM</button>
+        <button class="login-close" onclick="closeApply()" aria-label="닫기">&times;</button>
+    </div>
+
+    <div class="login-page">
+        <div class="login-head">
+            <span class="lp-eyebrow">보호자 전용</span>
+            <h1 class="login-h1">연동 신청</h1>
+        </div>
+
+        <div class="login-cols" id="apply-cols">
+            <div class="login-form">
+                <div class="apply-fields">
+                    <label class="apply-label" for="apply-name">신청자 이름</label>
+                    <input id="apply-name" class="login-input" type="text" maxlength="20"
+                           placeholder="예: 정보호" autocomplete="name">
+
+                    <label class="apply-label" for="apply-phone">연락처</label>
+                    <input id="apply-phone" class="login-input" type="tel" inputmode="numeric" maxlength="13"
+                           placeholder="010-0000-0000" autocomplete="tel" oninput="formatPhone(this)">
+
+                    <label class="apply-label" for="apply-patient">환자 이름</label>
+                    <input id="apply-patient" class="login-input" type="text" maxlength="20" placeholder="예: 김영수">
+
+                    <label class="apply-label" for="apply-room">병실 번호</label>
+                    <input id="apply-room" class="login-input" type="text" inputmode="numeric" maxlength="4"
+                           placeholder="예: 102" oninput="onlyDigits(this, 4)">
+                </div>
+                <div id="apply-error" class="login-error"></div>
+                <button class="login-submit apply-submit" onclick="submitApply()">신청서 제출</button>
+            </div>
+
+            <aside class="login-aside">
+                <h2>신청하면 이렇게 진행됩니다</h2>
+                <ul>
+                    <li>병동 관리자가 신청 내용과 환자 정보를 확인합니다.</li>
+                    <li>승인되면 매핑 코드를 등록하신 연락처로 보내드립니다.</li>
+                    <li>그 코드로 아이디와 비밀번호를 직접 정해 계정을 만듭니다.</li>
+                </ul>
+                <p class="login-aside-note">코드를 이미 받으셨나요?<br>
+                    <button class="apply-link" onclick="closeApply(); openRedeem();">코드 등록하러 가기</button>
+                </p>
+            </aside>
+        </div>
+
+        <div class="apply-done" id="apply-done">
+            <span class="apply-done-ico">✓</span>
+            <h2>신청이 접수되었습니다</h2>
+            <p>병동 관리자 승인 후 <b>매핑 코드</b>를 연락처로 보내드립니다.<br>
+               받으신 코드로 아이디와 비밀번호를 직접 정하시면 됩니다.</p>
+            <button class="login-submit apply-submit" onclick="closeApply()">확인</button>
+        </div>
+    </div>
+</div>
+
+<!-- ===== 코드 등록 (보호자 본인이 계정을 만든다) =====
+     병원은 매핑 코드만 발급하고 비밀번호는 알지 못한다 -->
+<div id="redeem-overlay" class="login-overlay">
+    <div class="login-bar">
+        <button class="login-brand" onclick="closeRedeem()">DABOM</button>
+        <button class="login-close" onclick="closeRedeem()" aria-label="닫기">&times;</button>
+    </div>
+
+    <div class="login-page">
+        <div class="login-head">
+            <span class="lp-eyebrow">보호자 전용</span>
+            <h1 class="login-h1">코드 등록</h1>
+        </div>
+
+        <!-- 1단계 · 코드 확인 -->
+        <div class="login-cols" id="redeem-step1">
+            <div class="login-form">
+                <div class="apply-fields">
+                    <label class="apply-label" for="redeem-code">매핑 코드</label>
+                    <input id="redeem-code" class="login-input redeem-code-input" type="text"
+                           placeholder="KJ-0000-0000" autocomplete="off" spellcheck="false">
+                </div>
+                <div id="redeem-error" class="login-error"></div>
+                <button class="login-submit apply-submit" onclick="verifyCode()">코드 확인</button>
+            </div>
+
+            <aside class="login-aside">
+                <h2>코드는 어디서 받나요?</h2>
+                <ul>
+                    <li>연동 신청이 승인되면 등록하신 연락처로 문자가 옵니다.</li>
+                    <li>문자에 담긴 KJ-0000-0000 형식의 코드를 입력하세요.</li>
+                    <li>아이디와 비밀번호는 다음 단계에서 직접 정합니다.</li>
+                </ul>
+                <p class="login-aside-note">아직 신청하지 않으셨나요?<br>
+                    <button class="apply-link" onclick="closeRedeem(); openApply();">보호자 연동 신청하기</button>
+                </p>
+            </aside>
+        </div>
+
+        <!-- 2단계 · 계정 만들기 -->
+        <div class="login-cols" id="redeem-step2" style="display:none;">
+            <div class="login-form">
+                <div class="redeem-linked" id="redeem-linked"><!-- verifyCode()로 채움 --></div>
+                <div class="apply-fields">
+                    <label class="apply-label" for="redeem-id">사용할 아이디</label>
+                    <input id="redeem-id" class="login-input" type="text" placeholder="영문·숫자 4자 이상" autocomplete="username">
+
+                    <label class="apply-label" for="redeem-pw">비밀번호</label>
+                    <input id="redeem-pw" class="login-input" type="password" placeholder="4자 이상" autocomplete="new-password">
+
+                    <label class="apply-label" for="redeem-pw2">비밀번호 확인</label>
+                    <input id="redeem-pw2" class="login-input" type="password" placeholder="다시 입력" autocomplete="new-password">
+                </div>
+                <div id="redeem-error2" class="login-error"></div>
+                <button class="login-submit apply-submit" onclick="submitRedeem()">계정 만들기</button>
+            </div>
+
+            <aside class="login-aside">
+                <h2>비밀번호는 병원이 알 수 없습니다</h2>
+                <ul>
+                    <li>여기서 정한 비밀번호는 본인만 알고 있습니다.</li>
+                    <li>병원은 매핑 코드 발급과 연동 해제만 할 수 있습니다.</li>
+                    <li>비밀번호를 잊으면 병동 관리자가 코드를 재발행해 드립니다.</li>
+                </ul>
+            </aside>
+        </div>
+
+        <div class="apply-done" id="redeem-done">
+            <span class="apply-done-ico">✓</span>
+            <h2>계정이 만들어졌습니다</h2>
+            <p id="redeem-done-msg"></p>
+            <button class="login-submit apply-submit"
+                    onclick="closeRedeem(); openLogin(); setLoginRole('guardian');">로그인하러 가기</button>
         </div>
     </div>
 </div>
@@ -1441,16 +1632,21 @@ const LOGIN_ROLES = {
             "순찰 시작·정지·복귀와 비상 정지를 원격으로 제어합니다.",
             "낙상 통계와 이벤트 기록을 열람하고 오탐을 처리합니다.",
             "간호사·보호자 계정을 만들고 권한을 관리합니다."
-        ]
+        ],
+        note: "간호사 계정은 병동 관리자가 직접 발급합니다."
     },
     guardian: {
         placeholder: "보호자 아이디",
         title: "보호자 계정으로 로그인하면",
         items: [
-            "담당 병실의 실시간 영상을 확인합니다.",
+            "담당 병실의 순찰 로봇 위치와 환자 상태를 확인합니다.",
             "환자 상태와 최근 순찰 기록을 확인합니다.",
             "낙상이 감지되면 알림을 받습니다."
-        ]
+        ],
+        note: '매핑 코드를 받으셨나요?<br>' +
+              '<button class="apply-link" onclick="closeLogin(); openRedeem();">코드로 계정 만들기</button><br>' +
+              '아직 신청 전이라면 ' +
+              '<button class="apply-link" onclick="closeLogin(); openApply();">보호자 연동 신청하기</button>'
     }
 };
 
@@ -1481,6 +1677,8 @@ function setLoginRole(role) {
         li.innerText = text;
         list.appendChild(li);
     });
+
+    document.getElementById("login-aside-note").innerHTML = r.note;
 }
 
 function openLogin() {
@@ -1492,6 +1690,157 @@ function openLogin() {
 
 function closeLogin() {
     document.getElementById("login-overlay").classList.remove("open");
+}
+
+// ===== 입력 형식 보정 =====
+// 숫자만 받는 칸과 전화번호 하이픈은 입력하는 즉시 맞춰준다.
+// 이름처럼 한글이 들어가는 칸에는 쓰지 않는다 — 한글 조합 중에 값을 고치면 입력이 깨진다.
+function onlyDigits(el, max) {
+    el.value = el.value.replace(/\D/g, "").slice(0, max);
+}
+
+function formatPhone(el) {
+    const d = el.value.replace(/\D/g, "").slice(0, 11);
+    el.value = d.length > 7 ? `${d.slice(0, 3)}-${d.slice(3, 7)}-${d.slice(7)}`
+             : d.length > 3 ? `${d.slice(0, 3)}-${d.slice(3)}`
+             : d;
+}
+
+// ===== 보호자 연동 신청 =====
+// 제출하면 관리자 '승인 대기'(PENDING)에 쌓인다. 계정과 매핑 코드는 승인 시점에 발급된다.
+function openApply() {
+    document.getElementById("apply-error").innerText = "";
+    document.getElementById("apply-cols").style.display = "";
+    document.getElementById("apply-done").style.display = "none";
+    document.getElementById("apply-overlay").classList.add("open");
+    document.getElementById("apply-name").focus();
+}
+
+function closeApply() {
+    document.getElementById("apply-overlay").classList.remove("open");
+}
+
+function submitApply() {
+    const val = id => document.getElementById(id).value.trim();
+    const name = val("apply-name");
+    const phone = val("apply-phone");
+    const patient = val("apply-patient");
+    const room = val("apply-room");
+    const err = document.getElementById("apply-error");
+
+    if (name.length < 2) {
+        err.innerText = "신청자 이름을 2자 이상 입력해 주세요.";
+        return;
+    }
+    if (!/^01[016789]-\d{3,4}-\d{4}$/.test(phone)) {
+        err.innerText = "연락처를 010-0000-0000 형식으로 끝까지 입력해 주세요.";
+        return;
+    }
+    if (patient.length < 2) {
+        err.innerText = "환자 이름을 2자 이상 입력해 주세요.";
+        return;
+    }
+    if (!/^\d{3,4}$/.test(room)) {
+        err.innerText = "병실 번호를 숫자 3~4자리로 입력해 주세요.";
+        return;
+    }
+
+    const now = new Date();
+    const at = `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())} ` +
+               `${pad2(now.getHours())}:${pad2(now.getMinutes())}`;
+
+    PENDING.push({ name, phone, patient: `${patient} (${room}호)`, at, status: "pending" });
+    renderPending();   // 관리자 화면을 열어두지 않아도 목록에 반영해 둔다
+
+    err.innerText = "";
+    ["apply-name", "apply-phone", "apply-patient", "apply-room"]
+        .forEach(id => { document.getElementById(id).value = ""; });
+
+    document.getElementById("apply-cols").style.display = "none";
+    document.getElementById("apply-done").style.display = "block";
+}
+
+// ===== 코드 등록 =====
+// 승인된 매핑 코드를 확인한 뒤, 보호자가 아이디·비밀번호를 직접 정해 계정을 만든다.
+// 병원은 코드만 발급하므로 비밀번호를 알지 못한다.
+let redeemEntry = null;
+
+function showRedeemStep(step) {
+    document.getElementById("redeem-step1").style.display = step === 1 ? "grid" : "none";
+    document.getElementById("redeem-step2").style.display = step === 2 ? "grid" : "none";
+    document.getElementById("redeem-done").style.display = step === 3 ? "block" : "none";
+}
+
+function openRedeem() {
+    redeemEntry = null;
+    ["redeem-code", "redeem-id", "redeem-pw", "redeem-pw2"]
+        .forEach(id => { document.getElementById(id).value = ""; });
+    document.getElementById("redeem-error").innerText = "";
+    document.getElementById("redeem-error2").innerText = "";
+    showRedeemStep(1);
+    document.getElementById("redeem-overlay").classList.add("open");
+    document.getElementById("redeem-code").focus();
+}
+
+function closeRedeem() {
+    document.getElementById("redeem-overlay").classList.remove("open");
+}
+
+function verifyCode() {
+    const code = document.getElementById("redeem-code").value.trim().toUpperCase();
+    const err = document.getElementById("redeem-error");
+
+    if (!code) { err.innerText = "매핑 코드를 입력해 주세요."; return; }
+
+    const found = PENDING.find(p => p.code === code);
+    if (!found || found.status === "rejected") {
+        err.innerText = "승인된 코드를 찾을 수 없습니다. 문자로 받은 코드를 확인해 주세요.";
+        return;
+    }
+    if (found.status === "registered") {
+        err.innerText = "이미 계정이 만들어진 코드입니다. 로그인해 주세요.";
+        return;
+    }
+
+    redeemEntry = found;
+    err.innerText = "";
+    document.getElementById("redeem-linked").innerHTML =
+        '<span class="redeem-linked-label">연결될 환자</span>' +
+        `<strong>${found.patient}</strong>` +
+        `<span class="redeem-linked-sub">신청자 ${found.name} · 코드 ${found.code}</span>`;
+    showRedeemStep(2);
+    document.getElementById("redeem-id").focus();
+}
+
+function submitRedeem() {
+    const id = document.getElementById("redeem-id").value.trim();
+    const pw = document.getElementById("redeem-pw").value;
+    const pw2 = document.getElementById("redeem-pw2").value;
+    const err = document.getElementById("redeem-error2");
+
+    if (!redeemEntry) { showRedeemStep(1); return; }
+    if (id.length < 4) { err.innerText = "아이디는 4자 이상 입력해 주세요."; return; }
+    if (USERS[id]) { err.innerText = "이미 사용 중인 아이디입니다."; return; }
+    if (pw.length < 4) { err.innerText = "비밀번호는 4자 이상 입력해 주세요."; return; }
+    if (pw !== pw2) { err.innerText = "비밀번호가 서로 다릅니다."; return; }
+
+    USERS[id] = { pw, role: "guardian", name: redeemEntry.name + " · 보호자" };
+    GUARDIANS.push({
+        name: redeemEntry.name,
+        id,
+        patient: redeemEntry.patient,
+        code: redeemEntry.code
+    });
+    redeemEntry.status = "registered";
+
+    renderPending();
+    renderGuardians();
+
+    document.getElementById("redeem-done-msg").innerHTML =
+        `<b>${redeemEntry.patient}</b> 보호자로 연동되었습니다.<br>` +
+        `아이디 <b>${id}</b> 로 로그인하시면 담당 병실을 확인할 수 있습니다.`;
+    err.innerText = "";
+    showRedeemStep(3);
 }
 
 // 스크롤 시 섹션이 페이드+슬라이드업으로 등장 (스크롤 위치 기반 · 확실)
@@ -1722,6 +2071,8 @@ document.addEventListener("keydown", e => {
     if (e.key !== "Escape") return;
     closeRoomPhoto();
     closeLogin();
+    closeApply();
+    closeRedeem();
 });
 
 // ===== 로그인 / 권한 (서버 세션 기반, DB의 users 테이블로 검증) =====
@@ -1752,6 +2103,7 @@ const NAV = {
     admin: [
         { id: "ahome", label: "Home" },
         { id: "monitoring", label: "병실 모니터링" },
+        { id: "patients", label: "환자 관리" },
         { id: "robot", label: "Robot Control" },
         { id: "astats", label: "통계" },
         { id: "events", label: "이벤트" },
@@ -1787,7 +2139,7 @@ function renderNav() {
     if (role === "guest") {
         right.innerHTML =
             '<button class="nav-login" onclick="openLogin()">로그인</button>' +
-            '<button class="nav-signup" onclick="openLogin()">회원가입</button>';
+            '<button class="nav-signup" onclick="openApply()">연동 신청</button>';
     } else {
         right.innerHTML =
             '<span class="nav-user">' + currentName() + '</span>' +
@@ -1797,11 +2149,15 @@ function renderNav() {
 
 // ===== 관리자 화면 =====
 // 병실별 위험도 태그 (실서비스에서는 환자 위험도 API로 대체)
+// 환자 정보 원본 — 관리자 '환자 관리'에서 등록·수정하고,
+// 병실 모니터링 그리드가 이 값을 그대로 쓴다
+const RISK_TEXT = { high: "고위험", mid: "중위험", low: "일반" };
+
 const WARDS = [
-    { room: "101", risk: "high", label: "고위험", patient: "홍길동" },
-    { room: "102", risk: "low",  label: "일반",   patient: "김영수" },
-    { room: "103", risk: "mid",  label: "중위험", patient: "이순자" },
-    { room: "104", risk: "low",  label: "일반",   patient: "최판서" }
+    { room: "101", name: "홍길동", age: 78, sex: "남", diagnosis: "뇌졸중 후유증",    risk: "high", lastFall: "2026-07-14 03:20" },
+    { room: "102", name: "김영수", age: 72, sex: "남", diagnosis: "고관절 골절 회복", risk: "low",  lastFall: "2026-07-02 21:10" },
+    { room: "103", name: "이순자", age: 81, sex: "여", diagnosis: "파킨슨병",         risk: "mid",  lastFall: "2026-07-15 11:05" },
+    { room: "104", name: "최판서", age: 69, sex: "남", diagnosis: "당뇨 · 저혈압",    risk: "low",  lastFall: "낙상 이력 없음" }
 ];
 
 function renderWardGrid() {
@@ -1821,9 +2177,9 @@ function renderWardGrid() {
              </div>
              <div class="ward-meta">
                  <strong>병실 ${w.room}</strong>
-                 <span class="risk-chip risk-${w.risk === 'high' ? 'high' : w.risk === 'mid' ? 'mid' : 'low'}">${w.label}</span>
+                 <span class="risk-chip risk-${w.risk}">${RISK_TEXT[w.risk]}</span>
              </div>
-             <span class="ward-patient">${w.patient} 님</span>`;
+             <span class="ward-patient">${w.name} 님</span>`;
         grid.appendChild(cell);
     });
 }
@@ -1866,10 +2222,35 @@ function markEventDone() {
 }
 
 // ----- 계정: 보호자 가입 승인 -----
+// status: pending → approved(코드 발급) → registered(보호자가 코드로 가입 완료) / rejected
 const PENDING = [
     { name: "정보호", phone: "010-9876-5432", patient: "김영수 (102호)", at: "2026-07-30 09:12", status: "pending" },
     { name: "한가족", phone: "010-5555-1234", patient: "이순자 (103호)", at: "2026-07-30 14:45", status: "pending" }
 ];
+
+// 코드 등록을 마친 보호자 계정 (submitRedeem이 여기에 추가한다)
+const GUARDIANS = [
+    { name: "박보호", id: "cus", patient: "홍길동 (101호)", code: "KJ-3E91-A47C" }
+];
+
+function renderGuardians() {
+    const tb = document.getElementById("acc-guardian-tbody");
+    if (!tb) return;
+    tb.innerHTML = "";
+    GUARDIANS.forEach(g => {
+        const tr = document.createElement("tr");
+        tr.innerHTML =
+            `<td>${g.name}</td><td>${g.id}</td><td>${g.patient}</td>` +
+            `<td><code class="g-code">${g.code}</code></td>` +
+            `<td><select class="form-input form-input-sm" onchange="rcToast('권한이 변경되었습니다 (데모)')">` +
+            `<option>GUARDIAN</option><option>NURSE</option><option>ADMIN</option></select></td>` +
+            `<td class="row-actions">` +
+            `<button class="mini-btn" onclick="rcToast('매핑 코드를 재발행했습니다 (데모)')">코드 재발행</button>` +
+            `<button class="mini-btn mini-danger" onclick="rcToast('접근이 차단되었습니다 (데모)')">접근 차단</button>` +
+            `</td>`;
+        tb.appendChild(tr);
+    });
+}
 
 function renderPending() {
     const tb = document.getElementById("acc-pending-tbody");
@@ -1877,11 +2258,13 @@ function renderPending() {
     tb.innerHTML = "";
     PENDING.forEach((p, i) => {
         const tr = document.createElement("tr");
-        const badge = p.status === "approved"
-            ? '<span class="risk-chip risk-low">Approved</span>'
-            : p.status === "rejected"
-                ? '<span class="risk-chip risk-high">Rejected</span>'
-                : '<span class="risk-chip risk-mid">Pending</span>';
+        const badge = p.status === "registered"
+            ? '<span class="risk-chip risk-low">Registered</span>'
+            : p.status === "approved"
+                ? '<span class="risk-chip risk-mid">Approved</span>'
+                : p.status === "rejected"
+                    ? '<span class="risk-chip risk-high">Rejected</span>'
+                    : '<span class="risk-chip risk-mid">Pending</span>';
         const actions = p.status === "pending"
             ? `<button class="mini-btn" onclick="approveGuardian(${i})">승인</button>
                <button class="mini-btn mini-danger" onclick="rejectGuardian(${i})">거절</button>`
@@ -1922,13 +2305,36 @@ async function renderGuardianAccounts() {
 }
 
 // 승인하면 보호자–환자 매핑 코드를 발행한다
+// 매핑 코드 생성 — KJ-XXXX-XXXX (16진수 8자리 = 약 43억 가지)
+// 병실 번호처럼 밖에서 알 수 있는 값은 넣지 않는다. 넣으면 추측 범위가 그만큼 좁아진다.
+// 이미 쓰인 코드(승인 대기 · 가입 완료)와 겹치면 다시 뽑는다.
+function newMappingCode() {
+    const used = new Set(
+        PENDING.map(p => p.code).concat(GUARDIANS.map(g => g.code)).filter(Boolean)
+    );
+
+    for (let tries = 0; tries < 50; tries++) {
+        const buf = new Uint16Array(2);
+        crypto.getRandomValues(buf);
+        const code = "KJ-" + Array.from(buf)
+            .map(n => n.toString(16).toUpperCase().padStart(4, "0"))
+            .join("-");
+        if (!used.has(code)) return code;
+    }
+    return null;   // 사실상 도달하지 않지만 무한 반복은 막는다
+}
+
 function approveGuardian(i) {
     const p = PENDING[i];
+    const code = newMappingCode();
+    if (!code) {
+        rcToast("매핑 코드를 만들지 못했습니다. 다시 시도해 주세요.");
+        return;
+    }
     p.status = "approved";
-    p.code = "KJ-" + p.patient.replace(/[^0-9]/g, "").slice(0, 3) + "-" +
-             Math.random().toString(16).slice(2, 6).toUpperCase();
+    p.code = code;
     renderPending();
-    rcToast(p.name + " 님 승인 완료 · 매핑 코드 " + p.code);
+    rcToast(p.name + " 님 승인 완료 · 매핑 코드 " + p.code + " 발송 (데모)");
 }
 
 function rejectGuardian(i) {
@@ -2570,6 +2976,77 @@ function renderPatient(i) {
         `</dl>`;
 }
 
+// --- 환자 관리 (관리자) ---  ※ TODO: 환자 정보 API 연동
+function renderPatients() {
+    const tb = document.getElementById("pt-tbody");
+    if (!tb) return;
+    tb.innerHTML = "";
+    WARDS.forEach((w, i) => {
+        const options = ["high", "mid", "low"]
+            .map(r => `<option value="${r}"${w.risk === r ? " selected" : ""}>${RISK_TEXT[r]}</option>`)
+            .join("");
+        const tr = document.createElement("tr");
+        tr.innerHTML =
+            `<td>${w.room}호</td><td>${w.name}</td><td>${w.age}세 · ${w.sex}</td><td>${w.diagnosis}</td>` +
+            `<td><select class="form-input form-input-sm" onchange="setPatientRisk(${i}, this.value)">${options}</select></td>` +
+            `<td>${w.lastFall}</td>` +
+            `<td class="row-actions"><button class="mini-btn mini-danger" onclick="dischargePatient(${i})">퇴원 처리</button></td>`;
+        tb.appendChild(tr);
+    });
+    const count = document.getElementById("pt-count");
+    if (count) count.innerText = WARDS.length;
+}
+
+// 위험도는 병실 모니터링 그리드에도 그대로 나가므로 함께 다시 그린다
+function setPatientRisk(i, risk) {
+    WARDS[i].risk = risk;
+    renderWardGrid();
+    renderPatients();
+    rcToast(WARDS[i].name + " 님 위험도를 " + RISK_TEXT[risk] + "(으)로 변경했습니다");
+}
+
+function addPatient() {
+    const val = id => document.getElementById(id).value.trim();
+    const room = val("pt-room"), name = val("pt-name");
+    const age = val("pt-age"), diagnosis = val("pt-diag");
+    const err = document.getElementById("pt-error");
+
+    if (!/^\d{3,4}$/.test(room)) { err.innerText = "병실 번호를 숫자 3~4자리로 입력해 주세요."; return; }
+    if (WARDS.some(w => w.room === room)) { err.innerText = room + "호에는 이미 등록된 환자가 있습니다."; return; }
+    if (name.length < 2) { err.innerText = "환자 이름을 2자 이상 입력해 주세요."; return; }
+    if (!age || +age < 1 || +age > 120) { err.innerText = "나이를 1~120 사이로 입력해 주세요."; return; }
+    if (diagnosis.length < 2) { err.innerText = "병명을 2자 이상 입력해 주세요."; return; }
+
+    WARDS.push({
+        room, name, age: +age,
+        sex: document.getElementById("pt-sex").value,
+        diagnosis,
+        risk: document.getElementById("pt-risk").value,
+        lastFall: "낙상 이력 없음"
+    });
+    WARDS.sort((a, b) => a.room.localeCompare(b.room));
+
+    ["pt-room", "pt-name", "pt-age", "pt-diag"].forEach(id => { document.getElementById(id).value = ""; });
+    err.innerText = "";
+    renderWardGrid();
+    renderPatients();
+    rcToast(name + " 님을 " + room + "호에 등록했습니다");
+}
+
+function dischargePatient(i) {
+    const w = WARDS[i];
+    // 연동된 보호자가 있으면 계정이 붕 뜨므로 먼저 연동을 풀게 한다
+    const linked = GUARDIANS.filter(g => g.patient.includes(w.room + "호"));
+    if (linked.length) {
+        rcToast(w.name + " 님과 연동된 보호자 계정(" + linked.map(g => g.id).join(", ") + ")이 있어 퇴원 처리할 수 없습니다");
+        return;
+    }
+    WARDS.splice(i, 1);
+    renderWardGrid();
+    renderPatients();
+    rcToast(w.name + " 님을 퇴원 처리했습니다");
+}
+
 // --- 낙상 이력 / 통계 ---  ※ TODO: 낙상 이력 API 연동
 const FALLS = [
     { time: "2026-07-15 11:05", room: "103", resp: "12초", fp: false },
@@ -2686,6 +3163,7 @@ function clearEventFilter() {
 
 renderRooms();
 renderPatient(selectedPatient);
+renderPatients();
 renderFalls();
 renderEvents();
 renderSettingsTheme();

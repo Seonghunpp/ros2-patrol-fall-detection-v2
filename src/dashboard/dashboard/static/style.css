@@ -1087,6 +1087,121 @@ body {
     background: var(--lp-accent);
 }
 
+/* ===== 보호자 연동 신청 (로그인 화면과 같은 뼈대를 쓴다) ===== */
+.apply-fields {
+    display: flex;
+    flex-direction: column;
+}
+
+.apply-label {
+    margin: 0 0 7px 2px;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--lp-ink);
+}
+
+.apply-fields .login-input { margin-bottom: 16px; }
+
+.apply-submit {
+    width: 100%;
+    padding: 15px;
+    margin-top: 4px;
+}
+
+/* 문단 안에 놓이는 글자 버튼 */
+.apply-link {
+    padding: 0;
+    border: none;
+    background: none;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--lp-accent);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+}
+
+.apply-link:hover { color: #0055aa; }
+
+/* 코드 입력칸 — 문자로 받은 코드와 같은 모양으로 */
+.redeem-code-input {
+    font-family: 'Courier New', monospace;
+    font-size: 20px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    text-align: center;
+}
+
+/* 코드 확인 후 어떤 환자와 연결되는지 보여주는 칸 */
+.redeem-linked {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-bottom: 24px;
+    padding: 18px 20px;
+    background: #f6f9ff;
+    border: 1px solid #e8eefc;
+    border-left: 3px solid var(--lp-accent);
+    border-radius: 12px;
+}
+
+.redeem-linked-label {
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    color: var(--lp-accent);
+}
+
+.redeem-linked strong {
+    font-size: 19px;
+    font-weight: 700;
+    color: var(--lp-ink);
+}
+
+.redeem-linked-sub {
+    font-size: 13px;
+    color: var(--lp-muted);
+}
+
+/* 제출 완료 화면 */
+.apply-done {
+    display: none;
+    max-width: 460px;
+    margin: 0 auto;
+    text-align: center;
+}
+
+.apply-done-ico {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 64px;
+    height: 64px;
+    margin: 0 auto 20px;
+    border-radius: 50%;
+    background: #e9f6ec;
+    color: #1a7f37;
+    font-size: 30px;
+    font-weight: 800;
+}
+
+.apply-done h2 {
+    margin: 0 0 12px;
+    font-size: 24px;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    color: var(--lp-ink);
+}
+
+.apply-done p {
+    margin: 0 0 28px;
+    font-size: 15px;
+    line-height: 1.65;
+    color: var(--lp-muted);
+}
+
 .login-aside-note {
     margin: 0;
     padding-top: 18px;
@@ -2115,10 +2230,9 @@ body {
     justify-content: center;
 }
 
-/* 건물 사진: 사진 전체(분수대·좌우 끝까지)가 잘리지 않게 담고(::after),
-   화면 비율과 안 맞아 남는 자리는 같은 사진을 크게 흐린 것으로 메운다(::before).
-   흐린 덕분에 두 겹의 경계가 보이지 않는다.
-   아래쪽 끝은 마스크로 부드럽게 풀어 다음 섹션으로 넘어갈 때 잘린 선이 보이지 않게 함 */
+/* 건물 사진을 담는 판. 사진 자체는 ::after가 그린다.
+   여기서는 스크롤에 따른 불투명도(--hero-bg-o)와 문구가 올라올 때의 흐림만 맡고,
+   아래쪽 끝은 마스크로 부드럽게 풀어 다음 섹션으로 넘어갈 때 잘린 선이 보이지 않게 한다 */
 .lp-hero-media {
     position: absolute;
     inset: -14px;       /* 흐림 처리된 가장자리가 화면 밖으로 나가게 */
@@ -2135,8 +2249,6 @@ body {
    화면이 사진보다 세로로 길어 위가 남으면, 사진 맨 윗줄 하늘색을 그대로 이어 붙여 메운다.
    (실측: 사진 최상단 픽셀이 좌 rgb(52,143,231) · 중 rgb(39,140,229) · 우 rgb(50,148,239))
    → 잘리는 곳도, 늘어나는 곳도, 빈 띠도 없다 */
-.lp-hero-media::before { content: none; }
-
 .lp-hero-media::after {
     content: "";
     position: absolute;
@@ -2145,7 +2257,7 @@ body {
                       linear-gradient(90deg, #348fe7 0%, #278ce5 50%, #3294ef 100%);
     background-size: 100% auto, 100% 100%;
     /* --hero-shift 만큼 사진을 아래로 내린다 (위쪽 하늘 여백이 그만큼 넓어짐) */
-    background-position: center calc(100% + var(--hero-shift, 60px)), center top;
+    background-position: center calc(100% + var(--hero-shift, 110px)), center top;
     background-repeat: no-repeat, no-repeat;
 }
 
@@ -2773,11 +2885,6 @@ html.reveal-on .rm-svc-grid .rm-svc-card:nth-child(8) { transition-delay: 0.49s;
 /* 폼 요소 */
 .form-label { display: block; font-size: 13px; font-weight: 600; color: var(--text-muted); margin: 6px 0; }
 .form-input { width: 100%; padding: 10px 12px; margin-bottom: 10px; border-radius: 6px; border: 1px solid var(--surface-border); background: var(--surface); color: var(--text); font-size: 14px; font-family: inherit; }
-
-/* 보호자 실시간 병실 */
-.glive-grid { display: grid; grid-template-columns: 1.5fr 1fr; gap: 18px; }
-.glive-grid .video-card { display: flex; flex-direction: column; }
-.glive-grid .video-box { aspect-ratio: 16 / 10; margin-top: 4px; }
 
 /* ============================================================
    관리자(admin) 화면 — Deep Navy #0f172a + Tech Blue #0284c7
@@ -3418,7 +3525,39 @@ html.reveal-on .rm-svc-grid .rm-svc-card:nth-child(8) { transition-delay: 0.49s;
 
 @media (max-width: 900px) {
     .g-cards3, .g-cards2 { grid-template-columns: 1fr; }
-    .glive-grid { grid-template-columns: 1fr; }
+}
+
+/* ===== 환자 등록 폼 (관리자 · 환자 관리) ===== */
+.pt-form {
+    display: grid;
+    grid-template-columns: 90px 1.2fr 80px 90px 2fr 110px auto;
+    gap: 14px;
+    align-items: end;
+}
+
+.pt-form .form-label { margin: 0 0 6px; }
+.pt-form .form-input { margin-bottom: 0; }
+.pt-form-wide { min-width: 0; }
+.pt-form-action .ctrl-btn { width: 100%; margin-top: 0; padding: 11px 16px; white-space: nowrap; }
+
+.pt-error {
+    min-height: 20px;
+    margin-top: 12px;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--danger);
+}
+
+@media (max-width: 1100px) {
+    .pt-form { grid-template-columns: repeat(3, 1fr); }
+    .pt-form-wide { grid-column: span 3; }
+    .pt-form-action { grid-column: span 3; }
+}
+
+@media (max-width: 620px) {
+    .pt-form { grid-template-columns: 1fr 1fr; }
+    .pt-form-wide,
+    .pt-form-action { grid-column: span 2; }
 }
 
 /* 패널 헤더에 버튼 */
@@ -3542,7 +3681,6 @@ html.reveal-on .rm-svc-grid .rm-svc-card:nth-child(8) { transition-delay: 0.49s;
     .stat-row-6 { grid-template-columns: repeat(3, 1fr); }
     .ahome-grid { grid-template-columns: 1fr; }
     .chart-grid { grid-template-columns: 1fr; }
-    .glive-grid { grid-template-columns: 1fr; }
     .robot-layout { grid-template-columns: 1fr; }
 }
 @media (max-width: 560px) {
