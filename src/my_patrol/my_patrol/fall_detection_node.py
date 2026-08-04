@@ -31,7 +31,7 @@ class FallJudge:
         self.threshold_count = threshold_count
         self.fall_count = 0
 
-    def _is_torso_horizontal(self, keypoints, keypoint_scores):
+    def _check_torso_horizontal(self, keypoints, keypoint_scores):
         required = (5, 6, 11, 12) #관절 번호
 
         if keypoints is None or keypoint_scores is None:
