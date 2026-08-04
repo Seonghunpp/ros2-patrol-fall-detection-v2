@@ -1152,9 +1152,10 @@
                 <div>
                     <label class="form-label" for="pt-risk">위험도</label>
                     <select id="pt-risk" class="form-input">
-                        <option value="high">고위험</option>
-                        <option value="mid">중위험</option>
-                        <option value="low" selected>일반</option>
+                        <option value="낮음" selected>낮음</option>
+                        <option value="보통">보통</option>
+                        <option value="높음">높음</option>
+                        <option value="매우 높음">매우 높음</option>
                     </select>
                 </div>
                 <div class="pt-form-action">
@@ -1720,7 +1721,7 @@ function closeApply() {
     document.getElementById("apply-overlay").classList.remove("open");
 }
 
-function submitApply() {
+async function submitApply() {
     const val = id => document.getElementById(id).value.trim();
     const name = val("apply-name");
     const phone = val("apply-phone");
@@ -1745,12 +1746,21 @@ function submitApply() {
         return;
     }
 
-    const now = new Date();
-    const at = `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())} ` +
-               `${pad2(now.getHours())}:${pad2(now.getMinutes())}`;
-
-    PENDING.push({ name, phone, patient: `${patient} (${room}호)`, at, status: "pending" });
-    renderPending();   // 관리자 화면을 열어두지 않아도 목록에 반영해 둔다
+    try {
+        const res = await fetch("/api/apply", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name, phone, patient, room }),
+        });
+        const data = await res.json();
+        if (!data.ok) {
+            err.innerText = data.error || "신청 중 오류가 발생했습니다.";
+            return;
+        }
+    } catch (e) {
+        err.innerText = "서버에 연결할 수 없습니다.";
+        return;
+    }
 
     err.innerText = "";
     ["apply-name", "apply-phone", "apply-patient", "apply-room"]
@@ -1786,33 +1796,38 @@ function closeRedeem() {
     document.getElementById("redeem-overlay").classList.remove("open");
 }
 
-function verifyCode() {
+async function verifyCode() {
     const code = document.getElementById("redeem-code").value.trim().toUpperCase();
     const err = document.getElementById("redeem-error");
 
     if (!code) { err.innerText = "매핑 코드를 입력해 주세요."; return; }
 
-    const found = PENDING.find(p => p.code === code);
-    if (!found || found.status === "rejected") {
-        err.innerText = "승인된 코드를 찾을 수 없습니다. 문자로 받은 코드를 확인해 주세요.";
-        return;
-    }
-    if (found.status === "registered") {
-        err.innerText = "이미 계정이 만들어진 코드입니다. 로그인해 주세요.";
-        return;
-    }
+    try {
+        const res = await fetch("/api/verify-code", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ code }),
+        });
+        const data = await res.json();
+        if (!data.ok) {
+            err.innerText = data.error || "코드를 확인할 수 없습니다.";
+            return;
+        }
 
-    redeemEntry = found;
-    err.innerText = "";
-    document.getElementById("redeem-linked").innerHTML =
-        '<span class="redeem-linked-label">연결될 환자</span>' +
-        `<strong>${found.patient}</strong>` +
-        `<span class="redeem-linked-sub">신청자 ${found.name} · 코드 ${found.code}</span>`;
-    showRedeemStep(2);
-    document.getElementById("redeem-id").focus();
+        redeemEntry = { code, name: data.name, patient: data.patient };
+        err.innerText = "";
+        document.getElementById("redeem-linked").innerHTML =
+            '<span class="redeem-linked-label">연결될 환자</span>' +
+            `<strong>${data.patient}</strong>` +
+            `<span class="redeem-linked-sub">신청자 ${data.name} · 코드 ${code}</span>`;
+        showRedeemStep(2);
+        document.getElementById("redeem-id").focus();
+    } catch (e) {
+        err.innerText = "서버에 연결할 수 없습니다.";
+    }
 }
 
-function submitRedeem() {
+async function submitRedeem() {
     const id = document.getElementById("redeem-id").value.trim();
     const pw = document.getElementById("redeem-pw").value;
     const pw2 = document.getElementById("redeem-pw2").value;
@@ -1820,27 +1835,29 @@ function submitRedeem() {
 
     if (!redeemEntry) { showRedeemStep(1); return; }
     if (id.length < 4) { err.innerText = "아이디는 4자 이상 입력해 주세요."; return; }
-    if (USERS[id]) { err.innerText = "이미 사용 중인 아이디입니다."; return; }
     if (pw.length < 4) { err.innerText = "비밀번호는 4자 이상 입력해 주세요."; return; }
     if (pw !== pw2) { err.innerText = "비밀번호가 서로 다릅니다."; return; }
 
-    USERS[id] = { pw, role: "guardian", name: redeemEntry.name + " · 보호자" };
-    GUARDIANS.push({
-        name: redeemEntry.name,
-        id,
-        patient: redeemEntry.patient,
-        code: redeemEntry.code
-    });
-    redeemEntry.status = "registered";
+    try {
+        const res = await fetch("/api/redeem", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ code: redeemEntry.code, username: id, password: pw }),
+        });
+        const data = await res.json();
+        if (!data.ok) {
+            err.innerText = data.error || "가입 중 오류가 발생했습니다.";
+            return;
+        }
 
-    renderPending();
-    renderGuardians();
-
-    document.getElementById("redeem-done-msg").innerHTML =
-        `<b>${redeemEntry.patient}</b> 보호자로 연동되었습니다.<br>` +
-        `아이디 <b>${id}</b> 로 로그인하시면 담당 병실을 확인할 수 있습니다.`;
-    err.innerText = "";
-    showRedeemStep(3);
+        document.getElementById("redeem-done-msg").innerHTML =
+            `<b>${data.patient}</b> 보호자로 연동되었습니다.<br>` +
+            `아이디 <b>${id}</b> 로 로그인하시면 담당 병실을 확인할 수 있습니다.`;
+        err.innerText = "";
+        showRedeemStep(3);
+    } catch (e) {
+        err.innerText = "서버에 연결할 수 없습니다.";
+    }
 }
 
 // 스크롤 시 섹션이 페이드+슬라이드업으로 등장 (스크롤 위치 기반 · 확실)
@@ -2151,13 +2168,11 @@ function renderNav() {
 // 병실별 위험도 태그 (실서비스에서는 환자 위험도 API로 대체)
 // 환자 정보 원본 — 관리자 '환자 관리'에서 등록·수정하고,
 // 병실 모니터링 그리드가 이 값을 그대로 쓴다
-const RISK_TEXT = { high: "고위험", mid: "중위험", low: "일반" };
-
 const WARDS = [
-    { room: "101", name: "홍길동", age: 78, sex: "남", diagnosis: "뇌졸중 후유증",    risk: "high", lastFall: "2026-07-14 03:20" },
-    { room: "102", name: "김영수", age: 72, sex: "남", diagnosis: "고관절 골절 회복", risk: "low",  lastFall: "2026-07-02 21:10" },
-    { room: "103", name: "이순자", age: 81, sex: "여", diagnosis: "파킨슨병",         risk: "mid",  lastFall: "2026-07-15 11:05" },
-    { room: "104", name: "최판서", age: 69, sex: "남", diagnosis: "당뇨 · 저혈압",    risk: "low",  lastFall: "낙상 이력 없음" }
+    { room: "101", name: "홍길동", age: 78, sex: "남", diagnosis: "뇌졸중 후유증",    risk: "높음", lastFall: "2026-07-14 03:20" },
+    { room: "102", name: "김영수", age: 72, sex: "남", diagnosis: "고관절 골절 회복", risk: "낮음", lastFall: "2026-07-02 21:10" },
+    { room: "103", name: "이순자", age: 81, sex: "여", diagnosis: "파킨슨병",         risk: "보통", lastFall: "2026-07-15 11:05" },
+    { room: "104", name: "최판서", age: 69, sex: "남", diagnosis: "당뇨 · 저혈압",    risk: "낮음", lastFall: "낙상 이력 없음" }
 ];
 
 function renderWardGrid() {
@@ -2177,7 +2192,7 @@ function renderWardGrid() {
              </div>
              <div class="ward-meta">
                  <strong>병실 ${w.room}</strong>
-                 <span class="risk-chip risk-${w.risk}">${RISK_TEXT[w.risk]}</span>
+                 <span class="risk-chip risk-${riskClass(w.risk)}">${w.risk}</span>
              </div>
              <span class="ward-patient">${w.name} 님</span>`;
         grid.appendChild(cell);
@@ -2252,31 +2267,37 @@ function renderGuardians() {
     });
 }
 
-function renderPending() {
+async function renderPending() {
     const tb = document.getElementById("acc-pending-tbody");
     if (!tb) return;
-    tb.innerHTML = "";
-    PENDING.forEach((p, i) => {
-        const tr = document.createElement("tr");
-        const badge = p.status === "registered"
-            ? '<span class="risk-chip risk-low">Registered</span>'
-            : p.status === "approved"
-                ? '<span class="risk-chip risk-mid">Approved</span>'
-                : p.status === "rejected"
-                    ? '<span class="risk-chip risk-high">Rejected</span>'
-                    : '<span class="risk-chip risk-mid">Pending</span>';
-        const actions = p.status === "pending"
-            ? `<button class="mini-btn" onclick="approveGuardian(${i})">승인</button>
-               <button class="mini-btn mini-danger" onclick="rejectGuardian(${i})">거절</button>`
-            : p.code ? `<code class="g-code">${p.code}</code>` : "-";
-        tr.innerHTML =
-            `<td>${p.name}</td><td>${p.phone}</td><td>${p.patient}</td><td>${p.at}</td>` +
-            `<td>${badge}</td><td class="row-actions">${actions}</td>`;
-        tb.appendChild(tr);
-    });
-    const n = PENDING.filter(p => p.status === "pending").length;
-    const badge = document.getElementById("acc-pending-count");
-    if (badge) badge.innerText = n;
+    try {
+        const res = await fetch("/api/applications");
+        if (!res.ok) return;
+        const data = await res.json();
+        const applications = data.applications || [];
+        tb.innerHTML = "";
+        applications.forEach(p => {
+            const tr = document.createElement("tr");
+            const badge = p.status === "registered"
+                ? '<span class="risk-chip risk-low">Registered</span>'
+                : p.status === "approved"
+                    ? '<span class="risk-chip risk-mid">Approved</span>'
+                    : p.status === "rejected"
+                        ? '<span class="risk-chip risk-high">Rejected</span>'
+                        : '<span class="risk-chip risk-mid">Pending</span>';
+            const actions = p.status === "pending"
+                ? `<button class="mini-btn" onclick="approveGuardian(${p.id})">승인</button>
+                   <button class="mini-btn mini-danger" onclick="rejectGuardian(${p.id})">거절</button>`
+                : p.code ? `<code class="g-code">${p.code}</code>` : "-";
+            tr.innerHTML =
+                `<td>${p.name}</td><td>${p.phone}</td><td>${p.patient}</td><td>${p.at}</td>` +
+                `<td>${badge}</td><td class="row-actions">${actions}</td>`;
+            tb.appendChild(tr);
+        });
+        const n = applications.filter(p => p.status === "pending").length;
+        const badge = document.getElementById("acc-pending-count");
+        if (badge) badge.innerText = n;
+    } catch (e) { console.error(e); }
 }
 
 // 보호자 계정 목록 — users + patients 실제 DB 조회 (매핑 코드/권한 변경은 아직 데모)
@@ -2295,7 +2316,7 @@ async function renderGuardianAccounts() {
                 `<td>${a.name || "-"}</td><td>${a.username}</td><td>${patientText}</td>` +
                 `<td>-</td>` +
                 `<td><select class="form-input form-input-sm" onchange="rcToast('권한이 변경되었습니다 (데모)')"><option>GUARDIAN</option><option>NURSE</option><option>ADMIN</option></select></td>` +
-                `<td class="row-actions"><button class="mini-btn mini-danger" onclick="rcToast('접근이 차단되었습니다 (데모)')">접근 차단</button></td>`;
+                `<td class="row-actions"><button class="mini-btn mini-danger" onclick="deleteGuardianAccount(${a.id}, '${a.username}')">삭제</button></td>`;
             tb.appendChild(tr);
         });
         if (!data.accounts || !data.accounts.length) {
@@ -2304,43 +2325,43 @@ async function renderGuardianAccounts() {
     } catch (e) { console.error(e); }
 }
 
+async function deleteGuardianAccount(userId, username) {
+    if (!confirm(`'${username}' 계정을 삭제할까요? 연결된 환자 정보도 함께 삭제되며 되돌릴 수 없습니다.`)) return;
+    try {
+        const res = await fetch(`/api/guardian-accounts/${userId}/delete`, { method: "POST" });
+        const data = await res.json();
+        if (!data.ok) {
+            rcToast(data.error || "삭제 중 오류가 발생했습니다.");
+            return;
+        }
+        await renderGuardianAccounts();
+        rcToast(username + " 계정을 삭제했습니다");
+    } catch (e) { console.error(e); }
+}
+
 // 승인하면 보호자–환자 매핑 코드를 발행한다
 // 매핑 코드 생성 — KJ-XXXX-XXXX (16진수 8자리 = 약 43억 가지)
 // 병실 번호처럼 밖에서 알 수 있는 값은 넣지 않는다. 넣으면 추측 범위가 그만큼 좁아진다.
 // 이미 쓰인 코드(승인 대기 · 가입 완료)와 겹치면 다시 뽑는다.
-function newMappingCode() {
-    const used = new Set(
-        PENDING.map(p => p.code).concat(GUARDIANS.map(g => g.code)).filter(Boolean)
-    );
-
-    for (let tries = 0; tries < 50; tries++) {
-        const buf = new Uint16Array(2);
-        crypto.getRandomValues(buf);
-        const code = "KJ-" + Array.from(buf)
-            .map(n => n.toString(16).toUpperCase().padStart(4, "0"))
-            .join("-");
-        if (!used.has(code)) return code;
-    }
-    return null;   // 사실상 도달하지 않지만 무한 반복은 막는다
+async function approveGuardian(id) {
+    try {
+        const res = await fetch(`/api/applications/${id}/approve`, { method: "POST" });
+        const data = await res.json();
+        if (!data.ok) {
+            rcToast(data.error || "승인 중 오류가 발생했습니다.");
+            return;
+        }
+        await renderPending();
+        rcToast("승인 완료 · 매핑 코드 " + data.code + " 발송 (실제 전달은 관리자가 직접)");
+    } catch (e) { console.error(e); }
 }
 
-function approveGuardian(i) {
-    const p = PENDING[i];
-    const code = newMappingCode();
-    if (!code) {
-        rcToast("매핑 코드를 만들지 못했습니다. 다시 시도해 주세요.");
-        return;
-    }
-    p.status = "approved";
-    p.code = code;
-    renderPending();
-    rcToast(p.name + " 님 승인 완료 · 매핑 코드 " + p.code + " 발송 (데모)");
-}
-
-function rejectGuardian(i) {
-    PENDING[i].status = "rejected";
-    renderPending();
-    rcToast(PENDING[i].name + " 님 신청을 거절했습니다");
+async function rejectGuardian(id) {
+    try {
+        await fetch(`/api/applications/${id}/reject`, { method: "POST" });
+        await renderPending();
+        rcToast("신청을 거절했습니다");
+    } catch (e) { console.error(e); }
 }
 
 // ===== 보호자 화면 =====
@@ -2419,6 +2440,8 @@ function doLogin() {
                 renderGuardian();
                 goHome();
                 loadMyPatient();
+                renderPending();
+                renderGuardianAccounts();
             } else {
                 document.getElementById("login-error").innerText = data.error || "아이디 또는 비밀번호가 올바르지 않습니다.";
             }
@@ -2546,6 +2569,7 @@ function switchVideo(mode) {
 async function updateStatus() {
     try {
         const res = await fetch("/api/status");
+        if (!res.ok) return;  // 로그인 전(401)에는 fall_alert_id가 없어서 오작동하니 여기서 무시
         const data = await res.json();
 
         document.querySelectorAll(".room").forEach(room => {
@@ -2982,8 +3006,8 @@ function renderPatients() {
     if (!tb) return;
     tb.innerHTML = "";
     WARDS.forEach((w, i) => {
-        const options = ["high", "mid", "low"]
-            .map(r => `<option value="${r}"${w.risk === r ? " selected" : ""}>${RISK_TEXT[r]}</option>`)
+        const options = RISK_LEVELS
+            .map(r => `<option value="${r}"${w.risk === r ? " selected" : ""}>${r}</option>`)
             .join("");
         const tr = document.createElement("tr");
         tr.innerHTML =
@@ -3002,7 +3026,7 @@ function setPatientRisk(i, risk) {
     WARDS[i].risk = risk;
     renderWardGrid();
     renderPatients();
-    rcToast(WARDS[i].name + " 님 위험도를 " + RISK_TEXT[risk] + "(으)로 변경했습니다");
+    rcToast(WARDS[i].name + " 님 위험도를 " + risk + "(으)로 변경했습니다");
 }
 
 function addPatient() {

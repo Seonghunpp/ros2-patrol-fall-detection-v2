@@ -1,11 +1,13 @@
 import os
+import secrets
 import threading
 import time
 from functools import wraps
 
 import mysql.connector
+from cryptography.fernet import Fernet, InvalidToken
 from flask import Flask, Response, jsonify, render_template, request, session
-from werkzeug.security import check_password_hash
+from werkzeug.security import check_password_hash, generate_password_hash
 
 try:
     import rclpy
@@ -34,6 +36,33 @@ DB_CONFIG = {
 
 def get_db():
     return mysql.connector.connect(**DB_CONFIG)
+
+
+# ===== 개인정보 필드 암호화 (이름/전화번호/보호자명) =====
+# FIELD_ENCRYPT_KEY가 없으면 서버를 못 켜게 해서, 암호화 없이 개인정보가 저장되는 걸 막는다
+_encrypt_key = os.environ.get("FIELD_ENCRYPT_KEY")
+if not _encrypt_key:
+    raise RuntimeError(
+        "FIELD_ENCRYPT_KEY 환경변수가 설정되지 않았습니다. "
+        "python3 -c \"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())\" "
+        "로 키를 만들어서 export FIELD_ENCRYPT_KEY=... 로 지정해 주세요."
+    )
+_fernet = Fernet(_encrypt_key.encode())
+
+
+def encrypt_field(value):
+    if value is None or value == "":
+        return None
+    return _fernet.encrypt(str(value).encode()).decode()
+
+
+def decrypt_field(value):
+    if value is None:
+        return None
+    try:
+        return _fernet.decrypt(value.encode()).decode()
+    except (InvalidToken, ValueError):
+        return value  # 암호화 이전에 평문으로 들어간 값 등 — 그대로 반환
 
 
 def login_required(view_func):
@@ -347,6 +376,196 @@ def api_logout():
     return jsonify({"ok": True})
 
 
+def generate_mapping_code():
+    return "KJ-" + secrets.token_hex(2).upper() + "-" + secrets.token_hex(2).upper()
+
+
+# ===== 보호자 연동 신청 -> 승인(매핑코드) -> 코드로 계정 생성 =====
+
+@app.route("/api/apply", methods=["POST"])
+def api_apply():
+    body = request.get_json(silent=True) or {}
+    name = str(body.get("name", "")).strip()
+    phone = str(body.get("phone", "")).strip()
+    patient = str(body.get("patient", "")).strip()
+    room = str(body.get("room", "")).strip()
+
+    if not name or not phone or not patient or not room:
+        return jsonify({"ok": False, "error": "모든 항목을 입력해 주세요."}), 400
+
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute(
+        "INSERT INTO guardian_applications (applicant_name, phone, patient_name, room_number) VALUES (%s, %s, %s, %s)",
+        (encrypt_field(name), encrypt_field(phone), encrypt_field(patient), room),
+    )
+    conn.commit()
+    cursor.close()
+    conn.close()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/applications")
+@login_required
+def api_applications():
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute(
+        "SELECT id, applicant_name, phone, patient_name, room_number, status, mapping_code, applied_at "
+        "FROM guardian_applications ORDER BY id DESC"
+    )
+    rows = cursor.fetchall()
+    cursor.close()
+    conn.close()
+
+    applications = [{
+        "id": r["id"],
+        "name": decrypt_field(r["applicant_name"]),
+        "phone": decrypt_field(r["phone"]),
+        "patient": f"{decrypt_field(r['patient_name'])} ({r['room_number']}호)",
+        "at": r["applied_at"].strftime("%Y-%m-%d %H:%M") if r["applied_at"] else "",
+        "status": r["status"],
+        "code": r["mapping_code"],
+    } for r in rows]
+    return jsonify({"ok": True, "applications": applications})
+
+
+@app.route("/api/applications/<int:app_id>/approve", methods=["POST"])
+@login_required
+def api_application_approve(app_id):
+    conn = get_db()
+    cursor = conn.cursor()
+
+    code = None
+    for _ in range(20):
+        candidate = generate_mapping_code()
+        cursor.execute("SELECT id FROM guardian_applications WHERE mapping_code = %s", (candidate,))
+        if cursor.fetchone() is None:
+            code = candidate
+            break
+    if code is None:
+        cursor.close()
+        conn.close()
+        return jsonify({"ok": False, "error": "매핑 코드를 만들지 못했습니다. 다시 시도해 주세요."}), 500
+
+    cursor.execute(
+        "UPDATE guardian_applications SET status = 'approved', mapping_code = %s WHERE id = %s AND status = 'pending'",
+        (code, app_id),
+    )
+    conn.commit()
+    updated = cursor.rowcount
+    cursor.close()
+    conn.close()
+
+    if not updated:
+        return jsonify({"ok": False, "error": "이미 처리된 신청입니다."}), 400
+    return jsonify({"ok": True, "code": code})
+
+
+@app.route("/api/applications/<int:app_id>/reject", methods=["POST"])
+@login_required
+def api_application_reject(app_id):
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute(
+        "DELETE FROM guardian_applications WHERE id = %s AND status = 'pending'",
+        (app_id,),
+    )
+    conn.commit()
+    cursor.close()
+    conn.close()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/verify-code", methods=["POST"])
+def api_verify_code():
+    body = request.get_json(silent=True) or {}
+    code = str(body.get("code", "")).strip().upper()
+    if not code:
+        return jsonify({"ok": False, "error": "매핑 코드를 입력해 주세요."}), 400
+
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute(
+        "SELECT applicant_name, patient_name, room_number, status FROM guardian_applications WHERE mapping_code = %s",
+        (code,),
+    )
+    app_row = cursor.fetchone()
+    cursor.close()
+    conn.close()
+
+    if not app_row or app_row["status"] == "rejected":
+        return jsonify({"ok": False, "error": "승인된 코드를 찾을 수 없습니다. 문자로 받은 코드를 확인해 주세요."}), 404
+    if app_row["status"] == "registered":
+        return jsonify({"ok": False, "error": "이미 계정이 만들어진 코드입니다. 로그인해 주세요."}), 400
+
+    return jsonify({
+        "ok": True,
+        "name": decrypt_field(app_row["applicant_name"]),
+        "patient": f"{decrypt_field(app_row['patient_name'])} ({app_row['room_number']}호)",
+    })
+
+
+@app.route("/api/redeem", methods=["POST"])
+def api_redeem():
+    body = request.get_json(silent=True) or {}
+    code = str(body.get("code", "")).strip().upper()
+    username = str(body.get("username", "")).strip()
+    password = str(body.get("password", ""))
+
+    if not code or not username or not password:
+        return jsonify({"ok": False, "error": "필요한 값이 누락되었습니다."}), 400
+
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
+    try:
+        cursor.execute(
+            "SELECT id, applicant_name, phone, patient_name, room_number, status "
+            "FROM guardian_applications WHERE mapping_code = %s",
+            (code,),
+        )
+        app_row = cursor.fetchone()
+        if not app_row or app_row["status"] != "approved":
+            return jsonify({"ok": False, "error": "유효한 승인 코드가 아닙니다."}), 400
+
+        cursor.execute("SELECT id FROM users WHERE username = %s", (username,))
+        if cursor.fetchone() is not None:
+            return jsonify({"ok": False, "error": "이미 사용 중인 아이디입니다."}), 400
+
+        write_cursor = conn.cursor()
+        write_cursor.execute(
+            "INSERT INTO users (username, password_hash, role) VALUES (%s, %s, 'user')",
+            (username, generate_password_hash(password)),
+        )
+        user_id = write_cursor.lastrowid
+
+        write_cursor.execute(
+            "INSERT INTO patients (name, phone, room_number, guardian, user_id) VALUES (%s, %s, %s, %s, %s)",
+            (
+                encrypt_field(decrypt_field(app_row["patient_name"])),
+                encrypt_field(decrypt_field(app_row["phone"])),
+                app_row["room_number"],
+                encrypt_field(decrypt_field(app_row["applicant_name"])),
+                user_id,
+            ),
+        )
+        write_cursor.execute(
+            "DELETE FROM guardian_applications WHERE id = %s",
+            (app_row["id"],),
+        )
+        conn.commit()
+        write_cursor.close()
+    except mysql.connector.Error:
+        conn.rollback()
+        return jsonify({"ok": False, "error": "가입 중 오류가 발생했습니다."}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+    patient_display = f"{decrypt_field(app_row['patient_name'])} ({app_row['room_number']}호)"
+    return jsonify({"ok": True, "patient": patient_display})
+
+
 @app.route("/api/session")
 def api_session():
     if session.get("user"):
@@ -377,7 +596,27 @@ def api_guardian_accounts():
     accounts = cursor.fetchall()
     cursor.close()
     conn.close()
+    for a in accounts:
+        a["name"] = decrypt_field(a["name"])
     return jsonify({"ok": True, "accounts": accounts})
+
+
+@app.route("/api/guardian-accounts/<int:user_id>/delete", methods=["POST"])
+@login_required
+def api_guardian_account_delete(user_id):
+    conn = get_db()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("DELETE FROM patients WHERE user_id = %s", (user_id,))
+        cursor.execute("DELETE FROM users WHERE id = %s AND role != 'admin'", (user_id,))
+        conn.commit()
+    except mysql.connector.Error:
+        conn.rollback()
+        return jsonify({"ok": False, "error": "삭제 중 오류가 발생했습니다."}), 500
+    finally:
+        cursor.close()
+        conn.close()
+    return jsonify({"ok": True})
 
 
 @app.route("/api/patrol-log")
@@ -419,6 +658,10 @@ def api_my_patient():
     patient = cursor.fetchone()
     cursor.close()
     conn.close()
+    if patient:
+        patient["name"] = decrypt_field(patient["name"])
+        patient["phone"] = decrypt_field(patient["phone"])
+        patient["guardian"] = decrypt_field(patient["guardian"])
     return jsonify({"ok": True, "patient": patient})
 
 

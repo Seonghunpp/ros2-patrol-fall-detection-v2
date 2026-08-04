@@ -9,18 +9,19 @@ CREATE TABLE IF NOT EXISTS users (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- name/phone/guardian은 암호화해서 저장 (양방향 암호화라 컬럼을 넉넉하게 잡음)
 CREATE TABLE IF NOT EXISTS patients (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    name VARCHAR(50) NOT NULL,
-    phone VARCHAR(20),
+    name VARCHAR(255) NOT NULL,
+    phone VARCHAR(255),
     disease VARCHAR(100),
     room_number VARCHAR(10),
     age INT,
     sex VARCHAR(5),
-    risk_level VARCHAR(10),   
+    risk_level VARCHAR(10),
     marker_id INT,
     user_id INT UNIQUE,
-    guardian VARCHAR(50),
+    guardian VARCHAR(255),
     FOREIGN KEY (user_id) REFERENCES users(id)
 );
 
@@ -40,10 +41,22 @@ CREATE TABLE IF NOT EXISTS checklist (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- 순찰 완료 로그 (로봇이 병실을 순찰하고 떠날 때마다 자동 기록)
 CREATE TABLE IF NOT EXISTS patrol_log (
     id INT AUTO_INCREMENT PRIMARY KEY,
     room_number VARCHAR(10) NOT NULL,
     patrolled_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 보호자 연동 신청 (신청 -> 관리자 승인(매핑코드 발급) -> 신청자가 코드로 계정 생성)
+-- applicant_name/phone/patient_name도 암호화해서 저장
+CREATE TABLE IF NOT EXISTS guardian_applications (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    applicant_name VARCHAR(255) NOT NULL,
+    phone VARCHAR(255) NOT NULL,
+    patient_name VARCHAR(255) NOT NULL,
+    room_number VARCHAR(10) NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'pending',   -- pending / approved / rejected / registered
+    mapping_code VARCHAR(20) UNIQUE,
+    applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
