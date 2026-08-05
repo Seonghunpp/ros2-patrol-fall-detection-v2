@@ -22,7 +22,7 @@ except Exception:
     ROS_AVAILABLE = False
 
 
-app = Flask(__name__)
+app = Flask(__name__, static_url_path="")
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "dev-secret-change-me")
 
 DB_CONFIG = {
@@ -587,7 +587,7 @@ def api_guardian_accounts():
     conn = get_db()
     cursor = conn.cursor(dictionary=True)
     cursor.execute("""
-        SELECT u.id, u.username, p.name, p.room_number
+        SELECT u.id, u.username, p.name, p.room_number, p.guardian
         FROM users u
         LEFT JOIN patients p ON p.user_id = u.id
         WHERE u.role != 'admin'
@@ -598,6 +598,7 @@ def api_guardian_accounts():
     conn.close()
     for a in accounts:
         a["name"] = decrypt_field(a["name"])
+        a["guardian"] = decrypt_field(a["guardian"])
     return jsonify({"ok": True, "accounts": accounts})
 
 
