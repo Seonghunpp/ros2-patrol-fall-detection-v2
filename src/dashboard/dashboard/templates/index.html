@@ -189,7 +189,7 @@
                     <div>
                         <h3>관제 &amp; 데이터 계층 <span>Platform &amp; DB Layer</span></h3>
                         <dl class="ab-tier-list">
-                            <div><dt>통합 DB</dt><dd>환자 정보, 보호자·간호사 권한, 낙상 이력 및 오탐 대응 데이터를 관리 및 저장합니다.</dd></div>
+                            <div><dt>통합 DB</dt><dd>환자 정보, 보호자·간호사 권한, 낙상 이력 및 대응 데이터를 관리 및 저장합니다.</dd></div>
                             <div><dt>웹 대시보드 &amp; 모바일 앱</dt><dd>실시간 영상 스트리밍, 위험도 표시 지도, 팝업·소리 알림 및 푸시 알림을 제공합니다.</dd></div>
                         </dl>
                     </div>
@@ -293,7 +293,6 @@
                 <p class="fx-lead">감지부터 간호사의 현장 조치까지 모든 과정을 체계적으로 관리합니다.</p>
                 <ul class="fx-list">
                     <li><strong>타임라인 기반 이력 기록</strong>병실 진입, 낙상 감지, 알림 발송, 대응 완료까지 전 과정을 초 단위로 자동 기록합니다.</li>
-                    <li><strong>대응 시간(골든타임) 측정</strong>알림이 발생한 시점부터 간호사가 현장 확인을 마칠 때까지 걸린 시간을 DB와 연동해 실시간으로 측정합니다.</li>
                     <li><strong>이벤트 검색과 필터</strong>병실별·날짜별·상황별로 지난 이벤트를 손쉽게 찾아볼 수 있습니다.</li>
                 </ul>
             </div>
@@ -385,9 +384,9 @@
     <div class="page g-page">
         <header class="g-hero g-hero--photo">
             <div class="g-hero-copy">
-                <span class="g-hero-eyebrow">보호자 전용 · 101호</span>
+                <span class="g-hero-eyebrow">보호자 전용 · <span id="g-hero-room">-</span></span>
                 <h2>안녕하세요, <span id="g-greet-name">보호자</span> 님</h2>
-                <p><strong>홍길동</strong> 님의 오늘 상태를 한눈에 확인하세요.</p>
+                <p><strong id="g-hero-patient">-</strong> 님의 오늘 상태를 한눈에 확인하세요.</p>
             </div>
             <span class="g-chip g-chip-ok"><i></i>현재 안정</span>
         </header>
@@ -401,7 +400,7 @@
             </div>
             <div class="stat-tile">
                 <span class="stat-tile-label">병실 번호</span>
-                <span class="stat-tile-num">101<span class="stat-tile-unit">호</span></span>
+                <span class="stat-tile-num" id="g-tile-room">-</span>
             </div>
             <div class="stat-tile">
                 <span class="stat-tile-label">최근 순찰 시각</span>
@@ -410,19 +409,28 @@
             </div>
             <div class="stat-tile">
                 <span class="stat-tile-label">오늘의 알림 · 이벤트</span>
-                <span class="stat-tile-num">0<span class="stat-tile-unit">건</span></span>
-                <span class="stat-tile-sub">낙상 감지 없음</span>
+                <span class="stat-tile-num" id="g-today-events">0<span class="stat-tile-unit">건</span></span>
+                <span class="stat-tile-sub" id="g-today-events-sub">낙상 감지 없음</span>
             </div>
         </div>
 
+        <!-- 간호사가 현장에서 환자를 특정한 낙상만 이곳으로 넘어온다 -->
+        <div class="panel" id="g-fall-panel" style="margin-top:18px; display:none;">
+            <div class="panel-head panel-head-row">
+                낙상 알림 기록
+                <span class="g-log-count">간호사 확인 완료 건</span>
+            </div>
+            <ul class="timeline" id="g-fall-list"></ul>
+        </div>
+
         <div class="panel" style="margin-top:18px;">
-            <div class="panel-head">오늘의 순찰 기록</div>
-            <ul class="timeline">
-                <li><span class="tl-time">16:20</span><span>정기 순찰 완료 · <span class="g-ok">이상 없음</span></span></li>
-                <li><span class="tl-time">12:05</span><span>정기 순찰 완료 · <span class="g-ok">이상 없음</span></span></li>
-                <li><span class="tl-time">10:40</span><span>정기 순찰 완료 · <span class="g-ok">이상 없음</span></span></li>
-                <li><span class="tl-time">08:00</span><span>오전 순찰 시작</span></li>
-            </ul>
+            <div class="panel-head panel-head-row">
+                오늘의 순찰 기록
+                <span class="g-log-count">총 <strong id="g-patrol-count">0</strong>회 · 최신순</span>
+            </div>
+            <div class="g-log-scroll">
+                <ul class="timeline" id="g-patrol-log"><!-- renderPatrolLog()로 채움 --></ul>
+            </div>
         </div>
 
         <div class="lp-center" style="margin-top:20px;">
@@ -448,13 +456,13 @@
             <div class="panel">
                 <div class="panel-head">담당 환자 프로필</div>
                 <dl class="pd-list">
-                    <div><dt>이름</dt><dd>홍길동</dd></div>
-                    <div><dt>나이 · 성별</dt><dd>78세 · 남</dd></div>
-                    <div><dt>주요 질환</dt><dd>뇌졸중 후유증</dd></div>
-                    <div><dt>낙상 위험도</dt><dd><span class="risk-chip risk-high">위험</span></dd></div>
-                    <div><dt>최근 낙상 기록</dt><dd>2026-07-14 03:20</dd></div>
+                    <div><dt>이름</dt><dd id="g-pt-name">-</dd></div>
+                    <div><dt>나이 · 성별</dt><dd id="g-pt-age">-</dd></div>
+                    <div><dt>주요 질환</dt><dd id="g-pt-dx">-</dd></div>
+                    <div><dt>낙상 위험도</dt><dd id="g-pt-risk">-</dd></div>
+                    <div><dt>최근 낙상 기록</dt><dd id="g-pt-lastfall">-</dd></div>
                 </dl>
-                <div class="g-alert-note">
+                <div class="g-alert-note" id="g-pt-note">
                     고위험군 환자입니다. 순찰 로봇이 야간에도 집중 감시합니다.
                 </div>
             </div>
@@ -463,10 +471,10 @@
             <div class="panel">
                 <div class="panel-head">병실 상세 정보</div>
                 <dl class="pd-list">
-                    <div><dt>병실 번호</dt><dd>101호</dd></div>
+                    <div><dt>병실 번호</dt><dd id="g-room-no">-</dd></div>
                     <div><dt>현재 환자 상태</dt><dd><span class="g-ok">안정</span></dd></div>
                     <div><dt>최근 감지</dt><dd>없음</dd></div>
-                    <div><dt>병상 유형</dt><dd>4인실</dd></div>
+                    <div><dt>병상 유형</dt><dd id="g-room-type">-</dd></div>
                 </dl>
             </div>
 
@@ -474,8 +482,8 @@
             <div class="panel">
                 <div class="panel-head">담당 의료진 · 케어 안내</div>
                 <dl class="pd-list">
-                    <div><dt>담당 간호사</dt><dd>김간호</dd></div>
-                    <div><dt>간호사 번호</dt><dd>02-1234-5678</dd></div>
+                    <div><dt>담당 간호사</dt><dd id="g-nurse-name">-</dd></div>
+                    <div><dt>간호사 번호</dt><dd id="g-nurse-tel">-</dd></div>
                     <div><dt>면회 가능 시간</dt><dd>10:00 ~ 20:00</dd></div>
                 </dl>
                 <div class="g-care-note">
@@ -494,46 +502,53 @@
             <div class="g-hero-copy">
                 <span class="g-hero-eyebrow">보호자 전용 · 열람 전용</span>
                 <h2>실시간 병실</h2>
-                <p>101호의 순찰 로봇 위치와 환자 상태입니다.</p>
+                <p><span id="g-live-room">-</span>의 순찰 로봇 위치와 환자 상태입니다.</p>
             </div>
             <span class="g-chip g-chip-live"><i></i>실시간 갱신</span>
         </header>
 
-        <div class="card">
-            <div class="card-title">환자 · 로봇 상태 <span class="g-readonly">열람 전용</span></div>
-            <div class="status-grid">
-                <div class="status-item"><span class="label">환자</span><strong>홍길동 님</strong></div>
-                <div class="status-item"><span class="label">낙상 감지</span><strong class="g-ok" id="g-fall-state">정상</strong></div>
-                <div class="status-item"><span class="label">로봇 상태</span><strong id="g-robot-state">순찰 중</strong></div>
-                <div class="status-item"><span class="label">로봇 위치</span><strong id="g-robot-loc">101호 순찰 중</strong></div>
-                <div class="status-item"><span class="label">카메라</span><strong class="g-ok" id="g-camera">정상 연결</strong></div>
-                <div class="status-item"><span class="label">최근 순찰</span><strong>16:20</strong></div>
+        <div class="glive-cols">
+            <!-- 환자 상태 -->
+            <div class="panel">
+                <div class="panel-head panel-head-row">
+                    환자 상태 <span class="g-readonly">열람 전용</span>
+                </div>
+                <div class="g-state">
+                    <span class="g-state-ring"><span class="g-state-dot"></span></span>
+                    <div>
+                        <strong class="g-ok" id="g-fall-state">정상</strong>
+                        <p><b id="g-live-patient">-</b> · 낙상 감지 없음</p>
+                    </div>
+                </div>
+                <dl class="pd-list">
+                    <div><dt>병실</dt><dd id="g-live-room2">-</dd></div>
+                    <div><dt>병상 유형</dt><dd id="g-live-type">-</dd></div>
+                    <div><dt>오늘 순찰</dt><dd id="g-live-today">-</dd></div>
+                </dl>
             </div>
-            <p class="g-readonly-note">보호자 계정은 조회만 가능하며, 병실 영상과 로봇 제어 기능은 제공되지 않습니다.</p>
+
+            <!-- 순찰 로봇 -->
+            <div class="panel">
+                <div class="panel-head panel-head-row">
+                    순찰 로봇 <span class="g-chip g-chip-live g-chip-sm"><i></i>LIVE</span>
+                </div>
+                <dl class="pd-list">
+                    <div><dt>로봇 상태</dt><dd id="g-robot-state">순찰 중</dd></div>
+                    <div><dt>현재 위치</dt><dd id="g-robot-loc">-</dd></div>
+                    <div><dt>카메라</dt><dd class="g-ok" id="g-camera">정상 연결</dd></div>
+                    <div><dt>최근 순찰</dt><dd id="g-live-last">-</dd></div>
+                </dl>
+                <p class="g-readonly-note">보호자 계정은 조회만 가능하며, 병실 영상과 로봇 제어 기능은 제공되지 않습니다.</p>
+            </div>
         </div>
 
-        <!-- 병실 구조도 · 내 병실만 활성 -->
+        <!-- 병실 구조도 (자리만 확보 · 도면은 추후 작업) -->
         <div class="panel" style="margin-top:18px;">
             <div class="panel-head">병실 구조도 · 로봇 실시간 위치</div>
-            <div class="gmap">
-                <div class="gmap-row">
-                    <div class="gmap-room mine" id="gmap-101">
-                        <strong>101호</strong>
-                        <span>내 병실 · 홍길동 님</span>
-                        <span class="gmap-robot" id="gmap-robot">🤖</span>
-                    </div>
-                    <div class="gmap-room locked"><strong>102호</strong><span>열람 권한 없음</span></div>
-                </div>
-                <div class="gmap-hall" id="gmap-hall">복도 · 3동 A구역</div>
-                <div class="gmap-row">
-                    <div class="gmap-room locked"><strong>103호</strong><span>열람 권한 없음</span></div>
-                    <div class="gmap-room locked"><strong>104호</strong><span>열람 권한 없음</span></div>
-                </div>
-            </div>
-            <div class="gmap-legend">
-                <span><i class="gmap-key mine"></i>내 병실</span>
-                <span><i class="gmap-key locked"></i>다른 병실 (열람 불가)</span>
-                <span>🤖 순찰 로봇 현재 위치</span>
+            <div class="gmap-slot" id="gmap-slot">
+                <span class="gmap-slot-ico">🗺️</span>
+                <strong>병실 구조도 영역</strong>
+                <p>병실 도면과 순찰 로봇의 실시간 위치가 이 자리에 표시됩니다.</p>
             </div>
         </div>
     </div>
@@ -546,25 +561,25 @@
             <div class="g-hero-copy">
                 <span class="g-hero-eyebrow">보호자 전용</span>
                 <h2>통계</h2>
-                <p>홍길동 님(101호)의 안전 기록과 순찰 이력입니다.</p>
+                <p><span id="g-stats-patient">-</span>의 안전 기록과 순찰 이력입니다.</p>
             </div>
-            <span class="g-chip g-chip-ok"><i></i>최근 30일 낙상 0건</span>
+            <span class="g-chip g-chip-ok" id="g-stats-chip"><i></i>최근 30일 낙상 0건</span>
         </header>
 
         <!-- 안심 리포트 요약 -->
         <div class="g-report">
             <span class="g-report-ico">🛡️</span>
             <div>
-                <strong>최근 30일간 총 120회의 자율 순찰이 안전하게 완료되었습니다.</strong>
-                <p>같은 기간 낙상 발생 0건 · 평균 대응 시간 14초</p>
+                <strong id="g-report-main">최근 30일간 순찰이 안전하게 완료되었습니다.</strong>
+                <p id="g-report-sub">같은 기간 낙상 발생 0건</p>
             </div>
         </div>
 
-        <div class="stat-row" style="margin-top:18px;">
+        <div class="stat-row g-stat-3 g-stagger" style="margin-top:18px;">
             <div class="stat-tile">
                 <span class="stat-tile-label">최근 30일 낙상</span>
-                <span class="stat-tile-num" style="color:#1a9d43;">0<span class="stat-tile-unit">건</span></span>
-                <span class="stat-tile-sub">안전 유지 중</span>
+                <span class="stat-tile-num" id="g-stat-falls" style="color:#1a9d43;">0<span class="stat-tile-unit">건</span></span>
+                <span class="stat-tile-sub" id="g-stat-falls-sub"><span class="g-dot g-dot-ok"></span>안전 유지 중</span>
             </div>
             <div class="stat-tile">
                 <span class="stat-tile-label">최근 30일 순찰</span>
@@ -572,9 +587,9 @@
                 <span class="stat-tile-sub">하루 평균 4회</span>
             </div>
             <div class="stat-tile">
-                <span class="stat-tile-label">평균 대응 시간</span>
-                <span class="stat-tile-num">14<span class="stat-tile-unit">초</span></span>
-                <span class="stat-tile-sub">감지 → 간호사 알림</span>
+                <span class="stat-tile-label">오늘 순찰</span>
+                <span class="stat-tile-num" id="g-stat-today">0<span class="stat-tile-unit">회</span></span>
+                <span class="stat-tile-sub">2분 간격 자동 순찰</span>
             </div>
         </div>
 
@@ -582,39 +597,21 @@
             <!-- 월별 낙상 이력 -->
             <div class="panel">
                 <div class="panel-head">월별 낙상 발생 이력</div>
-                <div class="bar-chart">
-                    <div class="bar"><span class="bar-fill" style="height:0%"></span><span class="bar-label">4월</span></div>
-                    <div class="bar"><span class="bar-fill" style="height:0%"></span><span class="bar-label">5월</span></div>
-                    <div class="bar"><span class="bar-fill" style="height:50%"></span><span class="bar-label">6월</span></div>
-                    <div class="bar"><span class="bar-fill" style="height:100%"></span><span class="bar-label">7월</span></div>
-                </div>
-                <p class="g-chart-note">7월 1건 · 6월 1건 발생. <span class="g-ok">최근 30일간은 0건입니다.</span></p>
+                <div class="lc" id="lc-gstats-month"><!-- renderLineCharts()로 그림 --></div>
+                <p class="g-chart-note">6월 1건 · 7월 2건 발생. <span class="g-ok">최근 30일간은 0건입니다.</span></p>
             </div>
 
             <!-- 시간대별 안심 순찰 -->
             <div class="panel">
                 <div class="panel-head">시간대별 안심 순찰 완료 횟수</div>
-                <div class="bar-chart">
-                    <div class="bar"><span class="bar-fill" style="height:85%"></span><span class="bar-label">새벽</span></div>
-                    <div class="bar"><span class="bar-fill" style="height:60%"></span><span class="bar-label">오전</span></div>
-                    <div class="bar"><span class="bar-fill" style="height:55%"></span><span class="bar-label">오후</span></div>
-                    <div class="bar"><span class="bar-fill" style="height:95%"></span><span class="bar-label">야간</span></div>
-                </div>
+                <div class="lc" id="lc-gstats-hour"><!-- renderLineCharts()로 그림 --></div>
                 <p class="g-chart-note">낙상이 잦은 <strong>야간·새벽</strong>에 순찰을 집중 배치하고 있습니다.</p>
             </div>
         </div>
 
         <div class="panel" style="margin-top:18px;">
             <div class="panel-head">최근 7일 순찰 완료 횟수</div>
-            <div class="bar-chart bar-chart-sm">
-                <div class="bar"><span class="bar-fill" style="height:80%"></span><span class="bar-label">월</span></div>
-                <div class="bar"><span class="bar-fill" style="height:100%"></span><span class="bar-label">화</span></div>
-                <div class="bar"><span class="bar-fill" style="height:80%"></span><span class="bar-label">수</span></div>
-                <div class="bar"><span class="bar-fill" style="height:100%"></span><span class="bar-label">목</span></div>
-                <div class="bar"><span class="bar-fill" style="height:80%"></span><span class="bar-label">금</span></div>
-                <div class="bar"><span class="bar-fill" style="height:100%"></span><span class="bar-label">토</span></div>
-                <div class="bar"><span class="bar-fill" style="height:80%"></span><span class="bar-label">일</span></div>
-            </div>
+            <div class="lc lc-sm" id="lc-gstats-week"><!-- renderLineCharts()로 그림 --></div>
         </div>
     </div>
 </section>
@@ -636,9 +633,10 @@
             <div class="panel">
                 <div class="panel-head">보호자 프로필</div>
                 <dl class="pd-list" style="margin-bottom:16px;">
-                    <div><dt>성함</dt><dd>박보호</dd></div>
+                    <div><dt>성함</dt><dd id="g-me-name">-</dd></div>
+                    <div><dt>아이디</dt><dd id="g-me-id">-</dd></div>
                     <div><dt>구분</dt><dd><span class="risk-chip risk-low">보호자</span></dd></div>
-                    <div><dt>연락처</dt><dd>010-3456-7890</dd></div>
+                    <div><dt>연락처</dt><dd id="g-me-phone">-</dd></div>
                 </dl>
                 <label class="form-label">비밀번호 변경</label>
                 <input class="form-input" type="password" placeholder="새 비밀번호">
@@ -650,9 +648,9 @@
             <div class="panel">
                 <div class="panel-head">환자 연동 정보</div>
                 <dl class="pd-list">
-                    <div><dt>연동된 환자</dt><dd>홍길동 (101호)</dd></div>
+                    <div><dt>연동된 환자</dt><dd id="g-link-patient">-</dd></div>
                     <div><dt>인증 상태</dt><dd><span class="g-verified">✓ 연동 완료</span></dd></div>
-                    <div><dt>매핑 코드</dt><dd><code class="g-code">KJ-3E91-A47C</code></dd></div>
+                    <div><dt>매핑 코드</dt><dd><code class="g-code" id="g-link-code">-</code></dd></div>
                 </dl>
                 <div class="g-care-note">
                     <p>연동된 환자의 정보만 열람할 수 있습니다. 다른 병실의 기록에는 접근할 수 없습니다.</p>
@@ -670,16 +668,6 @@
                 </div>
                 <label class="g-switch">
                     <input type="checkbox" id="g-noti-fall" checked onchange="saveGuardianNoti()">
-                    <span class="g-switch-track"></span>
-                </label>
-            </div>
-            <div class="g-switch-row">
-                <div>
-                    <strong>순찰 완료 일간 리포트</strong>
-                    <p>하루 동안의 순찰 결과를 저녁에 요약해 보내드립니다.</p>
-                </div>
-                <label class="g-switch">
-                    <input type="checkbox" id="g-noti-report" onchange="saveGuardianNoti()">
                     <span class="g-switch-track"></span>
                 </label>
             </div>
@@ -732,12 +720,7 @@
             </div>
             <div class="panel">
                 <div class="panel-head">최근 낙상 통계</div>
-                <div class="bar-chart bar-chart-sm">
-                    <div class="bar"><span class="bar-fill" style="height:40%"></span><span class="bar-label">4월</span></div>
-                    <div class="bar"><span class="bar-fill" style="height:70%"></span><span class="bar-label">5월</span></div>
-                    <div class="bar"><span class="bar-fill" style="height:55%"></span><span class="bar-label">6월</span></div>
-                    <div class="bar"><span class="bar-fill" style="height:85%"></span><span class="bar-label">7월</span></div>
-                </div>
+                <div class="lc lc-sm" id="lc-ahome-month"><!-- renderLineCharts()로 그림 --></div>
             </div>
         </div>
     </div>
@@ -752,90 +735,83 @@
                 <h2>병실 모니터링</h2>
                 <p>전 병실의 실시간 영상과 로봇 위치·상태, 낙상 이벤트를 통합 열람합니다.</p>
             </div>
-            <span class="a-chip a-chip-live"><i></i>LIVE 4채널</span>
+            <span class="a-chip a-chip-live"><i></i>순찰 로봇 카메라</span>
         </header>
 
-        <!-- 전체 병실 그리드 뷰 -->
-        <div class="panel">
-            <div class="panel-head panel-head-row">
-                전체 병실 그리드
-                <span class="a-hint">카드를 클릭하면 아래 큰 화면으로 전환됩니다</span>
-            </div>
-            <div class="ward-grid" id="ward-grid"><!-- renderWardGrid()로 채움 --></div>
+        <!-- 좌: 로봇 상태·위치 / 중앙: 실시간 영상 / 우: 이벤트 로그 -->
+        <div class="mon-console">
+
+            <!-- ── 좌측 ── -->
+            <aside class="mon-side">
+                <section class="mon-block">
+                    <h3 class="mon-title">로봇 상태</h3>
+                    <div class="mon-conn"><span class="mon-dot"></span>연결됨</div>
+                    <dl class="mon-kv">
+                        <div><dt>이동 상태</dt><dd id="robot-status">-</dd></div>
+                        <div><dt>카메라</dt><dd id="camera">-</dd></div>
+                        <div><dt>네트워크</dt><dd id="network">-</dd></div>
+                    </dl>
+                    <div class="mon-batt">
+                        <div class="mon-batt-head">
+                            <span>배터리</span><strong id="battery">-</strong>
+                        </div>
+                        <div class="mon-batt-bar"><span id="battery-bar" style="width:82%"></span></div>
+                    </div>
+                </section>
+
+                <section class="mon-block">
+                    <h3 class="mon-title">현재 위치</h3>
+                    <p class="mon-loc" id="current-room-text">-</p>
+                    <div class="mon-rooms">
+                        <div class="room" id="room-101"><strong>101</strong><span>4인실</span></div>
+                        <div class="room" id="room-102"><strong>102</strong><span>2인실</span></div>
+                        <div class="room" id="room-103"><strong>103</strong><span>4인실</span></div>
+                        <div class="room" id="room-104"><strong>104</strong><span>1인실</span></div>
+                        <div class="robot-marker" id="robot-marker" style="display:none;">🤖</div>
+                    </div>
+                    <p class="mon-note">순찰 중인 병실이 파랗게 표시됩니다.</p>
+                </section>
+            </aside>
+
+            <!-- ── 중앙: 실시간 영상 ── -->
+            <section class="mon-stage">
+                <div class="mon-stage-bar">
+                    <span class="mon-live"><i></i>LIVE</span>
+                    <span class="mon-stage-room" id="mon-stage-room">위치 확인 중</span>
+                    <div class="mon-switch">
+                        <button id="btn-raw" class="toggle-btn active" onclick="switchVideo('raw')">원본</button>
+                        <button id="btn-yolo" class="toggle-btn" onclick="switchVideo('yolo')">분석</button>
+                    </div>
+                </div>
+                <div class="mon-screen">
+                    <img id="video-img" src="/video_feed" alt="순찰 로봇 실시간 영상"
+                         onerror="this.style.visibility='hidden'; this.parentElement.classList.add('no-signal');">
+                    <div class="detect-line"></div>
+                    <div class="mon-nosignal">영상 신호 없음 · 로봇 연결을 확인해 주세요</div>
+                </div>
+                <div class="mon-stage-foot">
+                    <span>순찰 로봇 카메라 1채널</span>
+                    <span id="mon-clock">--:--:--</span>
+                </div>
+            </section>
+
+            <!-- ── 우측: 로그 ── -->
+            <aside class="mon-side">
+                <section class="mon-block mon-fall" id="mon-fall-box">
+                    <h3 class="mon-title">낙상 상태</h3>
+                    <strong id="fall-status">-</strong>
+                </section>
+
+                <section class="mon-block mon-logbox">
+                    <h3 class="mon-title mon-title-row">
+                        이벤트 로그
+                        <span class="mon-note">총 <strong id="mon-log-count">0</strong>건 · 최신순</span>
+                    </h3>
+                    <div id="event-log" class="event-log"></div>
+                </section>
+            </aside>
         </div>
     </div>
-
-    <main class="mon-grid">
-        <section class="card video-card">
-            <div class="card-title">선택 병실 확대 · <span id="mon-sel-room">병실 101</span></div>
-            <div class="video-box">
-                <img id="video-img" src="/video_feed" alt="실시간 영상" onerror="this.style.visibility='hidden'">
-                <div class="detect-line"></div>
-                <div class="live-badge">LIVE</div>
-            </div>
-            <div class="video-toggle">
-                <button id="btn-raw" class="toggle-btn active" onclick="switchVideo('raw')">원본 영상</button>
-                <button id="btn-yolo" class="toggle-btn" onclick="switchVideo('yolo')">분석 영상</button>
-            </div>
-        </section>
-
-        <section class="card map-card">
-            <div class="card-title">병실 지도 / 현재 위치</div>
-            <div class="map">
-                <div class="room" id="room-101">
-                    <strong>병실 101</strong>
-                    <span>좌측 상단</span>
-                </div>
-                <div class="room" id="room-102">
-                    <strong>병실 102</strong>
-                    <span>우측 상단</span>
-                </div>
-                <div class="room" id="room-103">
-                    <strong>병실 103</strong>
-                    <span>좌측 하단</span>
-                </div>
-                <div class="room" id="room-104">
-                    <strong>병실 104</strong>
-                    <span>우측 하단</span>
-                </div>
-                <div class="robot-marker" id="robot-marker" style="display: none;">🤖</div>
-            </div>
-        </section>
-
-        <section class="card status-card">
-            <div class="card-title">로봇 동작 상태</div>
-            <div class="status-grid">
-                <div class="status-item">
-                    <span class="label">이동 상태</span>
-                    <strong id="robot-status">-</strong>
-                </div>
-                <div class="status-item">
-                    <span class="label">배터리</span>
-                    <strong id="battery">-</strong>
-                </div>
-                <div class="status-item">
-                    <span class="label">카메라</span>
-                    <strong id="camera">-</strong>
-                </div>
-                <div class="status-item">
-                    <span class="label">네트워크</span>
-                    <strong id="network">-</strong>
-                </div>
-            </div>
-            <div class="task-line">
-                현재 위치: <strong id="current-room-text">-</strong>
-            </div>
-        </section>
-
-        <section class="card log-card">
-            <div class="card-title">알림 / 이벤트 로그</div>
-            <div class="fall-box">
-                낙상 상태:
-                <strong id="fall-status">-</strong>
-            </div>
-            <div id="event-log" class="event-log"></div>
-        </section>
-    </main>
 </section>
 
 <!-- (병실·환자 목록은 '병실 모니터링'과 '내 병실'로 통합) -->
@@ -847,43 +823,21 @@
             <div class="a-hero-copy">
                 <span class="a-hero-eyebrow">DABOM ADMIN · 종합 분석</span>
                 <h2>통계</h2>
-                <p>병원 전체 누적 낙상 데이터와 간호사 골든타임 대응 통계입니다.</p>
+                <p>병원 전체 누적 낙상 데이터와 순찰 통계입니다.</p>
             </div>
             <span class="a-chip a-chip-ok"><i></i>감지 정확도 96%</span>
         </header>
 
-        <!-- 골든타임 대응 리포트 -->
-        <div class="a-report">
-            <span class="a-report-ico">⏱️</span>
-            <div>
-                <strong>낙상 감지 → 간호사 현장 도착 평균 18초</strong>
-                <p>목표 골든타임 30초 대비 <span class="g-ok">12초 단축</span> · 최근 30일 7건 기준</p>
-            </div>
-            <div class="a-report-metrics">
-                <div><span>최단</span><strong>9초</strong></div>
-                <div><span>최장</span><strong>34초</strong></div>
-                <div><span>30초 내 대응률</span><strong>86%</strong></div>
-            </div>
-        </div>
-
         <div class="page-head" style="display:none;">
             <h2>통계</h2>
-            <p>낙상 발생과 순찰·대응 통계입니다. (※ 더미 데이터 — 실제 값은 통계 API 연동)</p>
+            <p>낙상 발생과 순찰 통계입니다. (※ 더미 데이터 — 실제 값은 통계 API 연동)</p>
         </div>
 
         <!-- 통계 카드 -->
-        <div class="stat-row">
+        <div class="stat-row stat-row-2">
             <div class="stat-tile">
                 <span class="stat-tile-label">이번 달 낙상</span>
                 <span class="stat-tile-num">7<span class="stat-tile-unit">건</span></span>
-            </div>
-            <div class="stat-tile">
-                <span class="stat-tile-label">평균 대응 시간</span>
-                <span class="stat-tile-num">18<span class="stat-tile-unit">초</span></span>
-            </div>
-            <div class="stat-tile">
-                <span class="stat-tile-label">오탐 건수</span>
-                <span class="stat-tile-num" id="fp-count">2<span class="stat-tile-unit">건</span></span>
             </div>
             <div class="stat-tile">
                 <span class="stat-tile-label">감지 정확도</span>
@@ -895,21 +849,11 @@
         <div class="chart-grid">
             <div class="panel">
                 <div class="panel-head">월별 낙상 발생</div>
-                <div class="bar-chart">
-                    <div class="bar"><span class="bar-fill" style="height:40%"></span><span class="bar-label">4월</span></div>
-                    <div class="bar"><span class="bar-fill" style="height:70%"></span><span class="bar-label">5월</span></div>
-                    <div class="bar"><span class="bar-fill" style="height:55%"></span><span class="bar-label">6월</span></div>
-                    <div class="bar"><span class="bar-fill" style="height:100%"></span><span class="bar-label">7월</span></div>
-                </div>
+                <div class="lc" id="lc-astats-month"><!-- renderLineCharts()로 그림 --></div>
             </div>
             <div class="panel">
                 <div class="panel-head">병실별 낙상 발생 · 위험도</div>
-                <div class="bar-chart">
-                    <div class="bar"><span class="bar-fill risk-fill-high" style="height:80%"></span><span class="bar-label">101</span></div>
-                    <div class="bar"><span class="bar-fill risk-fill-low" style="height:30%"></span><span class="bar-label">102</span></div>
-                    <div class="bar"><span class="bar-fill risk-fill-mid" style="height:60%"></span><span class="bar-label">103</span></div>
-                    <div class="bar"><span class="bar-fill risk-fill-low" style="height:20%"></span><span class="bar-label">104</span></div>
-                </div>
+                <div class="lc" id="bc-astats-room"><!-- renderCharts()로 그림 --></div>
                 <div class="a-risk-list">
                     <div><span class="risk-chip risk-high">고위험</span><strong>101호</strong><span>순찰 우선순위 1</span></div>
                     <div><span class="risk-chip risk-mid">중위험</span><strong>103호</strong><span>순찰 우선순위 2</span></div>
@@ -918,22 +862,11 @@
             </div>
             <div class="panel">
                 <div class="panel-head">시간대별 낙상</div>
-                <div class="bar-chart">
-                    <div class="bar"><span class="bar-fill" style="height:30%"></span><span class="bar-label">새벽</span></div>
-                    <div class="bar"><span class="bar-fill" style="height:50%"></span><span class="bar-label">오전</span></div>
-                    <div class="bar"><span class="bar-fill" style="height:40%"></span><span class="bar-label">오후</span></div>
-                    <div class="bar"><span class="bar-fill" style="height:90%"></span><span class="bar-label">야간</span></div>
-                </div>
+                <div class="lc" id="lc-astats-hour"><!-- renderLineCharts()로 그림 --></div>
             </div>
             <div class="panel">
                 <div class="panel-head">일별 순찰 횟수</div>
-                <div class="bar-chart">
-                    <div class="bar"><span class="bar-fill" style="height:70%"></span><span class="bar-label">월</span></div>
-                    <div class="bar"><span class="bar-fill" style="height:80%"></span><span class="bar-label">화</span></div>
-                    <div class="bar"><span class="bar-fill" style="height:75%"></span><span class="bar-label">수</span></div>
-                    <div class="bar"><span class="bar-fill" style="height:85%"></span><span class="bar-label">목</span></div>
-                    <div class="bar"><span class="bar-fill" style="height:90%"></span><span class="bar-label">금</span></div>
-                </div>
+                <div class="lc" id="lc-astats-day"><!-- renderLineCharts()로 그림 --></div>
             </div>
         </div>
 
@@ -944,9 +877,6 @@
                     <tr>
                         <th>발생 시각</th>
                         <th>병실</th>
-                        <th>대응 시간</th>
-                        <th>판정</th>
-                        <th>처리</th>
                     </tr>
                 </thead>
                 <tbody id="falls-tbody"><!-- JS(renderFalls)로 채움 --></tbody>
@@ -966,98 +896,96 @@
             </div>
             <span class="a-chip a-chip-ok"><i></i>연결됨 · 지연 42ms</span>
         </header>
-        <div class="robot-layout">
-            <!-- 병실 지도 + 로봇 위치 -->
-            <div class="panel robot-map-panel">
-                <div class="panel-head">병실 지도 · Robot 위치</div>
-                <div class="robot-map">
-                    <div class="rm-room">병실 101<span>좌측 상단</span></div>
-                    <div class="rm-room">병실 102<span>우측 상단</span></div>
-                    <div class="rm-room">병실 103<span>좌측 하단</span></div>
-                    <div class="rm-room">병실 104<span>우측 하단</span></div>
-                    <div class="rm-robot" id="rm-robot">🤖</div>
+        <div class="rc-layout">
+            <!-- 중앙: 지도에서 목적지를 눌러 이동 -->
+            <section class="rc-map-panel">
+                <div class="rc-map-bar">
+                    <h3 class="mon-title" style="margin:0;">SLAM 지도 · 목적지 지정</h3>
+                    <span class="mon-note">이동할 위치를 클릭하세요</span>
+                </div>
+
+                <!-- 실제 SLAM 맵 이미지는 이 영역의 배경으로 교체 -->
+                <div class="rc-map" id="rc-map">
+                    <button class="rc-spot" data-dest="병실 101" style="left:12%; top:14%;"  onclick="rcGoTo(this)"><b>101</b><span>4인실</span></button>
+                    <button class="rc-spot" data-dest="병실 102" style="left:62%; top:14%;"  onclick="rcGoTo(this)"><b>102</b><span>2인실</span></button>
+                    <button class="rc-spot" data-dest="병실 103" style="left:12%; top:56%;"  onclick="rcGoTo(this)"><b>103</b><span>4인실</span></button>
+                    <button class="rc-spot" data-dest="병실 104" style="left:62%; top:56%;"  onclick="rcGoTo(this)"><b>104</b><span>1인실</span></button>
+                    <button class="rc-spot rc-spot-util" data-dest="대기 장소" style="left:37.5%; top:36%;" onclick="rcGoTo(this)"><b>대기</b><span>스테이션</span></button>
+                    <button class="rc-spot rc-spot-util" data-dest="충전 스테이션" style="left:37.5%; top:76%;" onclick="rcGoTo(this)"><b>충전</b><span>도킹</span></button>
+                    <div class="rc-robot" id="rm-robot">🤖</div>
+                </div>
+
+                <div class="rc-map-foot">
+                    <span>현재 위치 <strong id="rc-cur">병실 101</strong></span>
+                    <span>목적지 <strong id="rc-dest-label">—</strong></span>
                 </div>
                 <div class="rc-toast" id="rc-toast"></div>
-            </div>
+            </section>
 
-            <!-- 제어 사이드 -->
-            <div class="robot-side">
-                <div class="panel">
-                    <div class="panel-head">Robot 상태</div>
-                    <div class="robot-stats">
-                        <div class="rs"><span class="rs-label">연결 상태</span><span class="rs-val ok"><span class="conn-dot"></span>연결됨</span></div>
-                        <div class="rs"><span class="rs-label">배터리</span><span class="rs-val">82%</span></div>
-                        <div class="rs"><span class="rs-label">현재 속도</span><span class="rs-val">0.4 m/s</span></div>
-                        <div class="rs"><span class="rs-label">현재 위치</span><span class="rs-val">병실 101</span></div>
+            <!-- 우측: 상태 + 제어 -->
+            <aside class="rc-side">
+                <section class="mon-block">
+                    <h3 class="mon-title">로봇 상태</h3>
+                    <div class="mon-conn"><span class="mon-dot"></span>연결됨 · 지연 42ms</div>
+                    <dl class="mon-kv">
+                        <div><dt>이동 상태</dt><dd id="rc-state">순찰 중</dd></div>
+                        <div><dt>현재 속도</dt><dd>0.4 m/s</dd></div>
+                        <div><dt>현재 위치</dt><dd id="rc-cur2">병실 101</dd></div>
+                    </dl>
+                    <div class="mon-batt">
+                        <div class="mon-batt-head"><span>배터리</span><strong>82%</strong></div>
+                        <div class="mon-batt-bar"><span style="width:82%"></span></div>
                     </div>
-                </div>
-                <div class="panel">
-                    <div class="panel-head">목적지 선택</div>
-                    <select class="form-input" id="rc-dest">
-                        <option>병실 101</option>
-                        <option>병실 102</option>
-                        <option>병실 103</option>
-                        <option>병실 104</option>
-                        <option>충전 스테이션</option>
-                    </select>
-                    <button class="ctrl-btn ctrl-go" onclick="rcToast('선택한 목적지로 이동합니다')">목적지로 이동</button>
-                </div>
-                <div class="panel">
-                    <div class="panel-head">순찰 제어</div>
-                    <div class="ctrl-grid">
-                        <button class="ctrl-btn ctrl-start" onclick="rcToast('순찰을 시작합니다')">▶ Start Patrol</button>
-                        <button class="ctrl-btn ctrl-pause" onclick="rcToast('순찰을 일시정지합니다')">⏸ Pause</button>
-                        <button class="ctrl-btn ctrl-home" onclick="rcToast('충전 스테이션으로 복귀합니다')">⌂ Return Home</button>
-                        <button class="ctrl-btn ctrl-stop" onclick="rcToast('🚨 비상 정지되었습니다')">🚨 E-Stop</button>
-                    </div>
-                </div>
+                </section>
 
-                <!-- 수동 주행 (cmd_vel) -->
-                <div class="panel">
-                    <div class="panel-head">수동 주행 · cmd_vel</div>
-                    <div class="dpad">
-                        <button class="dpad-btn dpad-up" onclick="rcDrive('전진')">▲</button>
-                        <button class="dpad-btn dpad-left" onclick="rcDrive('좌회전')">◀</button>
-                        <button class="dpad-btn dpad-stop" onclick="rcDrive('정지')">■</button>
-                        <button class="dpad-btn dpad-right" onclick="rcDrive('우회전')">▶</button>
-                        <button class="dpad-btn dpad-down" onclick="rcDrive('후진')">▼</button>
+                <section class="mon-block">
+                    <h3 class="mon-title">순찰 제어</h3>
+                    <div class="rc-btns">
+                        <button class="rc-btn rc-btn-primary" onclick="rcCommand('순찰 시작', '순찰 중')">순찰 시작</button>
+                        <button class="rc-btn" onclick="rcCommand('일시정지', '일시정지')">일시정지</button>
+                        <button class="rc-btn" onclick="rcGoDest('대기 장소', '이동 중')">대기 장소로 이동</button>
+                        <button class="rc-btn" onclick="rcGoDest('충전 스테이션', '복귀 중')">충전 스테이션으로 이동</button>
                     </div>
-                    <label class="form-label" style="margin-top:14px;">주행 속도 <strong id="rc-speed-val">0.4</strong> m/s</label>
-                    <input type="range" class="a-range" id="rc-speed" min="0.1" max="1.0" step="0.1" value="0.4"
-                           oninput="document.getElementById('rc-speed-val').innerText = this.value">
-                    <p class="a-hint" style="margin-top:10px;">방향 버튼을 누르는 동안 <code>/cmd_vel</code> 토픽으로 속도 명령이 발행됩니다.</p>
-                </div>
-            </div>
+                    <button class="rc-btn rc-btn-stop" onclick="rcCommand('비상 정지', '정지됨')">비상 정지 (E-Stop)</button>
+                </section>
+            </aside>
         </div>
 
-        <!-- SLAM · Waypoint 스케줄 -->
+        <!-- Waypoint -->
         <div class="panel" style="margin-top:18px;">
             <div class="panel-head panel-head-row">
-                SLAM · Waypoint 스케줄
-                <button class="mini-btn" onclick="rcToast('스케줄이 저장되었습니다 (데모)')">스케줄 저장</button>
+                SLAM · Waypoint
+                <span class="a-hint">지도에 표시되는 지점 목록입니다</span>
             </div>
             <div class="table-wrap">
                 <table class="data-table">
-                    <thead><tr><th>순번</th><th>Waypoint</th><th>연결 병실</th><th>순찰 우선순위</th><th>체류 시간</th></tr></thead>
+                    <thead><tr><th>순번</th><th>Waypoint</th><th>연결 위치</th><th>좌표 (x, y)</th><th>상태</th></tr></thead>
                     <tbody>
-                        <tr><td>1</td><td>wp_101</td><td>병실 101</td><td><select class="form-input form-input-sm"><option>높음</option><option>보통</option><option>낮음</option></select></td><td>40초</td></tr>
-                        <tr><td>2</td><td>wp_102</td><td>병실 102</td><td><select class="form-input form-input-sm"><option>보통</option><option>높음</option><option>낮음</option></select></td><td>25초</td></tr>
-                        <tr><td>3</td><td>wp_103</td><td>병실 103</td><td><select class="form-input form-input-sm"><option>높음</option><option>보통</option><option>낮음</option></select></td><td>40초</td></tr>
-                        <tr><td>4</td><td>wp_104</td><td>병실 104</td><td><select class="form-input form-input-sm"><option>낮음</option><option>보통</option><option>높음</option></select></td><td>25초</td></tr>
+                        <tr><td>1</td><td>wp_101</td><td>병실 101</td><td>1.24, 3.80</td><td><span class="risk-chip risk-low">등록됨</span></td></tr>
+                        <tr><td>2</td><td>wp_102</td><td>병실 102</td><td>4.62, 3.80</td><td><span class="risk-chip risk-low">등록됨</span></td></tr>
+                        <tr><td>3</td><td>wp_103</td><td>병실 103</td><td>1.24, 0.95</td><td><span class="risk-chip risk-low">등록됨</span></td></tr>
+                        <tr><td>4</td><td>wp_104</td><td>병실 104</td><td>4.62, 0.95</td><td><span class="risk-chip risk-low">등록됨</span></td></tr>
+                        <tr><td>5</td><td>wp_dock</td><td>충전 스테이션</td><td>2.90, 0.20</td><td><span class="risk-chip risk-low">등록됨</span></td></tr>
                     </tbody>
                 </table>
             </div>
 
-            <div class="a-two-col" style="margin-top:18px;">
-                <div>
-                    <label class="form-label">충전 복귀 조건 (배터리 이하)</label>
-                    <select class="form-input" id="rc-charge-th">
+            <div class="rc-settings">
+                <div class="rc-setting">
+                    <div>
+                        <strong>충전 복귀 조건</strong>
+                        <p>배터리가 아래 값 이하로 떨어지면 자동으로 충전 스테이션에 복귀합니다.</p>
+                    </div>
+                    <select class="form-input rc-select" id="rc-charge-th" onchange="rcToast('충전 복귀 기준을 ' + this.value + '로 저장했습니다')">
                         <option>20%</option><option>30%</option><option>15%</option>
                     </select>
                 </div>
-                <div>
-                    <label class="form-label">AMCL Initial Pose</label>
-                    <button class="ctrl-btn ctrl-go" onclick="rcToast('현재 위치를 초기 좌표로 설정했습니다 (데모)')">현재 위치로 자동 설정</button>
+                <div class="rc-setting">
+                    <div>
+                        <strong>AMCL 초기 좌표</strong>
+                        <p>로봇이 인식한 현재 위치를 지도상의 초기 좌표로 설정합니다.</p>
+                    </div>
+                    <button class="rc-btn rc-btn-ghost" onclick="rcToast('현재 위치를 초기 좌표로 설정했습니다 (데모)')">현재 위치로 설정</button>
                 </div>
             </div>
         </div>
@@ -1070,20 +998,20 @@
         <header class="a-hero">
             <div class="a-hero-copy">
                 <span class="a-hero-eyebrow">DABOM ADMIN · 전체 로그</span>
-                <h2>이벤트</h2>
-                <p>낙상·호출·시스템 로그를 조회하고 대응 상태를 관리합니다.</p>
+                <h2>낙상 이벤트</h2>
+                <p>감지된 낙상을 확인하고 처리합니다. 순찰·호출 로그는 병실 모니터링에서 볼 수 있습니다.</p>
             </div>
             <span class="a-chip a-chip-warn"><i></i>미처리 <strong id="ev-pending-count">0</strong>건</span>
         </header>
 
         <div class="events-toolbar">
-            <input class="form-input" id="ev-search" placeholder="🔍 병실·유형·내용 검색" oninput="filterEvents()">
+            <input class="form-input" id="ev-search" placeholder="🔍 병실·내용 검색" oninput="filterEvents()">
             <input class="form-input" id="ev-date" type="date" onchange="filterEvents()">
             <button class="mini-btn" onclick="clearEventFilter()">초기화</button>
         </div>
         <div class="table-wrap">
             <table class="data-table">
-                <thead><tr><th>시각</th><th>병실</th><th>유형</th><th>내용</th><th>캡처</th><th>처리 상태</th><th>관리</th></tr></thead>
+                <thead><tr><th>시각</th><th>병실</th><th>내용</th><th>캡처</th><th>처리 상태</th><th>관리</th></tr></thead>
                 <tbody id="events-tbody"><!-- JS(renderEvents)로 채움 --></tbody>
             </table>
         </div>
@@ -1104,8 +1032,16 @@
                 <div><dt>병실</dt><dd id="ev-capture-room">-</dd></div>
                 <div><dt>판정</dt><dd id="ev-capture-type">-</dd></div>
             </dl>
+            <!-- 영상만으로는 같은 병실의 누가 넘어졌는지 알 수 없으므로 간호사가 직접 지정한다 -->
+            <div class="ev-assign" id="ev-assign">
+                <label class="form-label">낙상 환자 지정 <span class="ev-req">필수</span></label>
+                <p class="a-hint" style="margin:0 0 10px;">현장 확인 후 실제로 넘어진 환자를 선택해 주세요.</p>
+                <div class="ev-people" id="ev-people"><!-- openEvCapture()로 채움 --></div>
+            </div>
+
             <label class="form-label" style="margin-top:14px;">대응 메모</label>
             <textarea class="form-input" id="ev-memo" rows="3" placeholder="현장 확인 내용, 조치 사항을 적어주세요"></textarea>
+            <div class="ev-error" id="ev-error"></div>
             <button class="ctrl-btn ctrl-go" style="margin-top:10px;" onclick="markEventDone()">대응 완료 처리</button>
         </div>
     </div>
@@ -1180,6 +1116,49 @@
     </div>
 </section>
 
+<!-- ===== 일정 (관리자) ===== -->
+<section id="tab-schedule" class="tab-panel a-scope">
+    <div class="page a-page">
+        <header class="a-hero">
+            <div class="a-hero-copy">
+                <span class="a-hero-eyebrow">DABOM ADMIN · 일정</span>
+                <h2>일정 관리</h2>
+                <p>순찰 점검, 회의, 교육 등 병동 일정을 날짜별로 등록하고 확인합니다.</p>
+            </div>
+            <span class="a-chip"><i></i>이달 <strong id="sch-count">0</strong>건</span>
+        </header>
+
+        <div class="sch-layout">
+            <div class="panel">
+                <div class="cal-head">
+                    <button class="cal-nav" onclick="calPrev()" aria-label="이전 달">‹</button>
+                    <div class="cal-title" id="cal-title"></div>
+                    <button class="cal-nav" onclick="calNext()" aria-label="다음 달">›</button>
+                </div>
+                <div class="cal-weekdays">
+                    <div>일</div><div>월</div><div>화</div><div>수</div><div>목</div><div>금</div><div>토</div>
+                </div>
+                <div class="cal-grid" id="cal-grid"><!-- renderCalendar()로 채움 --></div>
+            </div>
+
+            <div class="panel">
+                <div class="panel-head">선택한 날짜</div>
+                <p class="a-hint" id="cal-empty-hint">달력에서 날짜를 눌러 일정을 확인하고 등록하세요.</p>
+                <div class="cal-day-detail" id="cal-day-detail" style="display:none;">
+                    <div class="cal-day-detail-head">
+                        <strong id="cal-detail-date"></strong>
+                    </div>
+                    <div class="cal-event-list" id="cal-event-list"></div>
+                    <div class="cal-add">
+                        <input id="cal-event-input" type="text" placeholder="일정 입력 후 Enter">
+                        <button onclick="addEvent()">추가</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
 <!-- ===== 계정 관리 (관리자) ===== -->
 <section id="tab-accounts" class="tab-panel a-scope">
     <div class="page a-page">
@@ -1211,19 +1190,19 @@
             <div class="panel-head panel-head-row">간호사 계정<button class="mini-btn" onclick="rcToast('계정 생성 (데모)')">+ 계정 생성</button></div>
             <div class="table-wrap">
                 <table class="data-table">
-                    <thead><tr><th>이름</th><th>사번</th><th>연락처</th><th>담당 병동</th><th>권한(Role)</th><th>관리</th></tr></thead>
+                    <thead><tr><th>이름</th><th>사번</th><th>연락처</th><th>담당 병실</th><th>권한</th><th>관리</th></tr></thead>
                     <tbody>
                         <tr>
                             <td>김간호</td><td>N-2026-001</td><td>010-1234-5678</td>
-                            <td><select class="form-input form-input-sm"><option>3동 A구역</option><option>3동 B구역</option><option>4동 A구역</option></select></td>
-                            <td><select class="form-input form-input-sm" onchange="rcToast('권한이 변경되었습니다 (데모)')"><option>ADMIN</option><option>NURSE</option></select></td>
-                            <td class="row-actions"><button class="mini-btn mini-danger" onclick="rcToast('접근이 차단되었습니다 (데모)')">접근 차단</button></td>
+                            <td><select class="form-input form-input-sm"><option>전체 (101~104호)</option><option>101호</option><option>102호</option><option>103호</option><option>104호</option></select></td>
+                            <td><span class="role-fixed role-admin">ADMIN</span></td>
+                            <td class="row-actions"><button class="mini-btn mini-danger" onclick="deleteNurse(this)">계정 삭제</button></td>
                         </tr>
                         <tr>
                             <td>이간호</td><td>N-2026-014</td><td>010-2345-6789</td>
-                            <td><select class="form-input form-input-sm"><option>3동 B구역</option><option>3동 A구역</option><option>4동 A구역</option></select></td>
-                            <td><select class="form-input form-input-sm" onchange="rcToast('권한이 변경되었습니다 (데모)')"><option>NURSE</option><option>ADMIN</option></select></td>
-                            <td class="row-actions"><button class="mini-btn mini-danger" onclick="rcToast('접근이 차단되었습니다 (데모)')">접근 차단</button></td>
+                            <td><select class="form-input form-input-sm"><option>전체 (101~104호)</option><option>101호</option><option>102호</option><option>103호</option><option>104호</option></select></td>
+                            <td><span class="role-fixed role-admin">ADMIN</span></td>
+                            <td class="row-actions"><button class="mini-btn mini-danger" onclick="deleteNurse(this)">계정 삭제</button></td>
                         </tr>
                     </tbody>
                 </table>
@@ -1235,7 +1214,7 @@
             <div class="panel-head panel-head-row">보호자 계정<span class="a-hint">보호자가 매핑 코드로 직접 가입하면 여기에 등록됩니다</span></div>
             <div class="table-wrap">
                 <table class="data-table">
-                    <thead><tr><th>이름</th><th>아이디</th><th>연동 환자</th><th>매핑 코드</th><th>권한(Role)</th><th>관리</th></tr></thead>
+                    <thead><tr><th>이름</th><th>아이디</th><th>연동 환자</th><th>매핑 코드</th><th>권한</th><th>관리</th></tr></thead>
                     <tbody id="acc-guardian-tbody"><!-- renderGuardians()로 채움 --></tbody>
                 </table>
             </div>
@@ -1284,47 +1263,6 @@
 <!-- 화면 하단 공용 토스트 (Robot Control 패널이 없는 화면용) -->
 <div id="app-toast" class="app-toast"></div>
 
-<!-- ===== 캘린더 모달 ===== -->
-<div id="cal-overlay" class="cal-overlay" onclick="if(event.target===this)closeCalendar()">
-    <div class="cal-box">
-        <button class="cal-close" onclick="closeCalendar()">&times;</button>
-        <div class="cal-head">
-            <button class="cal-nav" onclick="calPrev()">‹</button>
-            <div class="cal-title" id="cal-title"></div>
-            <button class="cal-nav" onclick="calNext()">›</button>
-        </div>
-        <div class="cal-weekdays">
-            <div>일</div><div>월</div><div>화</div><div>수</div><div>목</div><div>금</div><div>토</div>
-        </div>
-        <div class="cal-grid" id="cal-grid"></div>
-
-        <div class="cal-day-detail" id="cal-day-detail" style="display:none;">
-            <div class="cal-day-detail-head">
-                <strong id="cal-detail-date"></strong>
-                <button class="cal-close" style="position:static;" onclick="closeDayDetail()">&times;</button>
-            </div>
-            <div class="cal-event-list" id="cal-event-list"></div>
-            <div class="cal-add">
-                <input id="cal-event-input" type="text" placeholder="일정 입력 후 Enter 또는 추가">
-                <button onclick="addEvent()">추가</button>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- ===== 할 일 체크리스트 모달 ===== -->
-<div id="checklist-overlay" class="cal-overlay" onclick="if(event.target===this)closeChecklist()">
-    <div class="cal-box" style="width:min(480px,92vw);">
-        <button class="cal-close" onclick="closeChecklist()">&times;</button>
-        <div class="panel-title">✅ 할 일 체크리스트</div>
-        <div class="cal-add" style="margin-bottom:14px;">
-            <input id="checklist-input" type="text" placeholder="할 일 입력 후 Enter 또는 추가">
-            <button onclick="addChecklistItem()">추가</button>
-        </div>
-        <div id="checklist-list" class="checklist-list"></div>
-    </div>
-</div>
-
 <!-- ===== 로그인 ===== -->
 <div id="login-overlay" class="login-overlay">
     <div class="login-bar">
@@ -1358,18 +1296,13 @@
                 <div class="login-fields">
                     <input id="login-id" class="login-input" type="text" placeholder="간호사 아이디" autocomplete="username">
                     <input id="login-pw" class="login-input" type="password" placeholder="비밀번호" autocomplete="current-password">
-                    <input id="login-pin" class="login-input" type="password" inputmode="numeric" maxlength="6"
-                           placeholder="2차 인증 보안 핀 6자리 (선택)" autocomplete="one-time-code">
                     <button class="login-submit" onclick="doLogin()">로그인</button>
                 </div>
                 <label class="login-remember">
-                    <input id="login-auto" type="checkbox"> <span id="login-keep-label">이 기기에서 로그인 상태 유지</span>
+                    <input id="login-auto" type="checkbox"> 이 기기에서 로그인 상태 유지
                 </label>
                 <div id="login-error" class="login-error"></div>
 
-                <p class="login-warn" id="login-warn">
-                    ⚠️ 인가되지 않은 접근은 법적 처벌 대상이 될 수 있으며, 모든 접속 기록은 감지 및 저장됩니다.
-                </p>
             </div>
 
             <aside class="login-aside">
@@ -1421,7 +1354,7 @@
             <aside class="login-aside">
                 <h2>신청하면 이렇게 진행됩니다</h2>
                 <ul>
-                    <li>병동 관리자가 신청 내용과 환자 정보를 확인합니다.</li>
+                    <li>관리자가 신청 내용과 환자 정보를 확인합니다.</li>
                     <li>승인되면 매핑 코드를 등록하신 연락처로 보내드립니다.</li>
                     <li>그 코드로 아이디와 비밀번호를 직접 정해 계정을 만듭니다.</li>
                 </ul>
@@ -1434,7 +1367,7 @@
         <div class="apply-done" id="apply-done">
             <span class="apply-done-ico">✓</span>
             <h2>신청이 접수되었습니다</h2>
-            <p>병동 관리자 승인 후 <b>매핑 코드</b>를 연락처로 보내드립니다.<br>
+            <p>관리자 승인 후 <b>매핑 코드</b>를 연락처로 보내드립니다.<br>
                받으신 코드로 아이디와 비밀번호를 직접 정하시면 됩니다.</p>
             <button class="login-submit apply-submit" onclick="closeApply()">확인</button>
         </div>
@@ -1503,7 +1436,7 @@
                 <ul>
                     <li>여기서 정한 비밀번호는 본인만 알고 있습니다.</li>
                     <li>병원은 매핑 코드 발급과 연동 해제만 할 수 있습니다.</li>
-                    <li>비밀번호를 잊으면 병동 관리자가 코드를 재발행해 드립니다.</li>
+                    <li>비밀번호를 잊으면 관리자가 코드를 재발행해 드립니다.</li>
                 </ul>
             </aside>
         </div>
@@ -1518,14 +1451,14 @@
     </div>
 </div>
 
-<!-- ===== 메모지 모달 ===== -->
-<div id="memo-overlay" class="cal-overlay" onclick="if(event.target===this)closeMemo()">
-    <div class="cal-box" style="width:min(520px,92vw);">
-        <button class="cal-close" onclick="closeMemo()">&times;</button>
-        <div class="panel-title">📝 메모지 <span id="memo-saved" class="memo-saved"></span></div>
-        <textarea id="memo-text" class="memo-text" placeholder="전달사항·인수인계 메모를 자유롭게 적어주세요"></textarea>
-        <div class="cal-add" style="justify-content:flex-end;">
-            <button onclick="saveMemo()">저장</button>
+<!-- ===== 확인 모달 (삭제·퇴원·승인처럼 되돌리기 어려운 동작에 공통으로 쓴다) ===== -->
+<div class="cf-overlay" id="cf-overlay" onclick="if(event.target===this)closeConfirm()">
+    <div class="cf-box">
+        <div class="cf-title" id="cf-title"></div>
+        <p class="cf-body" id="cf-body"></p>
+        <div class="cf-actions">
+            <button class="cf-cancel" onclick="closeConfirm()">취소</button>
+            <button class="cf-ok" id="cf-ok" onclick="confirmOk()">확인</button>
         </div>
     </div>
 </div>
@@ -1538,14 +1471,10 @@ function updateClock() {
     const s = String(now.getSeconds()).padStart(2, '0');
     const wd = ["일", "월", "화", "수", "목", "금", "토"][now.getDay()];
     const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} (${wd})`;
-    const clockTime = document.getElementById("clock-time");
-    if (clockTime) clockTime.innerText = `${h}:${m}:${s}`;
-    const clockDate = document.getElementById("clock-date");
-    if (clockDate) clockDate.innerText = dateStr;
-    const heroClock = document.getElementById("hero-clock");
-    if (heroClock) heroClock.innerText = `${dateStr}  ${h}:${m}:${s}`;
     const aClock = document.getElementById("a-hero-clock");
     if (aClock) aClock.innerText = `${dateStr}  ${h}:${m}:${s}`;
+    const monClock = document.getElementById("mon-clock");
+    if (monClock) monClock.innerText = `${h}:${m}:${s}`;
 }
 setInterval(updateClock, 1000);
 updateClock();
@@ -1563,6 +1492,7 @@ function showTab(name) {
     if (link) link.classList.add("active");
     window.scrollTo(0, 0);
     updateNav();
+    if (name === "schedule") loadSchedule();
     // 숨은 패널은 크기가 0이라 등장 판정에서 늘 제외된다.
     // 이미 맨 위에 있으면 scrollTo가 scroll 이벤트를 내지 않으므로 여기서 직접 다시 판정한다.
     refreshReveal();
@@ -1633,10 +1563,10 @@ const LOGIN_ROLES = {
         items: [
             "전체 병실의 실시간 영상과 순찰 로봇 위치를 확인합니다.",
             "순찰 시작·정지·복귀와 비상 정지를 원격으로 제어합니다.",
-            "낙상 통계와 이벤트 기록을 열람하고 오탐을 처리합니다.",
+            "낙상 통계와 이벤트 기록을 열람하고 대응 상태를 관리합니다.",
             "간호사·보호자 계정을 만들고 권한을 관리합니다."
         ],
-        note: "간호사 계정은 병동 관리자가 직접 발급합니다."
+        note: "간호사 계정은 관리자가 직접 발급합니다."
     },
     guardian: {
         placeholder: "보호자 아이디",
@@ -1648,7 +1578,7 @@ const LOGIN_ROLES = {
         ],
         note: '매핑 코드를 받으셨나요?<br>' +
               '<button class="apply-link" onclick="closeLogin(); openRedeem();">코드로 계정 만들기</button><br>' +
-              '아직 신청 전이라면 ' +
+              '아직 신청 전이라면<br> ' +
               '<button class="apply-link" onclick="closeLogin(); openApply();">보호자 연동 신청하기</button>'
     }
 };
@@ -1666,12 +1596,9 @@ function setLoginRole(role) {
     document.getElementById("login-id").placeholder = r.placeholder;
     document.getElementById("login-aside-title").innerText = r.title;
 
-    // 관리자(간호사)일 때만 보안 배너·2차 인증 핀·경고 문구를 노출한다
+    // 관리자(간호사)일 때만 보안 배너·경고 문구를 노출한다
     const isAdmin = role === "admin";
     document.getElementById("login-overlay").classList.toggle("login-admin", isAdmin);
-    document.getElementById("login-pin").style.display = isAdmin ? "" : "none";
-    document.getElementById("login-keep-label").innerText =
-        isAdmin ? "보안 세션 유지 (Session Keep-Alive)" : "이 기기에서 로그인 상태 유지";
 
     const list = document.getElementById("login-aside-list");
     list.innerHTML = "";
@@ -1748,11 +1675,32 @@ function submitApply() {
         return;
     }
 
+    // 재원 중인 환자와 일치하는지 확인 (이름 + 병실이 모두 맞아야 신청 가능)
+    const target = DB.findAdmittedPatient(patient, room);
+    if (!target) {
+        err.innerText = DB.isAdmittedName(patient)
+            ? `${patient} 님의 병실 번호가 일치하지 않습니다. 병실 번호를 다시 확인해 주세요.`
+            : "현재 입원 중인 환자 정보와 일치하지 않습니다. 환자 성함과 병실 번호를 다시 확인해 주세요.";
+        return;
+    }
+
+    // 이미 신청했거나 연동이 끝난 환자인지 확인
+    const dup = PENDING.some(p => p.patient_id === target.patient_id && p.status !== "rejected") ||
+                DB.guardians.some(g => g.patient_id === target.patient_id);
+    if (dup) {
+        err.innerText = "이미 연동 신청이 접수된 환자입니다. 관리자에게 문의해 주세요.";
+        return;
+    }
+
     const now = new Date();
     const at = `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())} ` +
                `${pad2(now.getHours())}:${pad2(now.getMinutes())}`;
 
-    PENDING.push({ name, phone, patient: `${patient} (${room}호)`, at, status: "pending" });
+    PENDING.push({
+        name, phone, at, status: "pending",
+        patient_id: target.patient_id,                     // 연동 대상 (DB patients.patient_id)
+        patient: `${target.name} (${target.room_number}호)`
+    });
     renderPending();   // 관리자 화면을 열어두지 않아도 목록에 반영해 둔다
 
     err.innerText = "";
@@ -1827,13 +1775,27 @@ function submitRedeem() {
     if (pw.length < 4) { err.innerText = "비밀번호는 4자 이상 입력해 주세요."; return; }
     if (pw !== pw2) { err.innerText = "비밀번호가 서로 다릅니다."; return; }
 
-    USERS[id] = { pw, role: "guardian", name: redeemEntry.name + " · 보호자" };
+    USERS[id] = { pw, role: "user", name: redeemEntry.name + " · 보호자" };   // DB 표기
     GUARDIANS.push({
         name: redeemEntry.name,
         id,
         patient: redeemEntry.patient,
         code: redeemEntry.code
     });
+
+    // 보호자–환자 연동을 데이터 계층에도 기록한다 → 로그인하면 이 환자 정보가 보인다
+    // TODO(백엔드): POST /api/guardians 로 대체
+    DB.addGuardian({
+        guardian_id: DB.guardians.length + 1,
+        username: id,
+        name: redeemEntry.name,
+        phone: redeemEntry.phone,
+        patient_id: redeemEntry.patient_id,
+        mapping_code: redeemEntry.code,
+        status: "registered",
+        role: "user"                       // DB users.role 표기
+    });
+
     redeemEntry.status = "registered";
 
     renderPending();
@@ -2076,17 +2038,34 @@ document.addEventListener("keydown", e => {
     closeLogin();
     closeApply();
     closeRedeem();
+    closeConfirm();
 });
 
 // ===== 로그인 / 권한 (테스트용: admin·cus / 1234, DB 미사용) =====
 const AUTH_KEY = "dashboard-auth";
 const ROLE_KEY = "dabom-role";
 const NAME_KEY = "dabom-name";
+const USER_KEY = "dabom-user";   // 로그인 아이디 (연동된 환자를 찾는 키)
 
-// 데모 계정
+/* ---- 역할 값 변환 (DB ↔ 화면) ----------------------------------
+   DB(users.role) : "admin" = 관리자·간호사 / "user" = 보호자
+   화면 내부      : "admin"                / "guardian"
+   API 응답을 받는 곳에서 toAppRole() 한 번만 통과시키면 되고,
+   DB 로 보낼 때는 toDbRole() 을 쓴다. 대소문자는 알아서 맞춘다. */
+const ROLE_DB_TO_APP = { admin: "admin", nurse: "admin", user: "guardian", guardian: "guardian" };
+const ROLE_APP_TO_DB = { admin: "admin", guardian: "user" };
+
+function toAppRole(dbRole) {
+    return ROLE_DB_TO_APP[String(dbRole || "").toLowerCase()] || "guest";
+}
+function toDbRole(appRole) {
+    return ROLE_APP_TO_DB[String(appRole || "").toLowerCase()] || "user";
+}
+
+// 데모 계정 (role 은 DB 표기 그대로 두고, 로그인할 때 화면용으로 변환한다)
 const USERS = {
     admin: { pw: "1234", role: "admin", name: "김간호 · 관리자" },
-    cus:   { pw: "1234", role: "guardian", name: "박보호 · 보호자" }
+    cus:   { pw: "1234", role: "user",  name: "박보호 · 보호자" }
 };
 
 // 역할별 상단 메뉴 (id = 탭 패널 id 접미사)
@@ -2111,15 +2090,20 @@ const NAV = {
         { id: "robot", label: "Robot Control" },
         { id: "astats", label: "통계" },
         { id: "events", label: "이벤트" },
+        { id: "schedule", label: "일정" },
         { id: "accounts", label: "계정 관리" }
     ]
 };
 
 function currentRole() {
-    return localStorage.getItem(ROLE_KEY) || sessionStorage.getItem(ROLE_KEY) || "guest";
+    const saved = localStorage.getItem(ROLE_KEY) || sessionStorage.getItem(ROLE_KEY);
+    return saved ? toAppRole(saved) : "guest";
 }
 function currentName() {
     return localStorage.getItem(NAME_KEY) || sessionStorage.getItem(NAME_KEY) || "";
+}
+function currentUser() {
+    return localStorage.getItem(USER_KEY) || sessionStorage.getItem(USER_KEY) || "";
 }
 function homeTab() { return NAV[currentRole()][0].id; }
 function goHome() { showTab(homeTab()); }
@@ -2157,33 +2141,182 @@ function renderNav() {
 // 병실 모니터링 그리드가 이 값을 그대로 쓴다
 const RISK_TEXT = { high: "고위험", mid: "중위험", low: "일반" };
 
-const WARDS = [
-    { room: "101", name: "홍길동", age: 78, sex: "남", diagnosis: "뇌졸중 후유증",    risk: "high", lastFall: "2026-07-14 03:20" },
-    { room: "102", name: "김영수", age: 72, sex: "남", diagnosis: "고관절 골절 회복", risk: "low",  lastFall: "2026-07-02 21:10" },
-    { room: "103", name: "이순자", age: 81, sex: "여", diagnosis: "파킨슨병",         risk: "mid",  lastFall: "2026-07-15 11:05" },
-    { room: "104", name: "최판서", age: 69, sex: "남", diagnosis: "당뇨 · 저혈압",    risk: "low",  lastFall: "낙상 이력 없음" }
-];
+/* ============================================================
+   데이터 계층 — 지금은 임시 데이터, 나중에 MySQL + Flask API 로 교체
+   ------------------------------------------------------------
+   ▶ 백엔드 담당자에게: 이 블록만 고치면 화면 코드는 손댈 필요가 없습니다.
+     DB.load() 안의 주석 두 줄을 풀고 아래 시드 배열을 지우면 연동 끝입니다.
+
+   테이블 ↔ 필드 대응 (컬럼명을 그대로 맞춰두었습니다)
+     patients   : patient_id, name, room_number('101'~'104'), room_type,
+                  age, gender, diagnosis, risk_level('high'|'mid'|'low'),
+                  last_fall_at, admitted(재원 여부 1/0), nurse_name, nurse_tel
+     guardians  : guardian_id, username, name, phone, patient_id,
+                  mapping_code, status('pending'|'approved'|'registered'|'rejected')
+     users      : username, password_hash, role('admin' | 'user'), ...
+                  ※ role 은 DB 표기('admin'=관리자·간호사, 'user'=보호자)를 그대로 주면 됩니다.
+                    화면 내부 표기('admin'/'guardian')로는 toAppRole() 이 알아서 바꿉니다.
+
+   기대 응답 형태
+     GET /api/patients            → [ {patients 레코드}, ... ]
+     GET /api/guardians           → [ {guardians 레코드}, ... ]
+   ============================================================ */
+const DB = {
+    // ----- 임시 시드 (화면 확인용) : 연동 시 삭제 -----
+    patients: [
+        { patient_id: 1, name: "홍길동", room_number: "101", room_type: "4인실",
+          age: 78, gender: "남", diagnosis: "뇌졸중 후유증", risk_level: "high",
+          last_fall_at: "2026-07-14 03:20", admitted: 1, nurse_name: "김간호", nurse_tel: "02-1234-5678" },
+        { patient_id: 2, name: "김영수", room_number: "102", room_type: "2인실",
+          age: 72, gender: "남", diagnosis: "고관절 골절 회복", risk_level: "low",
+          last_fall_at: "2026-07-02 21:10", admitted: 1, nurse_name: "이간호", nurse_tel: "02-1234-5679" },
+        { patient_id: 3, name: "이순자", room_number: "103", room_type: "4인실",
+          age: 81, gender: "여", diagnosis: "파킨슨병", risk_level: "mid",
+          last_fall_at: "2026-07-15 11:05", admitted: 1, nurse_name: "김간호", nurse_tel: "02-1234-5678" },
+        { patient_id: 4, name: "최판서", room_number: "104", room_type: "1인실",
+          age: 69, gender: "남", diagnosis: "당뇨 · 저혈압", risk_level: "low",
+          last_fall_at: "낙상 이력 없음", admitted: 1, nurse_name: "이간호", nurse_tel: "02-1234-5679" },
+
+        // 같은 병실을 쓰는 다른 환자들 — 낙상 감지 시 "누가 넘어졌는지" 고르는 후보가 된다
+        { patient_id: 5, name: "장복순", room_number: "101", room_type: "4인실",
+          age: 84, gender: "여", diagnosis: "고관절 수술 후 회복", risk_level: "high",
+          last_fall_at: "2026-06-28 05:40", admitted: 1, nurse_name: "김간호", nurse_tel: "02-1234-5678" },
+        { patient_id: 6, name: "오갑수", room_number: "101", room_type: "4인실",
+          age: 76, gender: "남", diagnosis: "척추관 협착증", risk_level: "mid",
+          last_fall_at: "낙상 이력 없음", admitted: 1, nurse_name: "김간호", nurse_tel: "02-1234-5678" },
+        { patient_id: 7, name: "윤말자", room_number: "101", room_type: "4인실",
+          age: 79, gender: "여", diagnosis: "당뇨 합병증", risk_level: "low",
+          last_fall_at: "낙상 이력 없음", admitted: 1, nurse_name: "김간호", nurse_tel: "02-1234-5678" },
+        { patient_id: 8, name: "한정식", room_number: "103", room_type: "4인실",
+          age: 83, gender: "남", diagnosis: "뇌경색 후유증", risk_level: "mid",
+          last_fall_at: "낙상 이력 없음", admitted: 1, nurse_name: "김간호", nurse_tel: "02-1234-5678" },
+        { patient_id: 9, name: "서금자", room_number: "102", room_type: "2인실",
+          age: 74, gender: "여", diagnosis: "무릎 인공관절 수술", risk_level: "low",
+          last_fall_at: "낙상 이력 없음", admitted: 1, nurse_name: "이간호", nurse_tel: "02-1234-5679" }
+    ],
+
+    // 병실 정원 (낙상 환자 후보를 고를 때와 환자 등록 때 쓴다)
+    ROOM_CAPACITY: { "101": 4, "102": 2, "103": 4, "104": 1 },
+
+    guardians: [
+        { guardian_id: 1, username: "cus", name: "박보호", phone: "010-3456-7890",
+          patient_id: 1, mapping_code: "KJ-3E91-A47C", status: "registered", role: "user" }
+    ],
+
+    // ----- 연동 지점 -----
+    async load() {
+        // TODO(백엔드): 아래 두 줄의 주석을 풀고 위 시드 배열을 지우면 됩니다.
+        // DB.patients  = await (await fetch("/api/patients")).json();
+        // DB.guardians = await (await fetch("/api/guardians")).json();
+    },
+
+    // ----- 조회 헬퍼 (화면은 항상 이 함수들만 사용) -----
+    getPatient(id) {
+        return DB.patients.find(p => p.patient_id === id) || null;
+    },
+
+    // 연동 신청 검증용: 재원 중인 환자 중에서 이름+병실이 모두 맞아야 통과
+    findAdmittedPatient(name, room) {
+        const n = String(name).replace(/\s/g, "");
+        return DB.patients.find(p =>
+            p.admitted === 1 && p.name.replace(/\s/g, "") === n && p.room_number === String(room)
+        ) || null;
+    },
+
+    isAdmittedName(name) {
+        const n = String(name).replace(/\s/g, "");
+        return DB.patients.some(p => p.admitted === 1 && p.name.replace(/\s/g, "") === n);
+    },
+
+    // 같은 병실에 있는 재원 환자들 (4인실이면 최대 4명)
+    listPatientsByRoom(room) {
+        return DB.patients.filter(p => p.admitted === 1 && p.room_number === String(room));
+    },
+
+    /* 보호자에게 공개되는 낙상 기록
+       한 병실에 여러 명이 있어 영상만으로는 누가 넘어졌는지 알 수 없으므로,
+       간호사가 현장 확인 후 환자를 특정(fall_patient_id)한 건만 보호자에게 넘어간다.
+       미확인 상태(fall_patient_id = NULL)는 어느 보호자에게도 보이지 않는다. */
+    listFallsForPatient(patientId) {
+        // TODO(백엔드): GET /api/events?fall_patient_id={id} 로 교체
+        return EVENTS
+            .filter(e => e.type === "낙상" && e.fall_patient_id === patientId)
+            .sort((a, b) => b.time.localeCompare(a.time));
+    },
+
+    getGuardianByUsername(username) {
+        return DB.guardians.find(g => g.username === username) || null;
+    },
+
+    addGuardian(g) { DB.guardians.push(g); },   // TODO: POST /api/guardians
+
+    /* 순찰 로그
+       patrol_logs : log_id, patient_id, room_number, patrolled_at(DATETIME),
+                     result('normal' | 'fall' | 'call')
+       순찰 주기가 병실당 약 2분이라 하루 300건 이상 쌓입니다.
+       화면은 최신순으로 받는 것을 기대합니다. */
+    listPatrolLogs(patientId, date) {
+        // TODO(백엔드): GET /api/patrols?patient_id={id}&date={YYYY-MM-DD} 로 교체
+        //   return await (await fetch(`/api/patrols?patient_id=${patientId}&date=${date}`)).json();
+        return DB._demoPatrolLogs(patientId);
+    },
+
+    // ----- 임시 생성기 (연동 시 삭제) : 오늘 08:00부터 2분 간격 -----
+    _demoPatrolLogs(patientId) {
+        const p = DB.getPatient(patientId);
+        if (!p) return [];
+        const out = [];
+        const now = new Date();
+        const t = new Date(now);
+        t.setHours(8, 0, 0, 0);
+        while (t <= now) {
+            out.push({
+                patrolled_at: `${pad2(t.getHours())}:${pad2(t.getMinutes())}`,
+                room_number: p.room_number,
+                result: "normal"
+            });
+            t.setMinutes(t.getMinutes() + 2);
+        }
+        return out.reverse();   // 최신순
+    }
+};
+
+// 화면 표시용 파생 데이터 (관리자 병실 그리드가 사용)
+const WARDS = DB.patients.map(p => ({
+    room: p.room_number, name: p.name, age: p.age, sex: p.gender,
+    diagnosis: p.diagnosis, risk: p.risk_level, lastFall: p.last_fall_at
+}));
 
 function renderWardGrid() {
     const grid = document.getElementById("ward-grid");
     if (!grid) return;
     grid.innerHTML = "";
-    WARDS.forEach(w => {
+
+    // 한 병실에 여러 명이 있으므로 병실 단위로 묶는다 (카드 = 병실 1개)
+    const rooms = [...new Set(WARDS.map(w => w.room))].sort();
+    const rank = { high: 3, mid: 2, low: 1 };
+
+    rooms.forEach(room => {
+        const list = WARDS.filter(w => w.room === room);
+        // 병실 태그는 그 방에서 가장 높은 위험도로 표시한다
+        const risk = list.reduce((a, w) => (rank[w.risk] > rank[a] ? w.risk : a), "low");
+        const names = list.map(w => w.name).join(", ");
+
         const cell = document.createElement("button");
         cell.type = "button";
-        cell.className = "ward-cell" + (w.room === "101" ? " selected" : "");
-        cell.dataset.room = w.room;
-        cell.onclick = () => selectWard(w.room);
+        cell.className = "ward-cell" + (room === "101" ? " selected" : "");
+        cell.dataset.room = room;
+        cell.onclick = () => selectWard(room);
         cell.innerHTML =
             `<div class="ward-video">
-                 <img src="/video_feed" alt="병실 ${w.room} 실시간 영상" onerror="this.style.visibility='hidden'">
+                 <img src="/video_feed" alt="병실 ${room} 실시간 영상" onerror="this.style.visibility='hidden'">
                  <span class="live-badge">LIVE</span>
              </div>
              <div class="ward-meta">
-                 <strong>병실 ${w.room}</strong>
-                 <span class="risk-chip risk-${w.risk}">${RISK_TEXT[w.risk]}</span>
+                 <strong>병실 ${room}</strong>
+                 <span class="risk-chip risk-${risk}">${RISK_TEXT[risk]}</span>
              </div>
-             <span class="ward-patient">${w.name} 님</span>`;
+             <span class="ward-patient">${names || "재실 환자 없음"} · ${list.length}명</span>`;
         grid.appendChild(cell);
     });
 }
@@ -2209,7 +2342,36 @@ function openEvCapture(idx) {
     document.getElementById("ev-capture-type").innerText = e.type;
     document.getElementById("ev-capture-tag").innerText = e.type + " 확정 프레임";
     document.getElementById("ev-memo").value = e.memo || "";
+    document.getElementById("ev-error").innerText = "";
+
+    // 낙상 이벤트에서만 "누가 넘어졌는지" 지정한다
+    const assign = document.getElementById("ev-assign");
+    const people = document.getElementById("ev-people");
+    assign.style.display = e.type === "낙상" ? "" : "none";
+
+    if (e.type === "낙상") {
+        const list = DB.listPatientsByRoom(e.room);
+        people.innerHTML = list.length
+            ? list.map(p => `
+                <label class="ev-person${e.fall_patient_id === p.patient_id ? " picked" : ""}">
+                    <input type="radio" name="ev-fall-person" value="${p.patient_id}"
+                           ${e.fall_patient_id === p.patient_id ? "checked" : ""}
+                           onchange="pickFallPatient(${p.patient_id})">
+                    <span class="ev-person-name">${p.name}</span>
+                    <span class="ev-person-sub">${p.age}세 · ${p.gender} · ${RISK_TEXT[p.risk_level]}</span>
+                </label>`).join("")
+            : '<p class="a-hint">이 병실에 등록된 재원 환자가 없습니다.</p>';
+    }
+
     document.getElementById("ev-modal").classList.add("open");
+}
+
+// 라디오 선택 시 카드 강조만 갱신 (확정은 '대응 완료 처리'에서)
+function pickFallPatient(patientId) {
+    document.querySelectorAll("#ev-people .ev-person").forEach(el => {
+        el.classList.toggle("picked", +el.querySelector("input").value === patientId);
+    });
+    document.getElementById("ev-error").innerText = "";
 }
 
 function closeEvCapture() {
@@ -2218,18 +2380,37 @@ function closeEvCapture() {
 
 function markEventDone() {
     if (evSelected === null) return;
-    EVENTS[evSelected].done = true;
-    EVENTS[evSelected].memo = document.getElementById("ev-memo").value.trim();
+    const e = EVENTS[evSelected];
+    const err = document.getElementById("ev-error");
+
+    // 낙상은 누가 넘어졌는지 지정해야 완료 처리할 수 있다
+    if (e.type === "낙상") {
+        const picked = document.querySelector('input[name="ev-fall-person"]:checked');
+        if (!picked) {
+            err.innerText = "현장에서 확인한 낙상 환자를 선택해 주세요.";
+            return;
+        }
+        const p = DB.getPatient(+picked.value);
+        e.fall_patient_id = p.patient_id;      // TODO(백엔드): PATCH /api/events/{id}
+        e.fall_patient_name = p.name;
+        e.confirmed_by = currentName().split("·")[0].trim();   // 확인한 간호사
+    }
+
+    e.done = true;
+    e.memo = document.getElementById("ev-memo").value.trim();
+    err.innerText = "";
     closeEvCapture();
     renderEvents();
-    rcToast("대응 완료로 처리했습니다");
+    rcToast(e.fall_patient_name
+        ? `${e.fall_patient_name} 님 낙상으로 확정했습니다`
+        : "대응 완료로 처리했습니다");
 }
 
 // ----- 계정: 보호자 가입 승인 -----
 // status: pending → approved(코드 발급) → registered(보호자가 코드로 가입 완료) / rejected
 const PENDING = [
-    { name: "정보호", phone: "010-9876-5432", patient: "김영수 (102호)", at: "2026-07-30 09:12", status: "pending" },
-    { name: "한가족", phone: "010-5555-1234", patient: "이순자 (103호)", at: "2026-07-30 14:45", status: "pending" }
+    { name: "정보호", phone: "010-9876-5432", patient_id: 2, patient: "김영수 (102호)", at: "2026-07-30 09:12", status: "pending" },
+    { name: "한가족", phone: "010-5555-1234", patient_id: 3, patient: "이순자 (103호)", at: "2026-07-30 14:45", status: "pending" }
 ];
 
 // 코드 등록을 마친 보호자 계정 (submitRedeem이 여기에 추가한다)
@@ -2241,18 +2422,63 @@ function renderGuardians() {
     const tb = document.getElementById("acc-guardian-tbody");
     if (!tb) return;
     tb.innerHTML = "";
-    GUARDIANS.forEach(g => {
+    GUARDIANS.forEach((g, i) => {
         const tr = document.createElement("tr");
         tr.innerHTML =
-            `<td>${g.name}</td><td>${g.id}</td><td>${g.patient}</td>` +
+            `<td>${g.name}</td><td>${g.id}</td>` +
+            `<td>${g.discharged
+                ? `<span class="risk-chip risk-idle">퇴원 완료</span>`
+                : g.patient}</td>` +
             `<td><code class="g-code">${g.code}</code></td>` +
-            `<td><select class="form-input form-input-sm" onchange="rcToast('권한이 변경되었습니다 (데모)')">` +
-            `<option>GUARDIAN</option><option>NURSE</option><option>ADMIN</option></select></td>` +
-            `<td class="row-actions">` +
-            `<button class="mini-btn" onclick="rcToast('매핑 코드를 재발행했습니다 (데모)')">코드 재발행</button>` +
-            `<button class="mini-btn mini-danger" onclick="rcToast('접근이 차단되었습니다 (데모)')">접근 차단</button>` +
-            `</td>`;
+            `<td><span class="role-fixed role-user">USER</span></td>` +
+            `<td class="row-actions">${g.discharged
+                ? "-"
+                : `<button class="mini-btn mini-danger" onclick="dischargeByGuardian(${i})">환자 퇴원</button>`}</td>`;
         tb.appendChild(tr);
+    });
+}
+
+// "홍길동 (101호)" → { name: "홍길동", room: "101" }
+// 한 병실에 여러 환자가 있으므로 병실 번호만으로 찾으면 다른 환자를 건드리게 된다
+function parsePatientRef(ref) {
+    const m = String(ref).match(/^\s*(.+?)\s*\((\d{3,4})호\)\s*$/);
+    return m ? { name: m[1].trim(), room: m[2] } : { name: "", room: "" };
+}
+
+// 보호자 행에서 바로 담당 환자를 퇴원시킨다. 퇴원 후에는 버튼이 사라진다.
+function dischargeByGuardian(i) {
+    const g = GUARDIANS[i];
+    const ref = parsePatientRef(g.patient);
+    askConfirm({
+        title: "환자 퇴원 처리",
+        body: `<b>${g.patient}</b> 환자를 퇴원 처리합니다.<br>` +
+              `보호자 <b>${g.name}</b> 님(${g.id})의 병실 열람 권한이 함께 해제됩니다.`,
+        okText: "퇴원 처리",
+        danger: true,
+        onOk: () => {
+            const wi = WARDS.findIndex(w => w.room === ref.room && w.name === ref.name);
+            if (wi > -1) WARDS.splice(wi, 1);
+            g.discharged = true;
+            renderGuardians();
+            renderPatients();
+            renderWardGrid();
+            rcToast(g.patient + " 환자를 퇴원 처리했습니다");
+        }
+    });
+}
+
+function deleteNurse(btn) {
+    const row = btn.closest("tr");
+    const name = row.cells[0].innerText.trim();
+    askConfirm({
+        title: "간호사 계정 삭제",
+        body: `<b>${name}</b> 계정을 삭제합니다.<br>삭제하면 이 계정으로 다시 로그인할 수 없습니다.`,
+        okText: "계정 삭제",
+        danger: true,
+        onOk: () => {
+            row.remove();
+            rcToast(name + " 계정을 삭제했습니다");
+        }
     });
 }
 
@@ -2305,28 +2531,201 @@ function newMappingCode() {
 
 function approveGuardian(i) {
     const p = PENDING[i];
-    const code = newMappingCode();
-    if (!code) {
-        rcToast("매핑 코드를 만들지 못했습니다. 다시 시도해 주세요.");
-        return;
-    }
-    p.status = "approved";
-    p.code = code;
-    renderPending();
-    rcToast(p.name + " 님 승인 완료 · 매핑 코드 " + p.code + " 발송 (데모)");
+    askConfirm({
+        title: "보호자 연동 승인",
+        body: `<b>${p.name}</b> 님(${p.phone})을 <b>${p.patient}</b> 보호자로 승인합니다.<br>` +
+              `승인하면 매핑 코드가 발급되어 등록된 연락처로 발송됩니다.`,
+        okText: "승인",
+        onOk: () => {
+            const code = newMappingCode();
+            if (!code) {
+                rcToast("매핑 코드를 만들지 못했습니다. 다시 시도해 주세요.");
+                return;
+            }
+            p.status = "approved";
+            p.code = code;
+            renderPending();
+            rcToast(p.name + " 님 승인 완료 · 매핑 코드 " + p.code + " 발송 (데모)");
+        }
+    });
 }
 
 function rejectGuardian(i) {
-    PENDING[i].status = "rejected";
-    renderPending();
-    rcToast(PENDING[i].name + " 님 신청을 거절했습니다");
+    const p = PENDING[i];
+    askConfirm({
+        title: "연동 신청 거절",
+        body: `<b>${p.name}</b> 님의 <b>${p.patient}</b> 연동 신청을 거절합니다.<br>` +
+              `거절하면 매핑 코드가 발급되지 않아 계정을 만들 수 없습니다.`,
+        okText: "거절",
+        danger: true,
+        onOk: () => {
+            p.status = "rejected";
+            renderPending();
+            rcToast(p.name + " 님 신청을 거절했습니다");
+        }
+    });
 }
 
 // ===== 보호자 화면 =====
 // 인사말에 로그인한 보호자 이름을 넣는다 ("박보호 · 보호자" → "박보호")
+// 오늘의 순찰 기록 (2분 간격이라 건수가 많아 목록 안에서 스크롤된다)
+function renderPatrolLog(patient) {
+    const ul = document.getElementById("g-patrol-log");
+    const cnt = document.getElementById("g-patrol-count");
+    if (!ul) return;
+
+    const logs = patient ? DB.listPatrolLogs(patient.patient_id) : [];
+    if (cnt) cnt.innerText = logs.length;
+
+    // 같은 로그를 쓰는 다른 화면들 (실시간 병실 · 통계)
+    const set = (id, v) => { const el = document.getElementById(id); if (el) el.innerText = v; };
+    set("g-live-today", logs.length + "회");
+    set("g-live-last", logs.length ? logs[0].patrolled_at : "기록 없음");
+    set("g-stat-today", logs.length);
+
+    if (!logs.length) {
+        ul.innerHTML = '<li class="g-log-empty">아직 오늘 순찰 기록이 없습니다.</li>';
+        return;
+    }
+
+    const last = logs.length - 1;
+    ul.innerHTML = logs.map((l, i) => {
+        const text = i === last
+            ? "오전 순찰 시작"
+            : l.result === "fall"
+                ? '<span class="g-danger">낙상 감지</span>'
+                : '정기 순찰 완료 · <span class="g-ok">이상 없음</span>';
+        return `<li><span class="tl-time">${l.patrolled_at}</span><span>${text}</span></li>`;
+    }).join("");
+}
+
+// 간호사가 환자를 특정한 낙상 기록을 보호자 화면(홈·통계)에 반영한다
+function renderGuardianFalls(patient) {
+    const set = (id, v) => { const el = document.getElementById(id); if (el) el.innerText = v; };
+    const falls = patient ? DB.listFallsForPatient(patient.patient_id) : [];
+
+    const today = new Date();
+    const ymd = `${today.getFullYear()}-${pad2(today.getMonth() + 1)}-${pad2(today.getDate())}`;
+    const todayFalls = falls.filter(f => f.time.startsWith(ymd));
+
+    // 최근 30일
+    const limit = new Date(today.getTime() - 30 * 86400000);
+    const recent = falls.filter(f => new Date(f.time.replace(" ", "T")) >= limit);
+
+    // Home · 오늘의 알림 카드
+    const tile = document.getElementById("g-today-events");
+    if (tile) {
+        tile.innerHTML = todayFalls.length + '<span class="stat-tile-unit">건</span>';
+        tile.style.color = todayFalls.length ? "#e5484d" : "";
+    }
+    set("g-today-events-sub", todayFalls.length ? "낙상 알림 확인 필요" : "낙상 감지 없음");
+
+    // Home · 낙상 알림 기록 (있을 때만 노출)
+    const panel = document.getElementById("g-fall-panel");
+    const list = document.getElementById("g-fall-list");
+    if (panel && list) {
+        panel.style.display = falls.length ? "" : "none";
+        list.innerHTML = falls.map(f => {
+            const memo = f.memo ? ` · <span class="g-fall-memo">${f.memo}</span>` : "";
+            const by = f.confirmed_by ? `${f.confirmed_by} 간호사 확인` : "확인 완료";
+            return `<li><span class="tl-time">${f.time.slice(5, 16)}</span>` +
+                   `<span><span class="g-danger">낙상 감지</span> · ${by}${memo}</span></li>`;
+        }).join("");
+    }
+
+    // 통계
+    const fallsNum = document.getElementById("g-stat-falls");
+    if (fallsNum) {
+        fallsNum.innerHTML = recent.length + '<span class="stat-tile-unit">건</span>';
+        fallsNum.style.color = recent.length ? "#e5484d" : "#1a9d43";
+    }
+    set("g-stat-falls-sub", recent.length ? "간호사 확인 완료" : "안전 유지 중");
+    set("g-stats-chip", `최근 30일 낙상 ${recent.length}건`);
+    set("g-report-sub", `같은 기간 낙상 발생 ${recent.length}건`);
+
+    const chip = document.getElementById("g-stats-chip");
+    if (chip) {
+        chip.classList.toggle("g-chip-ok", recent.length === 0);
+        chip.classList.toggle("g-chip-warn", recent.length > 0);
+    }
+}
+
+// 로그인한 보호자 계정 → 연동된 환자를 찾아 보호자 화면 전체를 채운다.
+// (하드코딩 없이 DB 조회 결과만 사용 — 나중에 API 로 바꿔도 이 함수는 그대로)
 function renderGuardian() {
-    const el = document.getElementById("g-greet-name");
-    if (el) el.innerText = (currentName().split("·")[0] || "보호자").trim();
+    const set = (id, text) => {
+        const el = document.getElementById(id);
+        if (el) el.innerText = text;
+    };
+
+    const username = currentUser();
+    const guardian = DB.getGuardianByUsername(username);
+    const patient = guardian ? DB.getPatient(guardian.patient_id) : null;
+
+    set("g-greet-name", (guardian ? guardian.name : currentName().split("·")[0] || "보호자").trim());
+
+    if (!patient) {
+        // 연동 정보를 못 찾은 경우 (승인 전이거나 데이터 불일치)
+        ["g-hero-room", "g-hero-patient", "g-tile-room", "g-pt-name", "g-pt-age", "g-pt-dx",
+         "g-pt-lastfall", "g-room-no", "g-room-type", "g-live-room", "g-live-room2",
+         "g-live-type", "g-live-patient", "g-stats-patient",
+         "g-link-patient", "g-link-code"].forEach(id => set(id, "연동 정보 없음"));
+        renderPatrolLog(null);
+        renderGuardianFalls(null);
+        loadGuardianNoti();
+        return;
+    }
+
+    const room = patient.room_number + "호";
+
+    // Home
+    set("g-hero-room", room);
+    set("g-hero-patient", patient.name);
+    set("g-tile-room", room);
+
+    // 내 병실 · 환자 프로필
+    set("g-pt-name", patient.name);
+    set("g-pt-age", `${patient.age}세 · ${patient.gender}`);
+    set("g-pt-dx", patient.diagnosis);
+    set("g-pt-lastfall", patient.last_fall_at);
+
+    const riskEl = document.getElementById("g-pt-risk");
+    if (riskEl) {
+        riskEl.innerHTML =
+            `<span class="risk-chip risk-${patient.risk_level}">${RISK_TEXT[patient.risk_level]}</span>`;
+    }
+    const noteEl = document.getElementById("g-pt-note");
+    if (noteEl) {
+        noteEl.style.display = patient.risk_level === "high" ? "" : "none";
+    }
+
+    // 내 병실 · 병실 상세
+    set("g-room-no", room);
+    set("g-room-type", patient.room_type);
+    set("g-nurse-name", patient.nurse_name);
+    set("g-nurse-tel", patient.nurse_tel);
+
+    // 실시간 병실
+    set("g-live-room", room);
+    set("g-live-room2", room);
+    set("g-live-type", patient.room_type);
+    set("g-live-patient", patient.name + " 님");
+    set("g-map-room", room);
+    set("g-map-patient", "내 병실 · " + patient.name + " 님");
+    set("g-map-ward", patient.ward);
+
+    // 통계
+    set("g-stats-patient", `${patient.name} 님(${room})`);
+
+    // 내 정보
+    set("g-me-name", guardian.name);
+    set("g-me-id", guardian.username);
+    set("g-me-phone", guardian.phone);
+    set("g-link-patient", `${patient.name} (${room})`);
+    set("g-link-code", guardian.mapping_code);
+
+    renderPatrolLog(patient);
+    renderGuardianFalls(patient);
     loadGuardianNoti();
 }
 
@@ -2334,19 +2733,16 @@ const G_NOTI_KEY = "dabom-guardian-noti";
 
 function loadGuardianNoti() {
     const fall = document.getElementById("g-noti-fall");
-    const report = document.getElementById("g-noti-report");
-    if (!fall || !report) return;
+    if (!fall) return;
     let saved;
     try { saved = JSON.parse(localStorage.getItem(G_NOTI_KEY)); } catch (e) { saved = null; }
-    if (!saved) return;                       // 저장값이 없으면 HTML 기본값(낙상 ON · 리포트 OFF) 유지
+    if (!saved) return;                       // 저장값이 없으면 HTML 기본값(낙상 ON) 유지
     fall.checked = !!saved.fall;
-    report.checked = !!saved.report;
 }
 
 function saveGuardianNoti() {
     const fall = document.getElementById("g-noti-fall").checked;
-    const report = document.getElementById("g-noti-report").checked;
-    localStorage.setItem(G_NOTI_KEY, JSON.stringify({ fall, report }));
+    localStorage.setItem(G_NOTI_KEY, JSON.stringify({ fall }));
     rcToast("알림 설정이 저장되었습니다");
 }
 
@@ -2365,12 +2761,6 @@ function syncGuardianLive(data) {
     fall.innerText = detected ? "낙상 감지" : "정상";
     fall.classList.toggle("g-ok", !detected);
     fall.classList.toggle("g-danger", detected);
-
-    // 내 병실에 있을 때만 로봇 아이콘을 병실 안에, 아니면 복도에 표시
-    const robot = document.getElementById("gmap-robot");
-    const hall = document.getElementById("gmap-hall");
-    const room = document.getElementById("gmap-101");
-    if (robot && hall && room) (mine ? room : hall).appendChild(robot);
 }
 
 function doLogin() {
@@ -2382,8 +2772,9 @@ function doLogin() {
         // 자동 로그인 → localStorage(영구), 미체크 → sessionStorage
         const store = auto ? localStorage : sessionStorage;
         store.setItem(AUTH_KEY, "1");
-        store.setItem(ROLE_KEY, u.role);
+        store.setItem(ROLE_KEY, toAppRole(u.role));   // DB 표기(admin/user) → 화면 표기(admin/guardian)
         store.setItem(NAME_KEY, u.name);
+        store.setItem(USER_KEY, id);
         document.getElementById("login-error").innerText = "";
         document.getElementById("login-pw").value = "";
         closeLogin();
@@ -2397,7 +2788,7 @@ function doLogin() {
 
 function logout() {
     [localStorage, sessionStorage].forEach(s => {
-        s.removeItem(AUTH_KEY); s.removeItem(ROLE_KEY); s.removeItem(NAME_KEY);
+        s.removeItem(AUTH_KEY); s.removeItem(ROLE_KEY); s.removeItem(NAME_KEY); s.removeItem(USER_KEY);
     });
     renderNav();
     goHome();
@@ -2412,6 +2803,7 @@ function logout() {
 let currentVideoMode = "raw";
 let lastYoloSignal = false;
 let lastSeenAlertId = null;  // * 팝업 부분 수정 *
+let lastLogHtml = "";        // 이벤트 로그: 바뀐 경우에만 다시 그리기 위한 비교용
 
 function showFallAlert(room) {  // * 팝업 부분 수정 *
     document.getElementById("fall-alert-room").innerText = "병실 " + room;  // * 팝업 부분 수정 *
@@ -2480,8 +2872,26 @@ async function updateStatus() {
         document.getElementById("battery").innerText = data.battery;
         document.getElementById("camera").innerText = data.camera;
         document.getElementById("network").innerText = data.network;
-        document.getElementById("current-room-text").innerText =  // * 로봇 위치 추적 수정 *
-            room ? "병실 " + data.current_room : "위치 확인 중";  // * 로봇 위치 추적 수정 *
+        const locText = room ? "병실 " + data.current_room : "위치 확인 중";
+        document.getElementById("current-room-text").innerText = locText;
+
+        // 모니터링 콘솔: 영상 위 병실 표기 · 배터리 막대 · 낙상 강조
+        const stageRoom = document.getElementById("mon-stage-room");
+        if (stageRoom) stageRoom.innerText = locText;
+
+        const bar = document.getElementById("battery-bar");
+        if (bar) {
+            const pct = parseInt(String(data.battery).replace(/[^0-9]/g, ""), 10);
+            if (!isNaN(pct)) {
+                bar.style.width = pct + "%";
+                bar.className = pct <= 15 ? "crit" : pct <= 30 ? "low" : "";
+            }
+        }
+
+        const fallBox = document.getElementById("mon-fall-box");
+        if (fallBox) {
+            fallBox.classList.toggle("alert", !!data.fall_status && data.fall_status.includes("감지"));
+        }
 
         // 홈 탭 요약 지표 동기화 (기존 status 데이터 재사용)
         const statRoom = document.getElementById("stat-current-room");
@@ -2491,16 +2901,24 @@ async function updateStatus() {
 
         syncGuardianLive(data);   // 보호자 실시간 병실 (조회 전용)
 
+        // 로그는 1초마다 다시 그려지므로, 내용이 바뀐 경우에만 갱신하고
+        // 관리자가 위로 올려 읽던 스크롤 위치는 그대로 유지한다
         const log = document.getElementById("event-log");
-        log.innerHTML = "";
+        const html = data.events.map(e => {
+            const isFall = e.text.includes("낙상 환자 발견");
+            return `<div class="event-item${isFall ? " fall" : ""}">` +
+                   `<span>${e.time}</span><p>${e.text}</p></div>`;
+        }).join("") || '<div class="event-empty">기록된 이벤트가 없습니다.</div>';
 
-        data.events.forEach(event => {
-            const item = document.createElement("div");
-            item.className = "event-item";
-            const isFall = event.text.includes("낙상 환자 발견");
-            item.innerHTML = `<span>${event.time}</span><p style="${isFall ? 'color:#dc2626; font-weight:700;' : ''}">${event.text}</p>`;
-            log.appendChild(item);
-        });
+        if (html !== lastLogHtml) {
+            const keep = log.scrollTop;
+            log.innerHTML = html;
+            lastLogHtml = html;
+            log.scrollTop = keep;
+        }
+
+        const logCount = document.getElementById("mon-log-count");
+        if (logCount) logCount.innerText = data.events.length;
     } catch (err) {
         console.error(err);
     }
@@ -2526,42 +2944,11 @@ const THEMES = [
 function applyTheme(id) {
     document.body.setAttribute("data-theme", id);
     localStorage.setItem("dashboard-theme", id);
-    renderThemeList();
-    if (typeof renderSettingsTheme === "function") renderSettingsTheme();
+    renderSettingsTheme();
 }
-
-function renderThemeList() {
-    const cur = document.body.getAttribute("data-theme") || "light";
-    const list = document.getElementById("theme-list");
-    if (!list) return;
-    list.innerHTML = "";
-    THEMES.forEach(t => {
-        const el = document.createElement("div");
-        el.className = "theme-swatch" + (t.id === cur ? " selected" : "");
-        el.onclick = () => applyTheme(t.id);
-        el.innerHTML = `<span class="theme-dot" style="background:${t.dot}"></span>${t.name}`;
-        list.appendChild(el);
-    });
-}
-
-function toggleToolsMenu() {
-    document.getElementById("tools-menu").classList.toggle("open");
-}
-function closeToolsMenu() {
-    document.getElementById("tools-menu").classList.remove("open");
-}
-
-// 메뉴 바깥 클릭 시 닫기
-document.addEventListener("click", (e) => {
-    const wrap = document.querySelector(".tools-wrap");
-    if (wrap && !wrap.contains(e.target)) {
-        closeToolsMenu();
-    }
-});
 
 // 저장된 테마 적용
 document.body.setAttribute("data-theme", localStorage.getItem("dashboard-theme") || "light");
-renderThemeList();
 
 // ===== 캘린더 =====
 let calYear, calMonth;   // calMonth: 0-based
@@ -2571,27 +2958,34 @@ let calSelectedDate = null;
 function pad2(n) { return String(n).padStart(2, "0"); }
 function dateKey(y, m, d) { return `${y}-${pad2(m + 1)}-${pad2(d)}`; }
 
+// 일정은 브라우저에 저장해 두고 쓴다.
+// TODO(백엔드): 아래 세 함수의 주석 처리된 fetch 를 살리고 localStorage 줄을 지우면 연동 끝입니다.
+//   GET  /api/events         → { "2026-08-10": [{id, text}, ...], ... }
+//   POST /api/events         ← { date, text }  → { ok, event:{id, text} }
+//   POST /api/events/delete  ← { date, id }    → { ok }
+const SCHEDULE_KEY = "dabom-schedule";
+
+function saveEvents() {
+    localStorage.setItem(SCHEDULE_KEY, JSON.stringify(calEvents));
+}
+
 async function fetchEvents() {
+    // calEvents = await (await fetch("/api/events")).json();
     try {
-        const res = await fetch("/api/events");
-        calEvents = await res.json();
+        calEvents = JSON.parse(localStorage.getItem(SCHEDULE_KEY)) || {};
     } catch (e) {
         calEvents = {};
-        console.error(e);
     }
 }
 
-async function openCalendar() {
+// 일정 탭에 들어올 때마다 서버에서 다시 읽어 그린다
+async function loadSchedule() {
+    if (!document.getElementById("cal-grid")) return;
     const now = new Date();
     if (calYear === undefined) { calYear = now.getFullYear(); calMonth = now.getMonth(); }
     await fetchEvents();
     renderCalendar();
     closeDayDetail();
-    document.getElementById("cal-overlay").classList.add("open");
-}
-
-function closeCalendar() {
-    document.getElementById("cal-overlay").classList.remove("open");
 }
 
 function calPrev() { calMonth--; if (calMonth < 0) { calMonth = 11; calYear--; } renderCalendar(); }
@@ -2625,19 +3019,33 @@ function renderCalendar() {
         cell.onclick = () => openDayDetail(key);
         grid.appendChild(cell);
     }
+
+    // 이달 등록 건수
+    const badge = document.getElementById("sch-count");
+    if (badge) {
+        const prefix = `${calYear}-${pad2(calMonth + 1)}-`;
+        badge.innerText = Object.keys(calEvents)
+            .filter(k => k.startsWith(prefix))
+            .reduce((sum, k) => sum + calEvents[k].length, 0);
+    }
 }
 
 function openDayDetail(key) {
     calSelectedDate = key;
     document.getElementById("cal-detail-date").innerText = key;
     document.getElementById("cal-day-detail").style.display = "block";
+    document.getElementById("cal-empty-hint").style.display = "none";
+    document.querySelectorAll(".cal-day").forEach(c => c.classList.remove("picked"));
     renderDayEvents();
     document.getElementById("cal-event-input").focus();
 }
 
 function closeDayDetail() {
     calSelectedDate = null;
-    document.getElementById("cal-day-detail").style.display = "none";
+    const detail = document.getElementById("cal-day-detail");
+    const hint = document.getElementById("cal-empty-hint");
+    if (detail) detail.style.display = "none";
+    if (hint) hint.style.display = "";
 }
 
 function renderDayEvents() {
@@ -2662,166 +3070,216 @@ async function addEvent() {
     const input = document.getElementById("cal-event-input");
     const text = input.value.trim();
     if (!text || !calSelectedDate) return;
-    try {
-        const res = await fetch("/api/events", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ date: calSelectedDate, text }),
-        });
-        const data = await res.json();
-        if (data.ok) {
-            (calEvents[calSelectedDate] = calEvents[calSelectedDate] || []).push(data.event);
-            input.value = "";
-            renderDayEvents();
-            renderCalendar();
-        }
-    } catch (e) { console.error(e); }
+
+    // const data = await (await fetch("/api/events", { method:"POST",
+    //     headers:{ "Content-Type":"application/json" },
+    //     body: JSON.stringify({ date: calSelectedDate, text }) })).json();
+    // const event = data.event;
+    // 같은 밀리초에 여러 건을 넣어도 겹치지 않도록 뒤에 난수를 붙인다
+    const event = { id: `${Date.now()}-${Math.random().toString(16).slice(2, 8)}`, text };
+
+    (calEvents[calSelectedDate] = calEvents[calSelectedDate] || []).push(event);
+    saveEvents();
+
+    input.value = "";
+    input.focus();
+    renderDayEvents();
+    renderCalendar();
 }
 
 async function deleteEvent(id) {
     if (!calSelectedDate) return;
-    try {
-        await fetch("/api/events/delete", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ date: calSelectedDate, id }),
-        });
-        calEvents[calSelectedDate] = (calEvents[calSelectedDate] || []).filter(e => e.id !== id);
-        renderDayEvents();
-        renderCalendar();
-    } catch (e) { console.error(e); }
+
+    // await fetch("/api/events/delete", { method:"POST",
+    //     headers:{ "Content-Type":"application/json" },
+    //     body: JSON.stringify({ date: calSelectedDate, id }) });
+
+    calEvents[calSelectedDate] = (calEvents[calSelectedDate] || []).filter(e => e.id !== id);
+    if (!calEvents[calSelectedDate].length) delete calEvents[calSelectedDate];
+    saveEvents();
+
+    renderDayEvents();
+    renderCalendar();
 }
 
 // Enter 키로 일정 추가
 const calInput = document.getElementById("cal-event-input");
 if (calInput) calInput.addEventListener("keydown", e => { if (e.key === "Enter") addEvent(); });
 
-// ===== 할 일 체크리스트 =====
-let checklistData = [];
+// ===== 선 차트 =====
+// 시간 흐름을 보여주는 차트만 선으로 그린다.
+// '병실별'처럼 순서가 없는 항목은 선으로 이으면 없는 추세가 보이므로 막대를 유지한다.
+const LINE_CHARTS = {
+    "lc-ahome-month":  { unit: "건", data: [["4월", 3], ["5월", 5], ["6월", 4], ["7월", 7]] },
+    "lc-astats-month": { unit: "건", data: [["4월", 3], ["5월", 5], ["6월", 4], ["7월", 7]] },
+    "lc-astats-hour":  { unit: "건", data: [["새벽", 1], ["오전", 2], ["오후", 1], ["야간", 3]] },
+    "lc-astats-day":   { unit: "회", data: [["월", 14], ["화", 16], ["수", 15], ["목", 17], ["금", 18]] },
+    "lc-gstats-month": { unit: "건", data: [["4월", 0], ["5월", 0], ["6월", 1], ["7월", 2]] },
+    "lc-gstats-hour":  { unit: "회", data: [["새벽", 34], ["오전", 24], ["오후", 22], ["야간", 38]] },
+    "lc-gstats-week":  { unit: "회", data: [["월", 4], ["화", 5], ["수", 4], ["목", 5], ["금", 4], ["토", 4], ["일", 4]] }
+};
 
-async function fetchNotes() {
-    try {
-        const res = await fetch("/api/notes");
-        return await res.json();
-    } catch (e) {
-        console.error(e);
-        return { checklist: [], memo: "" };
+// 병실별처럼 순서가 없는 항목은 막대로 그린다. 막대 색은 병실 위험도를 나타낸다.
+const BAR_CHARTS = {
+    "bc-astats-room": {
+        unit: "건",
+        data: [["101호", 3, "high"], ["102호", 1, "low"], ["103호", 2, "mid"], ["104호", 1, "low"]]
     }
+};
+
+const LC = { w: 340, h: 150, padL: 34, padR: 18, padTop: 16, padBottom: 30 };
+
+// 세로축 눈금 값 (0 · 중간 · 최대)
+function chartTicks(max) {
+    const mid = Math.round(max / 2);
+    return mid === 0 || mid === max ? [0, max] : [0, mid, max];
 }
 
-async function openChecklist() {
-    const notes = await fetchNotes();
-    checklistData = notes.checklist || [];
-    renderChecklist();
-    document.getElementById("checklist-overlay").classList.add("open");
-    document.getElementById("checklist-input").focus();
+// 값이 차트 위쪽에 있으면 말풍선이 패널 제목을 가리므로 아래쪽으로 뒤집는다
+function placeTip(tip, x, y) {
+    tip.style.left = `${(x / LC.w) * 100}%`;
+    tip.style.top = `${(y / LC.h) * 100}%`;
+    tip.classList.toggle("below", y / LC.h < 0.34);
 }
 
-function closeChecklist() {
-    document.getElementById("checklist-overlay").classList.remove("open");
+function yAxisHtml(max, toY) {
+    return chartTicks(max)
+        .map(v => `<span class="lc-y" style="top:${(toY(v) / LC.h) * 100}%">${v}</span>`)
+        .join("");
 }
 
-function renderChecklist() {
-    const list = document.getElementById("checklist-list");
-    list.innerHTML = "";
-    if (checklistData.length === 0) {
-        list.innerHTML = `<div class="cal-empty-msg">할 일이 없습니다.</div>`;
-        return;
+function renderLineChart(el) {
+    const chart = LINE_CHARTS[el.id];
+    if (!chart) return;
+
+    const { w, h, padL, padR, padTop, padBottom } = LC;
+    const rows = chart.data;
+    const n = rows.length;
+    const max = Math.max(...rows.map(r => r[1]), 1);
+    const plotW = w - padL - padR;
+    const plotH = h - padTop - padBottom;
+    const baseY = padTop + plotH;
+    const stepX = n > 1 ? plotW / (n - 1) : 0;
+    const at = i => padL + i * stepX;
+    const val = v => padTop + plotH * (1 - v / max);
+
+    const pts = rows.map((r, i) => [at(i), val(r[1])]);
+    const line = pts.map(p => `${p[0]} ${p[1]}`).join(" L ");
+    const area = `M ${pts[0][0]} ${baseY} L ${line} L ${pts[n - 1][0]} ${baseY} Z`;
+
+    const grid = chartTicks(max)
+        .map(v => `<line x1="${padL}" y1="${val(v)}" x2="${w - padR}" y2="${val(v)}"/>`)
+        .join("");
+    const dots = pts.map(p => `<circle cx="${p[0]}" cy="${p[1]}" r="4"/>`).join("");
+    const labels = rows.map((r, i) =>
+        `<span class="lc-x" style="left:${(at(i) / w) * 100}%">${r[0]}</span>`).join("");
+
+    el.innerHTML =
+        `<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true">
+             <g class="lc-grid">${grid}</g>
+             <path class="lc-area" d="${area}"/>
+             <path class="lc-line" d="M ${line}"/>
+             <g class="lc-dots">${dots}</g>
+             <line class="lc-cursor" y1="${padTop}" y2="${baseY}" style="display:none"/>
+         </svg>
+         <div class="lc-yaxis">${yAxisHtml(max, val)}</div>
+         <div class="lc-labels">${labels}</div>
+         <div class="lc-tip"></div>`;
+
+    const tip = el.querySelector(".lc-tip");
+    const cursor = el.querySelector(".lc-cursor");
+
+    function show(i) {
+        const [x, y] = pts[i];
+        tip.innerHTML = `<span>${rows[i][0]}</span><strong>${rows[i][1]}${chart.unit}</strong>`;
+        placeTip(tip, x, y);
+        tip.classList.add("on");
+        cursor.setAttribute("x1", x);
+        cursor.setAttribute("x2", x);
+        cursor.style.display = "";
+        el.querySelectorAll(".lc-dots circle")
+          .forEach((c, k) => c.classList.toggle("on", k === i));
     }
-    checklistData.forEach(it => {
-        const row = document.createElement("div");
-        row.className = "check-row" + (it.done ? " done" : "");
-        const box = document.createElement("input");
-        box.type = "checkbox";
-        box.checked = !!it.done;
-        box.onchange = () => toggleChecklistItem(it.id);
-        const p = document.createElement("p");
-        p.innerText = it.text;
-        const del = document.createElement("button");
-        del.innerHTML = "&times;";
-        del.title = "삭제";
-        del.onclick = () => deleteChecklistItem(it.id);
-        row.appendChild(box);
-        row.appendChild(p);
-        row.appendChild(del);
-        list.appendChild(row);
+
+    function hide() {
+        tip.classList.remove("on");
+        cursor.style.display = "none";
+        el.querySelectorAll(".lc-dots circle").forEach(c => c.classList.remove("on"));
+    }
+
+    el.onmousemove = e => {
+        const box = el.getBoundingClientRect();
+        if (!box.width) return;                                   // 숨겨진 탭이면 계산이 NaN이 된다
+        const vx = ((e.clientX - box.left) / box.width) * w;      // viewBox 좌표로 환산
+        let i = Math.round((vx - padL) / (stepX || 1));
+        if (!Number.isFinite(i)) return;
+        i = Math.max(0, Math.min(n - 1, i));
+        show(i);
+    };
+    el.onmouseleave = hide;
+}
+
+function renderBarChart(el) {
+    const chart = BAR_CHARTS[el.id];
+    if (!chart) return;
+
+    const { w, h, padL, padR, padTop, padBottom } = LC;
+    const rows = chart.data;
+    const n = rows.length;
+    const max = Math.max(...rows.map(r => r[1]), 1);
+    const plotW = w - padL - padR;
+    const plotH = h - padTop - padBottom;
+    const baseY = padTop + plotH;
+    const slot = plotW / n;
+    const barW = Math.min(slot * 0.5, 26);
+    const at = i => padL + slot * (i + 0.5);
+    const val = v => padTop + plotH * (1 - v / max);
+
+    const grid = chartTicks(max)
+        .map(v => `<line x1="${padL}" y1="${val(v)}" x2="${w - padR}" y2="${val(v)}"/>`)
+        .join("");
+    const bars = rows.map((r, i) =>
+        `<rect class="bc-bar bc-${r[2]}" x="${at(i) - barW / 2}" y="${val(r[1])}" ` +
+        `width="${barW}" height="${Math.max(baseY - val(r[1]), 1)}"/>`).join("");
+    const labels = rows.map((r, i) =>
+        `<span class="lc-x" style="left:${(at(i) / w) * 100}%">${r[0]}</span>`).join("");
+
+    el.innerHTML =
+        `<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true">
+             <g class="lc-grid">${grid}</g>
+             <g class="bc-bars">${bars}</g>
+         </svg>
+         <div class="lc-yaxis">${yAxisHtml(max, val)}</div>
+         <div class="lc-labels">${labels}</div>
+         <div class="lc-tip"></div>`;
+
+    const tip = el.querySelector(".lc-tip");
+
+    el.onmousemove = e => {
+        const box = el.getBoundingClientRect();
+        if (!box.width) return;
+        const vx = ((e.clientX - box.left) / box.width) * w;
+        let i = Math.floor((vx - padL) / (slot || 1));
+        if (!Number.isFinite(i)) return;
+        i = Math.max(0, Math.min(n - 1, i));
+        const [label, value, risk] = rows[i];
+        tip.innerHTML = `<span>${label} · ${RISK_TEXT[risk]}</span><strong>${value}${chart.unit}</strong>`;
+        placeTip(tip, at(i), val(value));
+        tip.classList.add("on");
+        el.querySelectorAll(".bc-bar").forEach((b, k) => b.classList.toggle("on", k === i));
+    };
+
+    el.onmouseleave = () => {
+        tip.classList.remove("on");
+        el.querySelectorAll(".bc-bar").forEach(b => b.classList.remove("on"));
+    };
+}
+
+function renderCharts() {
+    document.querySelectorAll(".lc").forEach(el => {
+        if (BAR_CHARTS[el.id]) renderBarChart(el);
+        else renderLineChart(el);
     });
-}
-
-async function addChecklistItem() {
-    const input = document.getElementById("checklist-input");
-    const text = input.value.trim();
-    if (!text) return;
-    try {
-        const res = await fetch("/api/checklist/add", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ text }),
-        });
-        const data = await res.json();
-        if (data.ok) {
-            checklistData.push(data.item);
-            input.value = "";
-            renderChecklist();
-        }
-    } catch (e) { console.error(e); }
-}
-
-async function toggleChecklistItem(id) {
-    try {
-        await fetch("/api/checklist/toggle", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ id }),
-        });
-        const it = checklistData.find(x => x.id === id);
-        if (it) it.done = !it.done;
-        renderChecklist();
-    } catch (e) { console.error(e); }
-}
-
-async function deleteChecklistItem(id) {
-    try {
-        await fetch("/api/checklist/delete", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ id }),
-        });
-        checklistData = checklistData.filter(x => x.id !== id);
-        renderChecklist();
-    } catch (e) { console.error(e); }
-}
-
-const checklistInput = document.getElementById("checklist-input");
-if (checklistInput) checklistInput.addEventListener("keydown", e => { if (e.key === "Enter") addChecklistItem(); });
-
-// ===== 메모지 =====
-async function openMemo() {
-    const notes = await fetchNotes();
-    document.getElementById("memo-text").value = notes.memo || "";
-    document.getElementById("memo-saved").innerText = "";
-    document.getElementById("memo-overlay").classList.add("open");
-}
-
-function closeMemo() {
-    document.getElementById("memo-overlay").classList.remove("open");
-}
-
-async function saveMemo() {
-    const memo = document.getElementById("memo-text").value;
-    try {
-        const res = await fetch("/api/memo", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ memo }),
-        });
-        const data = await res.json();
-        if (data.ok) {
-            const tag = document.getElementById("memo-saved");
-            tag.innerText = "저장됨";
-            setTimeout(() => { tag.innerText = ""; }, 1500);
-        }
-    } catch (e) { console.error(e); }
 }
 
 // ===== 탭 콘텐츠 (더미 데이터 · 실제 값은 각 API 연동) =====
@@ -2862,7 +3320,14 @@ function addPatient() {
     const err = document.getElementById("pt-error");
 
     if (!/^\d{3,4}$/.test(room)) { err.innerText = "병실 번호를 숫자 3~4자리로 입력해 주세요."; return; }
-    if (WARDS.some(w => w.room === room)) { err.innerText = room + "호에는 이미 등록된 환자가 있습니다."; return; }
+
+    // 병실 정원까지만 등록할 수 있다 (4인실 4명 · 2인실 2명 · 1인실 1명)
+    const cap = DB.ROOM_CAPACITY[room];
+    const inRoom = WARDS.filter(w => w.room === room).length;
+    if (cap && inRoom >= cap) {
+        err.innerText = `${room}호는 정원 ${cap}명이 모두 찼습니다.`;
+        return;
+    }
     if (name.length < 2) { err.innerText = "환자 이름을 2자 이상 입력해 주세요."; return; }
     if (!age || +age < 1 || +age > 120) { err.innerText = "나이를 1~120 사이로 입력해 주세요."; return; }
     if (diagnosis.length < 2) { err.innerText = "병명을 2자 이상 입력해 주세요."; return; }
@@ -2885,25 +3350,36 @@ function addPatient() {
 
 function dischargePatient(i) {
     const w = WARDS[i];
-    // 연동된 보호자가 있으면 계정이 붕 뜨므로 먼저 연동을 풀게 한다
-    const linked = GUARDIANS.filter(g => g.patient.includes(w.room + "호"));
+    // 연동된 보호자가 있으면 계정이 붕 뜨므로 '계정 관리 → 보호자 계정'에서 처리하게 한다
+    const linked = GUARDIANS.filter(g => {
+        const ref = parsePatientRef(g.patient);
+        return !g.discharged && ref.room === w.room && ref.name === w.name;
+    });
     if (linked.length) {
-        rcToast(w.name + " 님과 연동된 보호자 계정(" + linked.map(g => g.id).join(", ") + ")이 있어 퇴원 처리할 수 없습니다");
+        rcToast(w.name + " 님과 연동된 보호자 계정(" + linked.map(g => g.id).join(", ") + ")이 있어 여기서는 퇴원 처리할 수 없습니다");
         return;
     }
-    WARDS.splice(i, 1);
-    renderWardGrid();
-    renderPatients();
-    rcToast(w.name + " 님을 퇴원 처리했습니다");
+    askConfirm({
+        title: "환자 퇴원 처리",
+        body: `<b>${w.room}호 ${w.name}</b> 님을 퇴원 처리합니다.<br>재원 목록과 병실 모니터링에서 함께 사라집니다.`,
+        okText: "퇴원 처리",
+        danger: true,
+        onOk: () => {
+            WARDS.splice(i, 1);
+            renderWardGrid();
+            renderPatients();
+            rcToast(w.name + " 님을 퇴원 처리했습니다");
+        }
+    });
 }
 
 // --- 낙상 이력 / 통계 ---  ※ TODO: 낙상 이력 API 연동
 const FALLS = [
-    { time: "2026-07-15 11:05", room: "103", resp: "12초", fp: false },
-    { time: "2026-07-14 03:20", room: "101", resp: "9초", fp: false },
-    { time: "2026-07-12 19:47", room: "102", resp: "25초", fp: true },
-    { time: "2026-07-09 14:32", room: "104", resp: "—", fp: true },
-    { time: "2026-07-06 02:11", room: "101", resp: "15초", fp: false },
+    { time: "2026-07-15 11:05", room: "103" },
+    { time: "2026-07-14 03:20", room: "101" },
+    { time: "2026-07-12 19:47", room: "102" },
+    { time: "2026-07-09 14:32", room: "104" },
+    { time: "2026-07-06 02:11", room: "101" },
 ];
 
 function renderFalls() {
@@ -2912,19 +3388,9 @@ function renderFalls() {
     tb.innerHTML = "";
     FALLS.forEach((f, i) => {
         const tr = document.createElement("tr");
-        tr.innerHTML =
-            `<td>${f.time}</td><td>병실 ${f.room}</td><td>${f.resp}</td>` +
-            `<td>${f.fp ? '<span class="risk-chip risk-idle">오탐</span>' : '<span class="risk-chip risk-high">낙상</span>'}</td>` +
-            `<td><button class="mini-btn" onclick="toggleFP(${i})">${f.fp ? '낙상으로' : '오탐 처리'}</button></td>`;
+        tr.innerHTML = `<td>${f.time}</td><td>병실 ${f.room}</td>`;
         tb.appendChild(tr);
     });
-    const fp = document.getElementById("fp-count");
-    if (fp) fp.innerHTML = FALLS.filter(x => x.fp).length + '<span class="stat-tile-unit">건</span>';
-}
-
-function toggleFP(i) {
-    FALLS[i].fp = !FALLS[i].fp;   // TODO: 실제 오탐 처리 API 호출
-    renderFalls();
 }
 
 // --- 설정: 테마 ---
@@ -2943,6 +3409,80 @@ function renderSettingsTheme() {
 }
 
 // ===== Robot Control 토스트 =====
+/* ----- Robot Control -----
+   지도에서 목적지를 눌러 이동시킨다. (※ 데모 — 실제 주행 명령은 로봇 API 연동)
+   TODO(백엔드): POST /api/robot/goto  { waypoint: "wp_101" } 등으로 교체 */
+function rcSetState(state) {
+    const el = document.getElementById("rc-state");
+    if (el) el.innerText = state;
+}
+
+function rcSetPlace(dest) {
+    ["rc-cur", "rc-cur2"].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.innerText = dest;
+    });
+    const label = document.getElementById("rc-dest-label");
+    if (label) label.innerText = dest;
+}
+
+// 지도의 지점 클릭
+function rcGoTo(btn) {
+    const dest = btn.dataset.dest;
+    document.querySelectorAll(".rc-spot").forEach(s => s.classList.remove("target"));
+    btn.classList.add("target");
+
+    // 로봇 아이콘을 누른 지점으로 옮긴다 (실제로는 주행 완료 콜백에서 갱신)
+    const robot = document.getElementById("rm-robot");
+    if (robot) {
+        robot.style.left = btn.style.left;
+        robot.style.top = btn.style.top;
+    }
+    rcSetState("이동 중");
+    rcSetPlace(dest);
+    rcToast(dest + "(으)로 이동합니다");
+}
+
+// 버튼으로 이동 (대기 장소 · 충전 스테이션)
+function rcGoDest(dest, state) {
+    const spot = [...document.querySelectorAll(".rc-spot")].find(s => s.dataset.dest === dest);
+    if (spot) { rcGoTo(spot); }
+    rcSetState(state);
+    rcToast(dest + "(으)로 이동합니다");
+}
+
+// 순찰 시작 · 일시정지 · 비상 정지
+function rcCommand(label, state) {
+    rcSetState(state);
+    rcToast(label === "비상 정지" ? "비상 정지되었습니다" : label + " 명령을 보냈습니다");
+}
+
+// ===== 확인 모달 =====
+// 되돌리기 어려운 동작(삭제·퇴원·승인) 앞에 한 번 더 물어본다
+let confirmAction = null;
+
+function askConfirm(opts) {
+    document.getElementById("cf-title").innerText = opts.title;
+    document.getElementById("cf-body").innerHTML = opts.body;
+    const ok = document.getElementById("cf-ok");
+    ok.innerText = opts.okText || "확인";
+    ok.classList.toggle("danger", !!opts.danger);
+    confirmAction = opts.onOk;
+    document.getElementById("cf-overlay").classList.add("open");
+    ok.focus();
+}
+
+function closeConfirm() {
+    document.getElementById("cf-overlay").classList.remove("open");
+    confirmAction = null;
+}
+
+function confirmOk() {
+    const run = confirmAction;
+    closeConfirm();
+    if (run) run();
+}
+
 function rcToast(msg) {
     // Robot Control 패널이 안 보이는 화면(보호자 등)에서는 화면 하단 공용 토스트를 쓴다
     const rc = document.getElementById("rc-toast");
@@ -2960,30 +3500,34 @@ const EVENTS = [
     { time: "2026-07-16 14:35", room: "101", type: "호출", text: "간호사 호출" },
     { time: "2026-07-16 14:32", room: "101", type: "낙상", text: "낙상 감지" },
     { time: "2026-07-16 12:05", room: "103", type: "순찰", text: "순찰 완료" },
-    { time: "2026-07-15 22:10", room: "102", type: "낙상", text: "낙상 감지 (오탐)" },
+    { time: "2026-07-15 22:10", room: "102", type: "낙상", text: "낙상 감지" },
     { time: "2026-07-15 16:20", room: "104", type: "순찰", text: "순찰 완료" }
 ];
-function evTypeChip(t) {
-    if (t === "낙상") return '<span class="risk-chip risk-high">낙상</span>';
-    if (t === "호출") return '<span class="risk-chip risk-mid">호출</span>';
-    return '<span class="risk-chip risk-low">순찰</span>';
+// 순찰·호출 로그는 '병실 모니터링'의 실시간 이벤트 로그에서 보므로,
+// 이 탭은 간호사가 확인·처리해야 하는 낙상만 다룬다
+function fallEvents() {
+    return EVENTS.filter(e => e.type === "낙상");
 }
+
 function renderEvents(list) {
     const tb = document.getElementById("events-tbody");
     if (!tb) return;
-    const rows = list || EVENTS;
+    const rows = list || fallEvents();
     tb.innerHTML = "";
     if (!rows.length) {
-        tb.innerHTML = '<tr><td colspan="7" style="color:var(--text-muted);">검색 결과가 없습니다.</td></tr>';
+        tb.innerHTML = '<tr><td colspan="6" style="color:var(--text-muted);">검색 결과가 없습니다.</td></tr>';
         return;
     }
     rows.forEach(e => {
         const i = EVENTS.indexOf(e);
-        const hasCapture = e.type === "낙상";
         const tr = document.createElement("tr");
+        // 간호사가 확인해 지정한 환자를 함께 보여준다
+        const who = e.fall_patient_name
+            ? ` · <b class="ev-who">${e.fall_patient_name} 님</b>`
+            : ' · <span class="ev-unknown">환자 미확인</span>';
         tr.innerHTML =
-            `<td>${e.time}</td><td>병실 ${e.room}</td><td>${evTypeChip(e.type)}</td><td>${e.text}</td>` +
-            `<td>${hasCapture ? `<button class="mini-btn" onclick="openEvCapture(${i})">📷 보기</button>` : "-"}</td>` +
+            `<td>${e.time}</td><td>병실 ${e.room}</td><td>${e.text}${who}</td>` +
+            `<td><button class="mini-btn" onclick="openEvCapture(${i})">📷 보기</button></td>` +
             `<td>${e.done
                 ? '<span class="risk-chip risk-low">대응 완료</span>'
                 : '<span class="risk-chip risk-mid">미처리</span>'}</td>` +
@@ -2992,15 +3536,15 @@ function renderEvents(list) {
                 : `<button class="mini-btn" onclick="openEvCapture(${i})">처리</button>`}</td>`;
         tb.appendChild(tr);
     });
-    const pending = EVENTS.filter(e => !e.done).length;
+    const pending = fallEvents().filter(e => !e.done).length;
     const badge = document.getElementById("ev-pending-count");
     if (badge) badge.innerText = pending;
 }
 function filterEvents() {
     const q = (document.getElementById("ev-search").value || "").trim();
     const d = document.getElementById("ev-date").value;
-    renderEvents(EVENTS.filter(e => {
-        const matchQ = !q || (e.room + e.type + e.text).includes(q);
+    renderEvents(fallEvents().filter(e => {
+        const matchQ = !q || (e.room + e.text).includes(q);
         const matchD = !d || e.time.startsWith(d);
         return matchQ && matchD;
     }));
@@ -3011,7 +3555,12 @@ function clearEventFilter() {
     renderEvents();
 }
 
+// 데이터를 먼저 불러온 뒤 화면을 그린다.
+// TODO(백엔드): DB.load() 가 API 를 호출하게 되면 아래 렌더 호출들을 then() 안으로 옮기면 됩니다.
+DB.load();
+
 renderPatients();
+renderCharts();
 renderFalls();
 renderEvents();
 renderSettingsTheme();
