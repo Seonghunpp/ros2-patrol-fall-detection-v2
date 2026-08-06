@@ -394,6 +394,25 @@ def api_apply():
         return jsonify({"ok": False, "error": "모든 항목을 입력해 주세요."}), 400
 
     conn = get_db()
+
+    # 관리자가 '환자 관리'에 등록해 둔 환자(병실+이름 일치)만 연동 신청을 받는다
+    patient_id = find_patient_id_by_name_room(conn, patient, room)
+    if patient_id is None:
+        conn.close()
+        return jsonify({
+            "ok": False,
+            "error": "등록된 환자 정보와 일치하지 않습니다. 환자 성함과 병실 번호를 다시 확인해 주세요.",
+        }), 400
+
+    # 이미 보호자 계정이 연동된 환자면 또 신청받지 않는다
+    check_cursor = conn.cursor()
+    check_cursor.execute("SELECT user_id FROM patients WHERE id = %s", (patient_id,))
+    already_linked = check_cursor.fetchone()[0] is not None
+    check_cursor.close()
+    if already_linked:
+        conn.close()
+        return jsonify({"ok": False, "error": "이미 보호자 계정이 연동된 환자입니다."}), 400
+
     cursor = conn.cursor()
     cursor.execute(
         "INSERT INTO guardian_applications (applicant_name, phone, patient_name, room_number) VALUES (%s, %s, %s, %s)",
@@ -539,16 +558,30 @@ def api_redeem():
         )
         user_id = write_cursor.lastrowid
 
-        write_cursor.execute(
-            "INSERT INTO patients (name, phone, room_number, guardian, user_id) VALUES (%s, %s, %s, %s, %s)",
-            (
-                encrypt_field(decrypt_field(app_row["patient_name"])),
-                encrypt_field(decrypt_field(app_row["phone"])),
-                app_row["room_number"],
-                encrypt_field(decrypt_field(app_row["applicant_name"])),
-                user_id,
-            ),
-        )
+        patient_name = decrypt_field(app_row["patient_name"])
+        existing_patient_id = find_patient_id_by_name_room(conn, patient_name, app_row["room_number"])
+        if existing_patient_id:
+            # 관리자가 나이·성별·병명·위험도를 먼저 등록해 둔 환자일 수 있으므로 그 값은 건드리지 않는다
+            write_cursor.execute(
+                "UPDATE patients SET phone = %s, guardian = %s, user_id = %s WHERE id = %s",
+                (
+                    encrypt_field(decrypt_field(app_row["phone"])),
+                    encrypt_field(decrypt_field(app_row["applicant_name"])),
+                    user_id,
+                    existing_patient_id,
+                ),
+            )
+        else:
+            write_cursor.execute(
+                "INSERT INTO patients (name, phone, room_number, guardian, user_id) VALUES (%s, %s, %s, %s, %s)",
+                (
+                    encrypt_field(patient_name),
+                    encrypt_field(decrypt_field(app_row["phone"])),
+                    app_row["room_number"],
+                    encrypt_field(decrypt_field(app_row["applicant_name"])),
+                    user_id,
+                ),
+            )
         write_cursor.execute(
             "DELETE FROM guardian_applications WHERE id = %s",
             (app_row["id"],),
@@ -608,7 +641,8 @@ def api_guardian_account_delete(user_id):
     conn = get_db()
     cursor = conn.cursor()
     try:
-        cursor.execute("DELETE FROM patients WHERE user_id = %s", (user_id,))
+        # 계정만 지우고 환자 정보(patients)는 남긴다 — 환자 자체를 지우는 건 '환자 관리 → 퇴원 처리'의 역할
+        cursor.execute("UPDATE patients SET user_id = NULL WHERE user_id = %s", (user_id,))
         cursor.execute("DELETE FROM users WHERE id = %s AND role != 'admin'", (user_id,))
         conn.commit()
     except mysql.connector.Error:
@@ -664,6 +698,100 @@ def api_my_patient():
         patient["phone"] = decrypt_field(patient["phone"])
         patient["guardian"] = decrypt_field(patient["guardian"])
     return jsonify({"ok": True, "patient": patient})
+
+
+# name은 암호화되어 있어 SQL로 직접 비교할 수 없으므로, 같은 병실의 행을 복호화해서 이름을 비교한다.
+# 보호자 연동(코드 등록)과 관리자 환자 등록이 같은 환자를 각자 따로 만들지 않도록 이 함수로 먼저 찾는다.
+def find_patient_id_by_name_room(conn, name, room):
+    normalized = str(name).replace(" ", "")
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("SELECT id, name FROM patients WHERE room_number = %s", (room,))
+    rows = cursor.fetchall()
+    cursor.close()
+    for row in rows:
+        if decrypt_field(row["name"]).replace(" ", "") == normalized:
+            return row["id"]
+    return None
+
+
+@app.route("/api/patients", methods=["GET"])
+@login_required
+def api_patients_get():
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute(
+        "SELECT id, name, room_number, age, sex, disease, risk_level FROM patients ORDER BY room_number, id"
+    )
+    patients = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    for p in patients:
+        p["name"] = decrypt_field(p["name"])
+    return jsonify({"ok": True, "patients": patients})
+
+
+# 병실+이름이 일치하는 환자가 이미 있으면(보호자 연동으로 먼저 생겨난 행일 수 있음) 나이·성별·병명·위험도만 채워 넣고,
+# 없으면 새로 등록한다. 보호자 연동 신청에는 이름·병실만 담기므로 이 화면에서 나머지를 채우는 구조.
+@app.route("/api/patients", methods=["POST"])
+@login_required
+def api_patients_add():
+    body = request.get_json(silent=True) or {}
+    room = str(body.get("room", "")).strip()
+    name = str(body.get("name", "")).strip()
+    sex = str(body.get("sex", "")).strip()
+    disease = str(body.get("disease", "")).strip()
+    risk_level = str(body.get("risk_level", "")).strip()
+    try:
+        age = int(body.get("age"))
+    except (TypeError, ValueError):
+        age = None
+
+    if not room or not name:
+        return jsonify({"ok": False, "error": "병실과 이름은 필수입니다."}), 400
+
+    conn = get_db()
+    try:
+        patient_id = find_patient_id_by_name_room(conn, name, room)
+        cursor = conn.cursor()
+        if patient_id:
+            cursor.execute(
+                "UPDATE patients SET age = %s, sex = %s, disease = %s, risk_level = %s WHERE id = %s",
+                (age, sex, disease, risk_level, patient_id),
+            )
+        else:
+            cursor.execute(
+                "INSERT INTO patients (name, room_number, age, sex, disease, risk_level) "
+                "VALUES (%s, %s, %s, %s, %s, %s)",
+                (encrypt_field(name), room, age, sex, disease, risk_level),
+            )
+            patient_id = cursor.lastrowid
+        conn.commit()
+        cursor.close()
+    except mysql.connector.Error:
+        conn.rollback()
+        return jsonify({"ok": False, "error": "저장 중 오류가 발생했습니다."}), 500
+    finally:
+        conn.close()
+
+    return jsonify({"ok": True, "id": patient_id})
+
+
+@app.route("/api/patients/<int:patient_id>/delete", methods=["POST"])
+@login_required
+def api_patient_delete(patient_id):
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT user_id FROM patients WHERE id = %s", (patient_id,))
+    row = cursor.fetchone()
+    if row and row[0] is not None:
+        cursor.close()
+        conn.close()
+        return jsonify({"ok": False, "error": "연동된 보호자 계정이 있어 삭제할 수 없습니다."}), 400
+    cursor.execute("DELETE FROM patients WHERE id = %s", (patient_id,))
+    conn.commit()
+    cursor.close()
+    conn.close()
+    return jsonify({"ok": True})
 
 
 # ===== 캘린더 일정: DB(calendar_events)에 저장 (여러 브라우저가 같은 일정을 공유) =====

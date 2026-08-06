@@ -1061,10 +1061,7 @@
 
         <!-- 환자 등록 -->
         <div class="panel">
-            <div class="panel-head panel-head-row">
-                환자 등록
-                <span class="a-hint">보호자 연동 신청에는 이름과 병실만 담기므로, 병명·위험도는 여기서 채웁니다</span>
-            </div>
+            <div class="panel-head">환자 등록</div>
             <div class="pt-form">
                 <div>
                     <label class="form-label" for="pt-room">병실</label>
@@ -1091,9 +1088,10 @@
                 <div>
                     <label class="form-label" for="pt-risk">위험도</label>
                     <select id="pt-risk" class="form-input">
-                        <option value="high">고위험</option>
-                        <option value="mid">중위험</option>
-                        <option value="low" selected>일반</option>
+                        <option selected>낮음</option>
+                        <option>보통</option>
+                        <option>높음</option>
+                        <option>매우 높음</option>
                     </select>
                 </div>
                 <div class="pt-form-action">
@@ -2122,7 +2120,11 @@ function renderNav() {
 // 병실별 위험도 태그 (실서비스에서는 환자 위험도 API로 대체)
 // 환자 정보 원본 — 관리자 '환자 관리'에서 등록·수정하고,
 // 병실 모니터링 그리드가 이 값을 그대로 쓴다
-const RISK_TEXT = { high: "고위험", mid: "중위험", low: "일반" };
+const RISK_TEXT = { critical: "매우높음", high: "높음", mid: "보통", low: "낮음" };
+
+// 실제 환자(patients 테이블)의 위험도는 DB에 한글 그대로 저장된다 ("낮음"/"보통"/"높음"/"매우 높음").
+// risk-chip 색상 클래스만 여기서 매핑해 쓴다.
+const RISK_CLASS = { "낮음": "low", "보통": "mid", "높음": "high", "매우 높음": "critical" };
 
 /* ============================================================
    데이터 계층 — 지금은 임시 데이터, 나중에 MySQL + Flask API 로 교체
@@ -2264,25 +2266,46 @@ const DB = {
     }
 };
 
-// 화면 표시용 파생 데이터 (관리자 병실 그리드가 사용)
-const WARDS = DB.patients.map(p => ({
-    room: p.room_number, name: p.name, age: p.age, sex: p.gender,
-    diagnosis: p.diagnosis, risk: p.risk_level, lastFall: p.last_fall_at
-}));
+// 재원 환자 목록 (환자관리 탭 · 병실 모니터링 그리드가 함께 사용)
+let WARDS = [];
 
-function renderWardGrid() {
+function toWard(p) {
+    return {
+        id: p.id,
+        room: p.room_number,
+        name: p.name,
+        age: p.age,
+        sex: p.sex || "-",
+        diagnosis: p.disease || "-",
+        risk: p.risk_level || "낮음",
+        lastFall: "낙상 이력 없음"   // TODO: 낙상 이력 테이블 연동 시 교체
+    };
+}
+
+async function fetchWards() {
+    try {
+        const res = await fetch("/api/patients");
+        const data = await res.json();
+        return data.ok ? data.patients.map(toWard) : [];
+    } catch (e) {
+        return [];
+    }
+}
+
+async function renderWardGrid() {
     const grid = document.getElementById("ward-grid");
     if (!grid) return;
+    WARDS = await fetchWards();
     grid.innerHTML = "";
 
     // 한 병실에 여러 명이 있으므로 병실 단위로 묶는다 (카드 = 병실 1개)
     const rooms = [...new Set(WARDS.map(w => w.room))].sort();
-    const rank = { high: 3, mid: 2, low: 1 };
+    const rank = { "매우 높음": 4, "높음": 3, "보통": 2, "낮음": 1 };
 
     rooms.forEach(room => {
         const list = WARDS.filter(w => w.room === room);
         // 병실 태그는 그 방에서 가장 높은 위험도로 표시한다
-        const risk = list.reduce((a, w) => (rank[w.risk] > rank[a] ? w.risk : a), "low");
+        const risk = list.reduce((a, w) => (rank[w.risk] > rank[a] ? w.risk : a), "낮음");
         const names = list.map(w => w.name).join(", ");
 
         const cell = document.createElement("button");
@@ -2297,7 +2320,7 @@ function renderWardGrid() {
              </div>
              <div class="ward-meta">
                  <strong>병실 ${room}</strong>
-                 <span class="risk-chip risk-${risk}">${RISK_TEXT[risk]}</span>
+                 <span class="risk-chip risk-${RISK_CLASS[risk] || "idle"}">${risk}</span>
              </div>
              <span class="ward-patient">${names || "재실 환자 없음"} · ${list.length}명</span>`;
         grid.appendChild(cell);
@@ -2396,14 +2419,11 @@ let PENDING = [];
 // 코드 등록을 마친 보호자 계정 (렌더링 시 /api/guardian-accounts 에서 새로 받아온다)
 let GUARDIANS = [];
 
-async function renderGuardians() {
-    const tb = document.getElementById("acc-guardian-tbody");
-    if (!tb) return;
-
+async function fetchGuardians() {
     try {
         const res = await fetch("/api/guardian-accounts");
         const data = await res.json();
-        GUARDIANS = data.ok ? data.accounts.map(a => ({
+        return data.ok ? data.accounts.map(a => ({
             id: a.id,
             username: a.username,
             name: a.guardian || a.username,
@@ -2412,8 +2432,15 @@ async function renderGuardians() {
             discharged: false
         })) : [];
     } catch (e) {
-        GUARDIANS = [];
+        return [];
     }
+}
+
+async function renderGuardians() {
+    const tb = document.getElementById("acc-guardian-tbody");
+    if (!tb) return;
+
+    GUARDIANS = await fetchGuardians();
 
     tb.innerHTML = "";
     GUARDIANS.forEach((g, i) => {
@@ -2441,7 +2468,7 @@ function dischargeByGuardian(i) {
     askConfirm({
         title: "보호자 계정 삭제",
         body: `<b>${g.patient}</b> 보호자 <b>${g.name}</b> 님(${g.username}) 계정을 삭제합니다.<br>` +
-              `삭제하면 연동된 환자 정보도 함께 제거되며, 이 계정으로 다시 로그인할 수 없습니다.`,
+              `환자 정보는 그대로 남고 연동만 해제되며, 이 계정으로 다시 로그인할 수 없습니다.`,
         okText: "계정 삭제",
         danger: true,
         onOk: async () => {
@@ -2688,7 +2715,7 @@ async function renderGuardian() {
 
     currentGuardianRoom = patient.room_number;
     const room = patient.room_number + "호";
-    const sexText = patient.sex === "F" ? "여" : patient.sex === "M" ? "남" : (patient.sex || "-");
+    const sexText = patient.sex || "-";
 
     // Home
     set("g-hero-room", room);
@@ -2703,12 +2730,13 @@ async function renderGuardian() {
 
     const riskEl = document.getElementById("g-pt-risk");
     if (riskEl) {
-        riskEl.innerHTML =
-            `<span class="risk-chip risk-${patient.risk_level}">${RISK_TEXT[patient.risk_level] || patient.risk_level || "-"}</span>`;
+        riskEl.innerHTML = patient.risk_level
+            ? `<span class="risk-chip risk-${RISK_CLASS[patient.risk_level] || "idle"}">${patient.risk_level}</span>`
+            : "-";
     }
     const noteEl = document.getElementById("g-pt-note");
     if (noteEl) {
-        noteEl.style.display = patient.risk_level === "high" ? "" : "none";
+        noteEl.style.display = (patient.risk_level === "높음" || patient.risk_level === "매우 높음") ? "" : "none";
     }
 
     // 내 병실 · 병실 상세 (병실 유형/담당 간호사는 아직 DB에 없음)
@@ -2810,6 +2838,8 @@ async function doLogin() {
     if (toAppRole(data.role) === "admin") {
         renderPending();
         renderGuardians();
+        renderPatients();
+        renderWardGrid();
     }
     await renderGuardian();
     goHome();
@@ -3323,18 +3353,16 @@ function renderCharts() {
 // ===== 탭 콘텐츠 (더미 데이터 · 실제 값은 각 API 연동) =====
 
 // --- 환자 관리 (관리자) ---  ※ TODO: 환자 정보 API 연동
-function renderPatients() {
+async function renderPatients() {
     const tb = document.getElementById("pt-tbody");
     if (!tb) return;
+    WARDS = await fetchWards();
     tb.innerHTML = "";
     WARDS.forEach((w, i) => {
-        const options = ["high", "mid", "low"]
-            .map(r => `<option value="${r}"${w.risk === r ? " selected" : ""}>${RISK_TEXT[r]}</option>`)
-            .join("");
         const tr = document.createElement("tr");
         tr.innerHTML =
             `<td>${w.room}호</td><td>${w.name}</td><td>${w.age}세 · ${w.sex}</td><td>${w.diagnosis}</td>` +
-            `<td><select class="form-input form-input-sm" onchange="setPatientRisk(${i}, this.value)">${options}</select></td>` +
+            `<td><span class="risk-chip risk-${RISK_CLASS[w.risk] || "idle"}">${w.risk}</span></td>` +
             `<td>${w.lastFall}</td>` +
             `<td class="row-actions"><button class="mini-btn mini-danger" onclick="dischargePatient(${i})">퇴원 처리</button></td>`;
         tb.appendChild(tr);
@@ -3343,15 +3371,7 @@ function renderPatients() {
     if (count) count.innerText = WARDS.length;
 }
 
-// 위험도는 병실 모니터링 그리드에도 그대로 나가므로 함께 다시 그린다
-function setPatientRisk(i, risk) {
-    WARDS[i].risk = risk;
-    renderWardGrid();
-    renderPatients();
-    rcToast(WARDS[i].name + " 님 위험도를 " + RISK_TEXT[risk] + "(으)로 변경했습니다");
-}
-
-function addPatient() {
+async function addPatient() {
     const val = id => document.getElementById(id).value.trim();
     const room = val("pt-room"), name = val("pt-name");
     const age = val("pt-age"), diagnosis = val("pt-diag");
@@ -3359,25 +3379,37 @@ function addPatient() {
 
     if (!/^\d{3,4}$/.test(room)) { err.innerText = "병실 번호를 숫자 3~4자리로 입력해 주세요."; return; }
 
-    // 병실 정원까지만 등록할 수 있다 (4인실 4명 · 2인실 2명 · 1인실 1명)
-    const cap = DB.ROOM_CAPACITY[room];
-    const inRoom = WARDS.filter(w => w.room === room).length;
-    if (cap && inRoom >= cap) {
-        err.innerText = `${room}호는 정원 ${cap}명이 모두 찼습니다.`;
-        return;
-    }
     if (name.length < 2) { err.innerText = "환자 이름을 2자 이상 입력해 주세요."; return; }
+
+    // 같은 병실에 이름이 이미 있으면 새 입원이 아니라 정보 수정이므로 정원 체크는 건너뛴다
+    const isEdit = WARDS.some(w => w.room === room && w.name.replace(/\s/g, "") === name.replace(/\s/g, ""));
+    if (!isEdit) {
+        // 병실 정원까지만 새로 등록할 수 있다 (4인실 4명 · 2인실 2명 · 1인실 1명)
+        const cap = DB.ROOM_CAPACITY[room];
+        const inRoom = WARDS.filter(w => w.room === room).length;
+        if (cap && inRoom >= cap) {
+            err.innerText = `${room}호는 정원 ${cap}명이 모두 찼습니다.`;
+            return;
+        }
+    }
     if (!age || +age < 1 || +age > 120) { err.innerText = "나이를 1~120 사이로 입력해 주세요."; return; }
     if (diagnosis.length < 2) { err.innerText = "병명을 2자 이상 입력해 주세요."; return; }
 
-    WARDS.push({
-        room, name, age: +age,
-        sex: document.getElementById("pt-sex").value,
-        diagnosis,
-        risk: document.getElementById("pt-risk").value,
-        lastFall: "낙상 이력 없음"
-    });
-    WARDS.sort((a, b) => a.room.localeCompare(b.room));
+    const sex = document.getElementById("pt-sex").value;
+    const risk = document.getElementById("pt-risk").value;
+
+    try {
+        const res = await fetch("/api/patients", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ room, name, age: +age, sex, disease: diagnosis, risk_level: risk })
+        });
+        const data = await res.json();
+        if (!res.ok || !data.ok) { err.innerText = data.error || "등록 중 오류가 발생했습니다."; return; }
+    } catch (e) {
+        err.innerText = "서버와 통신할 수 없습니다.";
+        return;
+    }
 
     ["pt-room", "pt-name", "pt-age", "pt-diag"].forEach(id => { document.getElementById(id).value = ""; });
     err.innerText = "";
@@ -3386,15 +3418,17 @@ function addPatient() {
     rcToast(name + " 님을 " + room + "호에 등록했습니다");
 }
 
-function dischargePatient(i) {
+async function dischargePatient(i) {
     const w = WARDS[i];
     // 연동된 보호자가 있으면 계정이 붕 뜨므로 '계정 관리 → 보호자 계정'에서 처리하게 한다
+    // 캐시된 GUARDIANS는 최신이 아닐 수 있어(로그인 이후 새로 연동됐을 수 있음) 여기서 다시 받아온다
+    GUARDIANS = await fetchGuardians();
     const linked = GUARDIANS.filter(g => {
         const ref = parsePatientRef(g.patient);
         return !g.discharged && ref.room === w.room && ref.name === w.name;
     });
     if (linked.length) {
-        rcToast(w.name + " 님과 연동된 보호자 계정(" + linked.map(g => g.id).join(", ") + ")이 있어 여기서는 퇴원 처리할 수 없습니다");
+        rcToast(w.name + " 님과 연동된 보호자 계정(" + linked.map(g => g.username).join(", ") + ")이 있어 여기서는 퇴원 처리할 수 없습니다");
         return;
     }
     askConfirm({
@@ -3402,8 +3436,15 @@ function dischargePatient(i) {
         body: `<b>${w.room}호 ${w.name}</b> 님을 퇴원 처리합니다.<br>재원 목록과 병실 모니터링에서 함께 사라집니다.`,
         okText: "퇴원 처리",
         danger: true,
-        onOk: () => {
-            WARDS.splice(i, 1);
+        onOk: async () => {
+            try {
+                const res = await fetch(`/api/patients/${w.id}/delete`, { method: "POST" });
+                const data = await res.json();
+                if (!res.ok || !data.ok) { rcToast(data.error || "퇴원 처리 중 오류가 발생했습니다"); return; }
+            } catch (e) {
+                rcToast("서버와 통신할 수 없습니다");
+                return;
+            }
             renderWardGrid();
             renderPatients();
             rcToast(w.name + " 님을 퇴원 처리했습니다");
