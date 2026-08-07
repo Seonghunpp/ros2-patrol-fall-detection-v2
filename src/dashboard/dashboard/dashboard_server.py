@@ -1,3 +1,4 @@
+import datetime
 import os
 import secrets
 import threading
@@ -6,7 +7,7 @@ from functools import wraps
 
 import mysql.connector
 from cryptography.fernet import Fernet, InvalidToken
-from flask import Flask, Response, jsonify, render_template, request, session
+from flask import Flask, Response, jsonify, render_template, request, send_from_directory, session
 from werkzeug.security import check_password_hash, generate_password_hash
 
 try:
@@ -139,6 +140,42 @@ def log_patrol_complete(room):
         conn.close()
     except mysql.connector.Error as e:
         print(f"[dashboard] patrol_log 기록 실패: {e}")
+
+
+# 낙상 캡처 이미지 저장 위치. static/ 밑에 두지 않는다 — static은 로그인 없이 누구나 접근 가능해서
+# 병실 안이 찍힌 사진을 거기 두면 안 됨. /api/fall-log/<id>/capture 라우트로만 (로그인 필요) 서빙한다.
+CAPTURE_DIR = os.environ.get("FALL_CAPTURE_DIR", os.path.expanduser("~/.dabom/captures"))
+os.makedirs(CAPTURE_DIR, exist_ok=True)
+
+
+def log_fall_detected(room):
+    # 카메라 프레임이 없어도(꺼져있거나 일시적으로 끊겨도) 낙상이 있었다는 기록 자체는 남긴다.
+    # capture_path만 NULL로 남고, 화면에서는 "캡처 이미지 없음"으로 표시된다.
+    frame = latest_annotated_frame or latest_frame
+    filename = None
+    if frame is None:
+        print("[dashboard] 카메라 프레임 없음: 캡처 이미지 없이 fall_log만 기록")
+    else:
+        filename = f"fall_{int(time.time() * 1000)}.jpg"
+        try:
+            with open(os.path.join(CAPTURE_DIR, filename), "wb") as f:
+                f.write(frame)
+        except OSError as e:
+            print(f"[dashboard] 캡처 이미지 저장 실패: {e}")
+            filename = None
+
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO fall_log (room_number, capture_path) VALUES (%s, %s)",
+            (room, filename),
+        )
+        conn.commit()
+        cursor.close()
+        conn.close()
+    except mysql.connector.Error as e:
+        print(f"[dashboard] fall_log 기록 실패: {e}")
 
 
 class DashboardBridge(Node):
@@ -293,6 +330,7 @@ class DashboardBridge(Node):
             if now - last_fall_event_time >= FALL_EVENT_COOLDOWN_SEC:
                 add_event(f"병실 {state['current_room']} 낙상 환자 발견")
                 state["fall_alert_id"] += 1
+                log_fall_detected(state["current_room"])
             last_fall_event_time = now
 
     def battery_callback(self, msg):
@@ -461,7 +499,7 @@ def api_applications():
     cursor = conn.cursor(dictionary=True)
     cursor.execute(
         "SELECT id, applicant_name, phone, patient_name, room_number, status, mapping_code, applied_at "
-        "FROM guardian_applications ORDER BY id DESC"
+        "FROM guardian_applications WHERE status IN ('pending', 'approved') ORDER BY id DESC"
     )
     rows = cursor.fetchall()
     cursor.close()
@@ -613,8 +651,8 @@ def api_redeem():
                 ),
             )
         write_cursor.execute(
-            "DELETE FROM guardian_applications WHERE id = %s",
-            (app_row["id"],),
+            "UPDATE guardian_applications SET status = 'registered', user_id = %s WHERE id = %s",
+            (user_id, app_row["id"]),
         )
         conn.commit()
         write_cursor.close()
@@ -650,9 +688,10 @@ def api_guardian_accounts():
     conn = get_db()
     cursor = conn.cursor(dictionary=True)
     cursor.execute("""
-        SELECT u.id, u.username, p.name, p.room_number, p.guardian
+        SELECT u.id, u.username, p.name, p.room_number, p.guardian, ga.mapping_code AS code
         FROM users u
         LEFT JOIN patients p ON p.user_id = u.id
+        LEFT JOIN guardian_applications ga ON ga.user_id = u.id
         WHERE u.role != 'admin'
         ORDER BY u.id
     """)
@@ -673,6 +712,8 @@ def api_guardian_account_delete(user_id):
     try:
         # 계정만 지우고 환자 정보(patients)는 남긴다 — 환자 자체를 지우는 건 '환자 관리 → 퇴원 처리'의 역할
         cursor.execute("UPDATE patients SET user_id = NULL WHERE user_id = %s", (user_id,))
+        # 계정이 사라지면 그 계정의 가입 신청/코드 기록도 더는 의미가 없으므로 같이 지운다
+        cursor.execute("DELETE FROM guardian_applications WHERE user_id = %s", (user_id,))
         cursor.execute("DELETE FROM users WHERE id = %s AND role != 'admin'", (user_id,))
         conn.commit()
     except mysql.connector.Error:
@@ -946,6 +987,85 @@ def api_patient_delete(patient_id):
     return jsonify({"ok": True})
 
 
+# ===== 낙상 기록: fall_status_callback()이 감지 즉시 자동으로 fall_log에 남긴다 =====
+# 관리자가 캡처 이미지를 보고 낙상 환자를 지정(확정)해야 보호자에게 노출된다.
+
+@app.route("/api/fall-log")
+@login_required
+def api_fall_log_get():
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
+    if session.get("role") == "admin":
+        cursor.execute("""
+            SELECT f.id, f.room_number, f.detected_at, f.patient_id, f.memo, f.done,
+                   p.name AS patient_name
+            FROM fall_log f
+            LEFT JOIN patients p ON p.id = f.patient_id
+            ORDER BY f.detected_at DESC
+            LIMIT 100
+        """)
+        rows = cursor.fetchall()
+    else:
+        cursor.execute("SELECT id FROM patients WHERE user_id = %s", (session.get("user_id"),))
+        prow = cursor.fetchone()
+        rows = []
+        if prow:
+            cursor.execute("""
+                SELECT f.id, f.room_number, f.detected_at, f.patient_id, f.memo, f.done,
+                       p.name AS patient_name
+                FROM fall_log f
+                LEFT JOIN patients p ON p.id = f.patient_id
+                WHERE f.patient_id = %s AND f.done = TRUE
+                ORDER BY f.detected_at DESC
+                LIMIT 50
+            """, (prow["id"],))
+            rows = cursor.fetchall()
+    cursor.close()
+    conn.close()
+
+    for r in rows:
+        if r.get("patient_name"):
+            r["patient_name"] = decrypt_field(r["patient_name"])
+        if r.get("detected_at"):
+            r["detected_at"] = r["detected_at"].strftime("%Y-%m-%d %H:%M:%S")
+    return jsonify({"ok": True, "logs": rows})
+
+
+@app.route("/api/fall-log/<int:log_id>/capture")
+@login_required
+def api_fall_log_capture(log_id):
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("SELECT capture_path FROM fall_log WHERE id = %s", (log_id,))
+    row = cursor.fetchone()
+    cursor.close()
+    conn.close()
+    if not row or not row["capture_path"]:
+        return jsonify({"ok": False, "error": "저장된 캡처 이미지가 없습니다."}), 404
+    return send_from_directory(CAPTURE_DIR, row["capture_path"])
+
+
+@app.route("/api/fall-log/<int:log_id>/confirm", methods=["POST"])
+@login_required
+def api_fall_log_confirm(log_id):
+    body = request.get_json(silent=True) or {}
+    patient_id = body.get("patient_id")
+    memo = str(body.get("memo", "")).strip()
+    if not patient_id:
+        return jsonify({"ok": False, "error": "낙상 환자를 선택해 주세요."}), 400
+
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute(
+        "UPDATE fall_log SET patient_id = %s, confirmed_by = %s, memo = %s, done = TRUE WHERE id = %s",
+        (patient_id, session.get("user_id"), memo, log_id),
+    )
+    conn.commit()
+    cursor.close()
+    conn.close()
+    return jsonify({"ok": True})
+
+
 # ===== 캘린더 일정: DB(calendar_events)에 저장 (여러 브라우저가 같은 일정을 공유) =====
 
 @app.route("/api/events", methods=["GET"])
@@ -1068,6 +1188,174 @@ def api_checklist_delete():
     cursor.close()
     conn.close()
     return jsonify({"ok": True})
+
+
+# ===== 관리자 통계 차트: fall_log/patrol_log 실데이터 집계 =====
+
+KOREAN_WEEKDAYS = ["월", "화", "수", "목", "금", "토", "일"]
+STATS_RISK_RANK = {"매우 높음": 4, "높음": 3, "보통": 2, "낮음": 1}
+STATS_RISK_CLASS = {"매우 높음": "critical", "높음": "high", "보통": "mid", "낮음": "low"}
+
+
+@app.route("/api/stats/admin")
+@login_required
+def api_stats_admin():
+    today = datetime.date.today()
+    conn = get_db()
+    cursor = conn.cursor()
+
+    # 월별 낙상 발생 (최근 6개월)
+    months = []
+    y, m = today.year, today.month
+    for _ in range(6):
+        months.append((y, m))
+        m -= 1
+        if m == 0:
+            m = 12
+            y -= 1
+    months.reverse()
+    cursor.execute(
+        "SELECT YEAR(detected_at), MONTH(detected_at), COUNT(*) FROM fall_log "
+        "WHERE detected_at >= %s GROUP BY YEAR(detected_at), MONTH(detected_at)",
+        (datetime.date(months[0][0], months[0][1], 1),),
+    )
+    monthly_counts = {(y, m): c for y, m, c in cursor.fetchall()}
+    monthly_falls = [[f"{m}월", monthly_counts.get((y, m), 0)] for y, m in months]
+
+    # 병실별 낙상 발생 · 위험도(그 병실에서 가장 높은 위험도로 막대 색을 정한다)
+    # 등록된 병실은 낙상이 한 건도 없어도 0건 막대로 항상 표시한다 (그래야 그래프 모양이 유지됨)
+    cursor.execute("SELECT room_number, COUNT(*) FROM fall_log GROUP BY room_number")
+    fall_count_by_room = dict(cursor.fetchall())
+    cursor.execute("SELECT room_number, risk_level FROM patients WHERE room_number IS NOT NULL")
+    room_risk = {}
+    all_rooms = set(fall_count_by_room.keys())   # 낙상이 실제 기록된 병실은 환자 등록 여부와 무관하게 포함
+    for room, risk in cursor.fetchall():
+        all_rooms.add(room)
+        if not risk:
+            continue
+        best = room_risk.get(room)
+        if best is None or STATS_RISK_RANK.get(risk, 0) > STATS_RISK_RANK.get(best, 0):
+            room_risk[room] = risk
+    room_falls = [
+        [f"{room}호", fall_count_by_room.get(room, 0), STATS_RISK_CLASS.get(room_risk.get(room), "low")]
+        for room in sorted(all_rooms)
+    ]
+
+    # 시간대별 낙상
+    cursor.execute("SELECT HOUR(detected_at), COUNT(*) FROM fall_log GROUP BY HOUR(detected_at)")
+    hour_counts = dict(cursor.fetchall())
+    hour_buckets = [("새벽", range(0, 6)), ("오전", range(6, 12)), ("오후", range(12, 18)), ("야간", range(18, 24))]
+    hourly_falls = [[label, sum(hour_counts.get(h, 0) for h in hours)] for label, hours in hour_buckets]
+
+    # 일별 순찰 횟수 (최근 7일)
+    start = today - datetime.timedelta(days=6)
+    cursor.execute(
+        "SELECT DATE(patrolled_at), COUNT(*) FROM patrol_log WHERE patrolled_at >= %s GROUP BY DATE(patrolled_at)",
+        (start,),
+    )
+    patrol_counts = {d.isoformat(): c for d, c in cursor.fetchall()}
+    daily_patrols = []
+    for i in range(7):
+        d = start + datetime.timedelta(days=i)
+        daily_patrols.append([KOREAN_WEEKDAYS[d.weekday()], patrol_counts.get(d.isoformat(), 0)])
+
+    # Home 탭 요약 카드: 전체 병실 · 위험 병실 · 오늘 낙상 · 이번 달 낙상
+    cursor.execute("SELECT COUNT(DISTINCT room_number) FROM patients WHERE room_number IS NOT NULL")
+    total_rooms = cursor.fetchone()[0]
+    risk_rooms = sum(1 for r in room_risk.values() if r in ("높음", "매우 높음"))
+    cursor.execute("SELECT COUNT(*) FROM fall_log WHERE DATE(detected_at) = CURDATE()")
+    today_falls = cursor.fetchone()[0]
+    month_falls = monthly_falls[-1][1]   # months 마지막 = 이번 달
+
+    cursor.close()
+    conn.close()
+    return jsonify({
+        "ok": True,
+        "monthly_falls": monthly_falls,
+        "room_falls": room_falls,
+        "hourly_falls": hourly_falls,
+        "daily_patrols": daily_patrols,
+        "total_rooms": total_rooms,
+        "risk_rooms": risk_rooms,
+        "today_falls": today_falls,
+        "month_falls": month_falls,
+    })
+
+
+@app.route("/api/stats/guardian")
+@login_required
+def api_stats_guardian():
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, room_number FROM patients WHERE user_id = %s", (session.get("user_id"),))
+    prow = cursor.fetchone()
+    if not prow:
+        cursor.close()
+        conn.close()
+        return jsonify({"ok": True, "monthly_falls": [], "hourly_patrols": [], "daily_patrols": []})
+    patient_id, room_number = prow
+    today = datetime.date.today()
+
+    # 월별 낙상 발생 이력 (최근 6개월, 확정된 것만)
+    months = []
+    y, m = today.year, today.month
+    for _ in range(6):
+        months.append((y, m))
+        m -= 1
+        if m == 0:
+            m = 12
+            y -= 1
+    months.reverse()
+    cursor.execute(
+        "SELECT YEAR(detected_at), MONTH(detected_at), COUNT(*) FROM fall_log "
+        "WHERE patient_id = %s AND done = TRUE AND detected_at >= %s "
+        "GROUP BY YEAR(detected_at), MONTH(detected_at)",
+        (patient_id, datetime.date(months[0][0], months[0][1], 1)),
+    )
+    monthly_counts = {(y, m): c for y, m, c in cursor.fetchall()}
+    monthly_falls = [[f"{m}월", monthly_counts.get((y, m), 0)] for y, m in months]
+
+    # 시간대별 안심 순찰 완료 횟수 (내 병실, 전체 기간)
+    cursor.execute(
+        "SELECT HOUR(patrolled_at), COUNT(*) FROM patrol_log WHERE room_number = %s GROUP BY HOUR(patrolled_at)",
+        (room_number,),
+    )
+    hour_counts = dict(cursor.fetchall())
+    hour_buckets = [("새벽", range(0, 6)), ("오전", range(6, 12)), ("오후", range(12, 18)), ("야간", range(18, 24))]
+    hourly_patrols = [[label, sum(hour_counts.get(h, 0) for h in hours)] for label, hours in hour_buckets]
+
+    # 최근 7일 순찰 완료 횟수 (내 병실)
+    start = today - datetime.timedelta(days=6)
+    cursor.execute(
+        "SELECT DATE(patrolled_at), COUNT(*) FROM patrol_log WHERE room_number = %s AND patrolled_at >= %s "
+        "GROUP BY DATE(patrolled_at)",
+        (room_number, start),
+    )
+    patrol_counts = {d.isoformat(): c for d, c in cursor.fetchall()}
+    daily_patrols = []
+    for i in range(7):
+        d = start + datetime.timedelta(days=i)
+        daily_patrols.append([KOREAN_WEEKDAYS[d.weekday()], patrol_counts.get(d.isoformat(), 0)])
+    patrol_today = daily_patrols[-1][1]   # start+6일 = 오늘
+
+    # 최근 30일 순찰 완료 횟수 (내 병실)
+    start_30 = today - datetime.timedelta(days=29)
+    cursor.execute(
+        "SELECT COUNT(*) FROM patrol_log WHERE room_number = %s AND patrolled_at >= %s",
+        (room_number, start_30),
+    )
+    patrol_30d = cursor.fetchone()[0]
+
+    cursor.close()
+    conn.close()
+    return jsonify({
+        "ok": True,
+        "monthly_falls": monthly_falls,
+        "hourly_patrols": hourly_patrols,
+        "daily_patrols": daily_patrols,
+        "patrol_today": patrol_today,
+        "patrol_30d": patrol_30d,
+    })
 
 
 def ros_spin():

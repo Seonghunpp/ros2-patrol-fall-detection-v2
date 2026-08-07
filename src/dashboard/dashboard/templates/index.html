@@ -583,8 +583,8 @@
             </div>
             <div class="stat-tile">
                 <span class="stat-tile-label">최근 30일 순찰</span>
-                <span class="stat-tile-num">120<span class="stat-tile-unit">회</span></span>
-                <span class="stat-tile-sub">하루 평균 4회</span>
+                <span class="stat-tile-num" id="g-stat-patrol30">0<span class="stat-tile-unit">회</span></span>
+                <span class="stat-tile-sub" id="g-stat-patrol30-sub">-</span>
             </div>
             <div class="stat-tile">
                 <span class="stat-tile-label">오늘 순찰</span>
@@ -697,9 +697,9 @@
         </header>
 
         <div class="stat-row stat-row-6 a-stagger">
-            <div class="stat-tile"><span class="stat-tile-label">전체 병실</span><span class="stat-tile-num">4<span class="stat-tile-unit">실</span></span><span class="stat-tile-sub">등록 병실</span></div>
-            <div class="stat-tile a-tile-danger"><span class="stat-tile-label">위험 병실</span><span class="stat-tile-num" style="color:#e5484d;">2<span class="stat-tile-unit">실</span></span><span class="stat-tile-sub">고위험군 재실</span></div>
-            <div class="stat-tile"><span class="stat-tile-label">오늘 낙상</span><span class="stat-tile-num">1<span class="stat-tile-unit">건</span></span><span class="stat-tile-sub">당일 누적</span></div>
+            <div class="stat-tile"><span class="stat-tile-label">전체 병실</span><span class="stat-tile-num" id="a-stat-rooms">0<span class="stat-tile-unit">실</span></span><span class="stat-tile-sub">등록 병실</span></div>
+            <div class="stat-tile a-tile-danger"><span class="stat-tile-label">위험 병실</span><span class="stat-tile-num" style="color:#e5484d;" id="a-stat-risk-rooms">0<span class="stat-tile-unit">실</span></span><span class="stat-tile-sub">고위험군 재실</span></div>
+            <div class="stat-tile"><span class="stat-tile-label">오늘 낙상</span><span class="stat-tile-num" id="a-stat-today-falls">0<span class="stat-tile-unit">건</span></span><span class="stat-tile-sub">당일 누적</span></div>
             <div class="stat-tile"><span class="stat-tile-label">Robot 상태</span><span class="stat-tile-num" style="color:#1a9d43;" id="stat-robot-state">순찰 중</span><span class="stat-tile-sub" id="stat-current-room">101호 순찰</span></div>
             <div class="stat-tile"><span class="stat-tile-label">배터리</span><span class="stat-tile-num" id="stat-battery">82%</span><span class="stat-tile-sub">충전 복귀 30% 이하</span></div>
             <div class="stat-tile"><span class="stat-tile-label">긴급 알림</span><span class="stat-tile-num" style="color:#e5484d;">0<span class="stat-tile-unit">건</span></span><span class="stat-tile-sub">미처리 기준</span></div>
@@ -707,18 +707,11 @@
         <div class="ahome-grid">
             <div class="panel">
                 <div class="panel-head">최근 이벤트</div>
-                <ul class="timeline">
-                    <li><span class="tl-time">14:32</span><span><span class="risk-chip risk-high">낙상</span> 병실 101 낙상 감지</span></li>
-                    <li><span class="tl-time">14:35</span><span>병실 101 간호사 호출</span></li>
-                    <li><span class="tl-time">14:40</span><span>순찰 완료</span></li>
-                </ul>
+                <ul class="timeline" id="ahome-events"><!-- updateStatus()로 채움 --></ul>
             </div>
             <div class="panel">
                 <div class="panel-head">최근 낙상</div>
-                <ul class="timeline">
-                    <li><span class="tl-time">07-15</span><span>병실 103</span></li>
-                    <li><span class="tl-time">07-14</span><span>병실 101</span></li>
-                </ul>
+                <ul class="timeline" id="ahome-falls"><!-- renderFalls()로 채움 --></ul>
             </div>
             <div class="panel">
                 <div class="panel-head">최근 낙상 통계</div>
@@ -839,7 +832,7 @@
         <div class="stat-row stat-row-2">
             <div class="stat-tile">
                 <span class="stat-tile-label">이번 달 낙상</span>
-                <span class="stat-tile-num">7<span class="stat-tile-unit">건</span></span>
+                <span class="stat-tile-num" id="a-stat-month-falls">0<span class="stat-tile-unit">건</span></span>
             </div>
             <div class="stat-tile">
                 <span class="stat-tile-label">감지 정확도</span>
@@ -1502,6 +1495,16 @@ function showTab(name) {
     window.scrollTo(0, 0);
     updateNav();
     if (name === "schedule") loadSchedule();
+    // 관리자 탭들은 로그인 시점 캐시가 오래됐을 수 있어 탭을 열 때마다 다시 불러온다
+    if (name === "events") renderEvents();
+    if (name === "patients") { renderPatients(); renderWardGrid(); }
+    if (name === "monitoring") renderWardGrid();
+    if (name === "astats") { renderCharts(); renderFalls(); }
+    if (name === "ahome") { renderCharts(); renderFalls(); }
+    if (name === "accounts") { renderPending(); renderGuardians(); }
+    // 보호자 탭들도 마찬가지 — 순찰 기록·낙상 알림은 로그인 이후 새로 쌓였을 수 있다
+    if (name === "ghome" || name === "myroom" || name === "myinfo") renderGuardian();
+    if (name === "gstats") renderCharts();
     // 숨은 패널은 크기가 0이라 등장 판정에서 늘 제외된다.
     // 이미 맨 위에 있으면 scrollTo가 scroll 이벤트를 내지 않으므로 여기서 직접 다시 판정한다.
     refreshReveal();
@@ -2233,17 +2236,6 @@ const DB = {
         return DB.patients.filter(p => p.admitted === 1 && p.room_number === String(room));
     },
 
-    /* 보호자에게 공개되는 낙상 기록
-       한 병실에 여러 명이 있어 영상만으로는 누가 넘어졌는지 알 수 없으므로,
-       간호사가 현장 확인 후 환자를 특정(fall_patient_id)한 건만 보호자에게 넘어간다.
-       미확인 상태(fall_patient_id = NULL)는 어느 보호자에게도 보이지 않는다. */
-    listFallsForPatient(patientId) {
-        // TODO(백엔드): GET /api/events?fall_patient_id={id} 로 교체
-        return EVENTS
-            .filter(e => e.type === "낙상" && e.fall_patient_id === patientId)
-            .sort((a, b) => b.time.localeCompare(a.time));
-    },
-
     getGuardianByUsername(username) {
         return DB.guardians.find(g => g.username === username) || null;
     },
@@ -2354,35 +2346,48 @@ function selectWard(room) {
 // ----- 이벤트: 캡처 확인 · 대응 완료 -----
 let evSelected = null;
 
-function openEvCapture(idx) {
-    const e = EVENTS[idx];
+async function openEvCapture(id) {
+    const e = FALL_LOGS.find(f => f.id === id);
     if (!e) return;
-    evSelected = idx;
-    document.getElementById("ev-capture-time").innerText = e.time;
-    document.getElementById("ev-capture-room").innerText = "병실 " + e.room;
-    document.getElementById("ev-capture-type").innerText = e.type;
-    document.getElementById("ev-capture-tag").innerText = e.type + " 확정 프레임";
+    evSelected = id;
+    document.getElementById("ev-capture-time").innerText = e.detected_at;
+    document.getElementById("ev-capture-room").innerText = "병실 " + e.room_number;
+    document.getElementById("ev-capture-type").innerText = "낙상";
+    document.getElementById("ev-capture-tag").innerText = "낙상 확정 프레임";
     document.getElementById("ev-memo").value = e.memo || "";
     document.getElementById("ev-error").innerText = "";
 
-    // 낙상 이벤트에서만 "누가 넘어졌는지" 지정한다
-    const assign = document.getElementById("ev-assign");
-    const people = document.getElementById("ev-people");
-    assign.style.display = e.type === "낙상" ? "" : "none";
+    // 저장된 캡처 이미지를 불러온다 (없으면 자리표시자 유지)
+    const box = document.getElementById("ev-capture-img");
+    box.querySelectorAll(".ev-capture-photo, .ev-capture-ph").forEach(el => el.remove());
+    const img = document.createElement("img");
+    img.className = "ev-capture-photo";
+    img.alt = "낙상 캡처 이미지";
+    img.style.cssText = "width:100%;height:100%;object-fit:cover;border-radius:4px;";
+    img.onerror = () => {
+        img.remove();
+        const ph = document.createElement("span");
+        ph.className = "ev-capture-ph";
+        ph.innerHTML = "📷<br>저장된 캡처 이미지가 없습니다";
+        box.prepend(ph);
+    };
+    img.src = `/api/fall-log/${id}/capture`;
+    box.prepend(img);
 
-    if (e.type === "낙상") {
-        const list = DB.listPatientsByRoom(e.room);
-        people.innerHTML = list.length
-            ? list.map(p => `
-                <label class="ev-person${e.fall_patient_id === p.patient_id ? " picked" : ""}">
-                    <input type="radio" name="ev-fall-person" value="${p.patient_id}"
-                           ${e.fall_patient_id === p.patient_id ? "checked" : ""}
-                           onchange="pickFallPatient(${p.patient_id})">
-                    <span class="ev-person-name">${p.name}</span>
-                    <span class="ev-person-sub">${p.age}세 · ${p.gender} · ${RISK_TEXT[p.risk_level]}</span>
-                </label>`).join("")
-            : '<p class="a-hint">이 병실에 등록된 재원 환자가 없습니다.</p>';
-    }
+    // 영상만으로는 같은 병실의 누가 넘어졌는지 알 수 없으므로 현장에서 확인해 지정한다
+    const people = document.getElementById("ev-people");
+    WARDS = await fetchWards();
+    const list = WARDS.filter(w => w.room === e.room_number);
+    people.innerHTML = list.length
+        ? list.map(p => `
+            <label class="ev-person${e.patient_id === p.id ? " picked" : ""}">
+                <input type="radio" name="ev-fall-person" value="${p.id}"
+                       ${e.patient_id === p.id ? "checked" : ""}
+                       onchange="pickFallPatient(${p.id})">
+                <span class="ev-person-name">${p.name}</span>
+                <span class="ev-person-sub">${p.age}세 · ${p.sex} · ${p.risk}</span>
+            </label>`).join("")
+        : '<p class="a-hint">이 병실에 등록된 재원 환자가 없습니다.</p>';
 
     document.getElementById("ev-modal").classList.add("open");
 }
@@ -2399,32 +2404,39 @@ function closeEvCapture() {
     document.getElementById("ev-modal").classList.remove("open");
 }
 
-function markEventDone() {
+async function markEventDone() {
     if (evSelected === null) return;
-    const e = EVENTS[evSelected];
     const err = document.getElementById("ev-error");
 
     // 낙상은 누가 넘어졌는지 지정해야 완료 처리할 수 있다
-    if (e.type === "낙상") {
-        const picked = document.querySelector('input[name="ev-fall-person"]:checked');
-        if (!picked) {
-            err.innerText = "현장에서 확인한 낙상 환자를 선택해 주세요.";
-            return;
-        }
-        const p = DB.getPatient(+picked.value);
-        e.fall_patient_id = p.patient_id;      // TODO(백엔드): PATCH /api/events/{id}
-        e.fall_patient_name = p.name;
-        e.confirmed_by = currentName().split("·")[0].trim();   // 확인한 간호사
+    const picked = document.querySelector('input[name="ev-fall-person"]:checked');
+    if (!picked) {
+        err.innerText = "현장에서 확인한 낙상 환자를 선택해 주세요.";
+        return;
+    }
+    const patientId = +picked.value;
+    const patientName = (WARDS.find(w => w.id === patientId) || {}).name;
+    const memo = document.getElementById("ev-memo").value.trim();
+
+    try {
+        const res = await fetch(`/api/fall-log/${evSelected}/confirm`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ patient_id: patientId, memo })
+        });
+        const data = await res.json();
+        if (!res.ok || !data.ok) { err.innerText = data.error || "처리 중 오류가 발생했습니다."; return; }
+    } catch (e) {
+        err.innerText = "서버와 통신할 수 없습니다.";
+        return;
     }
 
-    e.done = true;
-    e.memo = document.getElementById("ev-memo").value.trim();
     err.innerText = "";
     closeEvCapture();
     renderEvents();
-    rcToast(e.fall_patient_name
-        ? `${e.fall_patient_name} 님 낙상으로 확정했습니다`
-        : "대응 완료로 처리했습니다");
+    renderFalls();
+    renderCharts();   // 오늘/이번 달 낙상 등 통계에도 바로 반영
+    rcToast(patientName ? `${patientName} 님 낙상으로 확정했습니다` : "대응 완료로 처리했습니다");
 }
 
 // ----- 계정: 보호자 가입 승인 -----
@@ -2443,7 +2455,7 @@ async function fetchGuardians() {
             username: a.username,
             name: a.guardian || a.username,
             patient: a.name ? `${a.name} (${a.room_number}호)` : "연동 정보 없음",
-            code: null,
+            code: a.code || null,
             discharged: false
         })) : [];
     } catch (e) {
@@ -2713,12 +2725,11 @@ async function renderPatrolLog(patient) {
     }
     if (cnt) cnt.innerText = logs.length;
 
-    // 같은 로그를 쓰는 다른 화면들 (실시간 병실 · 통계)
+    // "오늘 순찰"/"최근 30일 순찰" 개수는 이 목록(최대 20건)이 아니라 loadGuardianStats()의
+    // 정확한 COUNT 집계값을 쓴다 — 여기서는 "가장 최근 순찰 시각"만 채운다.
     const fmtTime = dt => dt ? String(dt).replace("T", " ").slice(11, 16) : "";
     const set = (id, v) => { const el = document.getElementById(id); if (el) el.innerText = v; };
-    set("g-live-today", logs.length + "회");
     set("g-live-last", logs.length ? fmtTime(logs[0].patrolled_at) : "기록 없음");
-    set("g-stat-today", logs.length);
 
     if (!logs.length) {
         ul.innerHTML = '<li class="g-log-empty">아직 오늘 순찰 기록이 없습니다.</li>';
@@ -2731,17 +2742,28 @@ async function renderPatrolLog(patient) {
 }
 
 // 간호사가 환자를 특정한 낙상 기록을 보호자 화면(홈·통계)에 반영한다
-function renderGuardianFalls(patient) {
+async function renderGuardianFalls(patient) {
     const set = (id, v) => { const el = document.getElementById(id); if (el) el.innerText = v; };
-    const falls = patient ? DB.listFallsForPatient(patient.patient_id) : [];
+
+    let falls = [];
+    if (patient) {
+        try {
+            const res = await fetch("/api/fall-log");
+            const data = await res.json();
+            falls = data.ok ? data.logs : [];   // 서버가 이미 본인 환자 + 확정된 것만 내려줌
+        } catch (e) { /* 네트워크 오류 시 빈 목록으로 처리 */ }
+    }
+
+    // falls는 최신순(DESC) — 내 병실 탭의 환자 프로필 "최근 낙상 기록"도 여기서 같이 채운다
+    set("g-pt-lastfall", falls.length ? falls[0].detected_at : "낙상 이력 없음");
 
     const today = new Date();
     const ymd = `${today.getFullYear()}-${pad2(today.getMonth() + 1)}-${pad2(today.getDate())}`;
-    const todayFalls = falls.filter(f => f.time.startsWith(ymd));
+    const todayFalls = falls.filter(f => f.detected_at.startsWith(ymd));
 
     // 최근 30일
     const limit = new Date(today.getTime() - 30 * 86400000);
-    const recent = falls.filter(f => new Date(f.time.replace(" ", "T")) >= limit);
+    const recent = falls.filter(f => new Date(f.detected_at.replace(" ", "T")) >= limit);
 
     // Home · 오늘의 알림 카드
     const tile = document.getElementById("g-today-events");
@@ -2758,9 +2780,8 @@ function renderGuardianFalls(patient) {
         panel.style.display = falls.length ? "" : "none";
         list.innerHTML = falls.map(f => {
             const memo = f.memo ? ` · <span class="g-fall-memo">${f.memo}</span>` : "";
-            const by = f.confirmed_by ? `${f.confirmed_by} 간호사 확인` : "확인 완료";
-            return `<li><span class="tl-time">${f.time.slice(5, 16)}</span>` +
-                   `<span><span class="g-danger">낙상 감지</span> · ${by}${memo}</span></li>`;
+            return `<li><span class="tl-time">${f.detected_at.slice(5, 16)}</span>` +
+                   `<span><span class="g-danger">낙상 감지</span> · 확인 완료${memo}</span></li>`;
         }).join("");
     }
 
@@ -2871,7 +2892,7 @@ async function renderGuardian() {
     set("g-link-code", "-");
 
     await renderPatrolLog(patient);
-    renderGuardianFalls(null);
+    renderGuardianFalls(patient);
     loadGuardianNoti();
 }
 
@@ -2947,7 +2968,10 @@ async function doLogin() {
         renderNurses();
         renderPatients();
         renderWardGrid();
+        renderEvents();
+        renderFalls();
     }
+    renderCharts();   // 관리자/보호자 통계 차트 둘 다 이 함수 하나가 처리한다
     await renderGuardian();
     goHome();
 }
@@ -3069,7 +3093,10 @@ async function updateStatus() {
             lastSeenAlertId = data.fall_alert_id;  // * 팝업 부분 수정 *
         } else if (data.fall_alert_id !== lastSeenAlertId) {  // * 팝업 부분 수정 *
             lastSeenAlertId = data.fall_alert_id;  // * 팝업 부분 수정 *
-            showFallAlert(data.current_room);  // * 팝업 부분 수정 *
+            // 관리자 계정에만 낙상 팝업을 띄운다
+            if (currentRole() === "admin") {
+                showFallAlert(data.current_room);  // * 팝업 부분 수정 *
+            }
         }  // * 팝업 부분 수정 *
 
         document.getElementById("robot-status").innerText = data.robot_status;
@@ -3124,6 +3151,16 @@ async function updateStatus() {
 
         const logCount = document.getElementById("mon-log-count");
         if (logCount) logCount.innerText = data.events.length;
+
+        // Home 탭 "최근 이벤트" — 같은 이벤트 로그를 재사용 (최근 3건만)
+        const ahomeEvents = document.getElementById("ahome-events");
+        if (ahomeEvents) {
+            ahomeEvents.innerHTML = data.events.slice(0, 3).map(e => {
+                const isFall = e.text.includes("낙상 환자 발견");
+                const tag = isFall ? '<span class="risk-chip risk-high">낙상</span> ' : "";
+                return `<li><span class="tl-time">${e.time}</span><span>${tag}${e.text}</span></li>`;
+            }).join("") || '<li class="g-log-empty">기록된 이벤트가 없습니다.</li>';
+        }
     } catch (err) {
         console.error(err);
     }
@@ -3362,8 +3399,15 @@ function renderLineChart(el) {
     const chart = LINE_CHARTS[el.id];
     if (!chart) return;
 
-    const { w, h, padL, padR, padTop, padBottom } = LC;
     const rows = chart.data;
+    // 데이터가 0개면 pts[0]이 undefined라 밑에서 죽는다 — 여기서 막아야 이 뒤에 그릴
+    // 다른 차트들까지(같은 forEach 반복문 안이라) 같이 멈추는 걸 막을 수 있다.
+    if (!rows.length) {
+        el.innerHTML = "";
+        return;
+    }
+
+    const { w, h, padL, padR, padTop, padBottom } = LC;
     const n = rows.length;
     const max = Math.max(...rows.map(r => r[1]), 1);
     const plotW = w - padL - padR;
@@ -3485,7 +3529,56 @@ function renderBarChart(el) {
     };
 }
 
-function renderCharts() {
+// 관리자 통계 탭의 4개 차트(월별 낙상/병실별 낙상·위험도/시간대별 낙상/일별 순찰)만
+// 실제 DB 집계로 덮어쓴다. 그 외 차트(홈 요약, 보호자 통계)는 아직 데모 값을 그대로 쓴다.
+async function loadAdminStats() {
+    try {
+        const res = await fetch("/api/stats/admin");
+        const data = await res.json();
+        if (!data.ok) return;
+        LINE_CHARTS["lc-ahome-month"] = { unit: "건", data: data.monthly_falls };
+        LINE_CHARTS["lc-astats-month"] = { unit: "건", data: data.monthly_falls };
+        LINE_CHARTS["lc-astats-hour"] = { unit: "건", data: data.hourly_falls };
+        LINE_CHARTS["lc-astats-day"] = { unit: "회", data: data.daily_patrols };
+        BAR_CHARTS["bc-astats-room"] = { unit: "건", data: data.room_falls };
+
+        const setNum = (id, v, unit) => {
+            const el = document.getElementById(id);
+            if (el) el.innerHTML = v + `<span class="stat-tile-unit">${unit}</span>`;
+        };
+        setNum("a-stat-rooms", data.total_rooms, "실");
+        setNum("a-stat-risk-rooms", data.risk_rooms, "실");
+        setNum("a-stat-today-falls", data.today_falls, "건");
+        setNum("a-stat-month-falls", data.month_falls, "건");
+    } catch (e) { /* 실패하면 기존 값(데모) 유지 */ }
+}
+
+async function loadGuardianStats() {
+    try {
+        const res = await fetch("/api/stats/guardian");
+        const data = await res.json();
+        // 연동된 환자가 없으면(관리자 계정 등) 서버가 빈 배열을 주므로 여기서 멈춘다.
+        // 그냥 진행하면 renderLineChart가 빈 배열에서 죽어서 뒤에 그릴 다른 차트까지 다 같이 멈춘다.
+        if (!data.ok || !data.daily_patrols.length) return;
+        LINE_CHARTS["lc-gstats-month"] = { unit: "건", data: data.monthly_falls };
+        LINE_CHARTS["lc-gstats-hour"] = { unit: "회", data: data.hourly_patrols };
+        LINE_CHARTS["lc-gstats-week"] = { unit: "회", data: data.daily_patrols };
+
+        const set = (id, v) => { const el = document.getElementById(id); if (el) el.innerText = v; };
+        // stat-tile-num 안에는 단위 span이 중첩돼 있어서 innerText로 덮으면 단위가 같이 지워진다
+        const setNum = (id, v, unit) => {
+            const el = document.getElementById(id);
+            if (el) el.innerHTML = v + `<span class="stat-tile-unit">${unit}</span>`;
+        };
+        set("g-live-today", data.patrol_today + "회");
+        setNum("g-stat-today", data.patrol_today, "회");
+        setNum("g-stat-patrol30", data.patrol_30d, "회");
+        set("g-stat-patrol30-sub", `하루 평균 ${Math.round(data.patrol_30d / 30 * 10) / 10}회`);
+    } catch (e) { /* 실패하면 기존 값(데모) 유지 */ }
+}
+
+async function renderCharts() {
+    await Promise.all([loadAdminStats(), loadGuardianStats()]);
     document.querySelectorAll(".lc").forEach(el => {
         if (BAR_CHARTS[el.id]) renderBarChart(el);
         else renderLineChart(el);
@@ -3557,6 +3650,7 @@ async function addPatient() {
     err.innerText = "";
     renderWardGrid();
     renderPatients();
+    renderCharts();   // Home 요약 카드(전체/위험 병실)·통계 차트도 위험도 변경을 바로 반영
     rcToast(name + " 님을 " + room + "호에 등록했습니다");
 }
 
@@ -3589,29 +3683,38 @@ async function dischargePatient(i) {
             }
             renderWardGrid();
             renderPatients();
+            renderCharts();   // 전체/위험 병실 수 변동 반영
             rcToast(w.name + " 님을 퇴원 처리했습니다");
         }
     });
 }
 
 // --- 낙상 이력 / 통계 ---  ※ TODO: 낙상 이력 API 연동
-const FALLS = [
-    { time: "2026-07-15 11:05", room: "103" },
-    { time: "2026-07-14 03:20", room: "101" },
-    { time: "2026-07-12 19:47", room: "102" },
-    { time: "2026-07-09 14:32", room: "104" },
-    { time: "2026-07-06 02:11", room: "101" },
-];
+async function renderFalls() {
+    let rows = [];
+    try {
+        const res = await fetch("/api/fall-log");
+        const data = await res.json();
+        rows = data.ok ? data.logs : [];
+    } catch (e) { /* 네트워크 오류 시 빈 목록으로 처리 */ }
 
-function renderFalls() {
     const tb = document.getElementById("falls-tbody");
-    if (!tb) return;
-    tb.innerHTML = "";
-    FALLS.forEach((f, i) => {
-        const tr = document.createElement("tr");
-        tr.innerHTML = `<td>${f.time}</td><td>병실 ${f.room}</td>`;
-        tb.appendChild(tr);
-    });
+    if (tb) {
+        tb.innerHTML = "";
+        rows.forEach(f => {
+            const tr = document.createElement("tr");
+            tr.innerHTML = `<td>${f.detected_at}</td><td>병실 ${f.room_number}</td>`;
+            tb.appendChild(tr);
+        });
+    }
+
+    // Home 탭 "최근 낙상" (최근 3건만, 날짜만 짧게)
+    const ahomeFalls = document.getElementById("ahome-falls");
+    if (ahomeFalls) {
+        ahomeFalls.innerHTML = rows.slice(0, 3).map(f =>
+            `<li><span class="tl-time">${f.detected_at.slice(5, 10)}</span><span>병실 ${f.room_number}</span></li>`
+        ).join("") || '<li class="g-log-empty">낙상 기록이 없습니다.</li>';
+    }
 }
 
 // --- 설정: 테마 ---
@@ -3716,64 +3819,65 @@ function rcToast(msg) {
 }
 
 // ===== 이벤트 로그 =====  ※ TODO: 이벤트 API 연동
-const EVENTS = [
-    { time: "2026-07-16 14:40", room: "101", type: "순찰", text: "순찰 완료" },
-    { time: "2026-07-16 14:35", room: "101", type: "호출", text: "간호사 호출" },
-    { time: "2026-07-16 14:32", room: "101", type: "낙상", text: "낙상 감지" },
-    { time: "2026-07-16 12:05", room: "103", type: "순찰", text: "순찰 완료" },
-    { time: "2026-07-15 22:10", room: "102", type: "낙상", text: "낙상 감지" },
-    { time: "2026-07-15 16:20", room: "104", type: "순찰", text: "순찰 완료" }
-];
 // 순찰·호출 로그는 '병실 모니터링'의 실시간 이벤트 로그에서 보므로,
-// 이 탭은 간호사가 확인·처리해야 하는 낙상만 다룬다
-function fallEvents() {
-    return EVENTS.filter(e => e.type === "낙상");
-}
+// 이 탭은 간호사가 확인·처리해야 하는 낙상(fall_log)만 다룬다
+let FALL_LOGS = [];
 
-function renderEvents(list) {
+async function renderEvents() {
     const tb = document.getElementById("events-tbody");
     if (!tb) return;
-    const rows = list || fallEvents();
+    try {
+        const res = await fetch("/api/fall-log");
+        const data = await res.json();
+        FALL_LOGS = data.ok ? data.logs : [];
+    } catch (e) {
+        FALL_LOGS = [];
+    }
+    renderEventRows(FALL_LOGS);
+}
+
+function renderEventRows(rows) {
+    const tb = document.getElementById("events-tbody");
+    if (!tb) return;
     tb.innerHTML = "";
     if (!rows.length) {
         tb.innerHTML = '<tr><td colspan="6" style="color:var(--text-muted);">검색 결과가 없습니다.</td></tr>';
-        return;
+    } else {
+        rows.forEach(e => {
+            const tr = document.createElement("tr");
+            // 간호사가 확인해 지정한 환자를 함께 보여준다
+            const who = e.patient_name
+                ? ` · <b class="ev-who">${e.patient_name} 님</b>`
+                : ' · <span class="ev-unknown">환자 미확인</span>';
+            tr.innerHTML =
+                `<td>${e.detected_at}</td><td>병실 ${e.room_number}</td><td>낙상 감지${who}</td>` +
+                `<td><button class="mini-btn" onclick="openEvCapture(${e.id})">📷 보기</button></td>` +
+                `<td>${e.done
+                    ? '<span class="risk-chip risk-low">대응 완료</span>'
+                    : '<span class="risk-chip risk-mid">미처리</span>'}</td>` +
+                `<td class="row-actions">${e.done
+                    ? (e.memo ? `<span class="a-memo" title="${e.memo}">📝 메모</span>` : "-")
+                    : `<button class="mini-btn" onclick="openEvCapture(${e.id})">처리</button>`}</td>`;
+            tb.appendChild(tr);
+        });
     }
-    rows.forEach(e => {
-        const i = EVENTS.indexOf(e);
-        const tr = document.createElement("tr");
-        // 간호사가 확인해 지정한 환자를 함께 보여준다
-        const who = e.fall_patient_name
-            ? ` · <b class="ev-who">${e.fall_patient_name} 님</b>`
-            : ' · <span class="ev-unknown">환자 미확인</span>';
-        tr.innerHTML =
-            `<td>${e.time}</td><td>병실 ${e.room}</td><td>${e.text}${who}</td>` +
-            `<td><button class="mini-btn" onclick="openEvCapture(${i})">📷 보기</button></td>` +
-            `<td>${e.done
-                ? '<span class="risk-chip risk-low">대응 완료</span>'
-                : '<span class="risk-chip risk-mid">미처리</span>'}</td>` +
-            `<td class="row-actions">${e.done
-                ? (e.memo ? `<span class="a-memo" title="${e.memo}">📝 메모</span>` : "-")
-                : `<button class="mini-btn" onclick="openEvCapture(${i})">처리</button>`}</td>`;
-        tb.appendChild(tr);
-    });
-    const pending = fallEvents().filter(e => !e.done).length;
+    const pending = FALL_LOGS.filter(e => !e.done).length;
     const badge = document.getElementById("ev-pending-count");
     if (badge) badge.innerText = pending;
 }
 function filterEvents() {
     const q = (document.getElementById("ev-search").value || "").trim();
     const d = document.getElementById("ev-date").value;
-    renderEvents(fallEvents().filter(e => {
-        const matchQ = !q || (e.room + e.text).includes(q);
-        const matchD = !d || e.time.startsWith(d);
+    renderEventRows(FALL_LOGS.filter(e => {
+        const matchQ = !q || (e.room_number + "낙상감지").includes(q);
+        const matchD = !d || e.detected_at.startsWith(d);
         return matchQ && matchD;
     }));
 }
 function clearEventFilter() {
     document.getElementById("ev-search").value = "";
     document.getElementById("ev-date").value = "";
-    renderEvents();
+    renderEventRows(FALL_LOGS);
 }
 
 // 데이터를 먼저 불러온 뒤 화면을 그린다.
