@@ -315,67 +315,135 @@ body {
     display: none;
     position: fixed;
     inset: 0;
-    background: rgba(15, 23, 42, 0.55);
+    background: rgba(15, 23, 42, 0.6);
+    backdrop-filter: blur(4px);
     align-items: center;
     justify-content: center;
     z-index: 1000;
+    padding: 20px;
 }
 
 .fall-alert-box {
     position: relative;
     background: var(--card);
     border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 32px 40px;
+    border-radius: 20px;
+    padding: 38px 40px 32px;
     text-align: center;
-    min-width: 320px;
-    box-shadow: 0 16px 40px -12px rgba(15, 23, 42, 0.45);
+    max-width: 380px;
+    width: 100%;
+    box-shadow: 0 24px 60px -16px rgba(15, 23, 42, 0.5);
+    overflow: hidden;
+    animation: fallAlertIn 0.28s cubic-bezier(0.34, 1.4, 0.5, 1);
+}
+
+/* 상단 빨강 액센트 바 */
+.fall-alert-box::before {
+    content: "";
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 5px;
+    background: linear-gradient(90deg, #e5484d, #ff7a7f);
+}
+
+@keyframes fallAlertIn {
+    from { opacity: 0; transform: translateY(12px) scale(0.96); }
+    to   { opacity: 1; transform: none; }
 }
 
 .fall-alert-close {
     position: absolute;
-    top: 12px;
+    top: 14px;
     right: 16px;
     border: none;
     background: none;
-    font-size: 24px;
+    font-size: 22px;
     line-height: 1;
     color: var(--text-muted);
     cursor: pointer;
+    opacity: 0.6;
+    transition: opacity 0.15s;
 }
 
-.fall-alert-icon {
-    font-size: 42px;
-    margin-bottom: 10px;
+.fall-alert-close:hover { opacity: 1; }
+
+/* 아이콘 원 + 맥동 링 (환자 상태 링과 동일 톤) */
+.fall-alert-pulse {
+    position: relative;
+    width: 76px;
+    height: 76px;
+    margin: 6px auto 18px;
+    border-radius: 50%;
+    background: rgba(229, 72, 77, 0.12);
+    display: grid;
+    place-items: center;
+}
+
+.fall-alert-pulse::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    border: 2px solid rgba(229, 72, 77, 0.5);
+    animation: fallRipple 1.8s ease-out infinite;
+}
+
+@keyframes fallRipple {
+    0%   { transform: scale(0.9); opacity: 0.85; }
+    100% { transform: scale(1.6); opacity: 0; }
+}
+
+.fall-alert-icon { font-size: 38px; line-height: 1; }
+
+.fall-alert-eyebrow {
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    color: #e5484d;
+    margin-bottom: 6px;
 }
 
 .fall-alert-title {
-    font-size: 21px;
+    font-size: 23px;
     font-weight: 900;
-    color: var(--danger);
-    margin-bottom: 8px;
+    color: var(--text);
+    letter-spacing: -0.02em;
+    margin-bottom: 12px;
 }
 
 .fall-alert-room {
-    font-size: 16px;
-    color: var(--text);
-    margin-bottom: 22px;
+    display: inline-block;
+    font-size: 15px;
+    font-weight: 700;
+    color: #e5484d;
+    background: rgba(229, 72, 77, 0.1);
+    padding: 5px 15px;
+    border-radius: 999px;
+    margin-bottom: 14px;
+}
+
+.fall-alert-desc {
+    font-size: 13.5px;
+    color: var(--text-muted);
+    line-height: 1.6;
+    margin: 0 0 24px;
 }
 
 .fall-alert-confirm {
-    padding: 10px 28px;
-    border-radius: 4px;
+    width: 100%;
+    padding: 13px 28px;
+    border-radius: 12px;
     border: none;
-    background: var(--danger);
+    background: #e5484d;
     color: #ffffff;
-    font-weight: 700;
-    font-size: 14px;
+    font-weight: 800;
+    font-size: 15px;
     cursor: pointer;
+    transition: background 0.15s, transform 0.1s;
 }
 
-.fall-alert-confirm:hover {
-    background: var(--danger-hover);
-}
+.fall-alert-confirm:hover { background: var(--danger-hover, #d33b40); }
+.fall-alert-confirm:active { transform: scale(0.98); }
 
 /* ===== 캘린더 (관리자 일정 탭) ===== */
 .sch-layout {
@@ -3332,6 +3400,17 @@ html.reveal-on .rm-svc-grid .rm-svc-card:nth-child(8) { transition-delay: 0.49s;
 .g-state strong { display: block; font-size: 24px; font-weight: 800; letter-spacing: -0.02em; }
 .g-state p { margin: 4px 0 0; font-size: 13px; color: var(--text-muted); }
 .g-state p b { color: var(--text); }
+
+/* 환자 상태 박스 색상: 낙상(빨강) / 주의(노랑). applyGuardianFallState가 클래스를 토글한다 */
+.g-state.state-fall { background: linear-gradient(135deg, #fdeced, #fdf5f5); border-color: #f3d0d1; }
+.g-state.state-fall .g-state-ring { background: rgba(229, 72, 77, 0.14); }
+.g-state.state-fall .g-state-ring::after { border-color: rgba(229, 72, 77, 0.5); }
+.g-state.state-fall .g-state-dot { background: #e5484d; }
+
+.g-state.state-warning { background: linear-gradient(135deg, #fdf6ea, #fffdf8); border-color: #f0e0c0; }
+.g-state.state-warning .g-state-ring { background: rgba(224, 140, 26, 0.14); }
+.g-state.state-warning .g-state-ring::after { border-color: rgba(224, 140, 26, 0.5); }
+.g-state.state-warning .g-state-dot { background: #e08c1a; }
 
 .g-chip-sm { padding: 5px 11px; font-size: 11px; }
 

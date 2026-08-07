@@ -1,5 +1,6 @@
 import datetime
 import os
+import re
 import secrets
 import threading
 import time
@@ -768,6 +769,8 @@ def api_nurses_create():
 
     if not name:
         return jsonify({"ok": False, "error": "이름은 필수입니다."}), 400
+    if phone and not re.match(r"^01[016789]-\d{3,4}-\d{4}$", phone):
+        return jsonify({"ok": False, "error": "전화번호 형식이 올바르지 않습니다."}), 400
     if assigned_room not in VALID_ROOMS:
         return jsonify({"ok": False, "error": "잘못된 병실 값입니다."}), 400
 
@@ -859,6 +862,12 @@ def api_patrol_log():
     logs = cursor.fetchall()
     cursor.close()
     conn.close()
+    # datetime을 그대로 jsonify하면 "Fri, 07 Aug 2026 ..." 영어 형식이 되므로
+    # 프론트가 다루기 쉬운 "YYYY-MM-DD HH:MM:SS" 문자열로 통일해서 내보낸다.
+    for log in logs:
+        ts = log.get("patrolled_at")
+        if hasattr(ts, "strftime"):
+            log["patrolled_at"] = ts.strftime("%Y-%m-%d %H:%M:%S")
     return jsonify({"ok": True, "logs": logs})
 
 
@@ -879,13 +888,21 @@ def api_my_patient():
         patient["guardian"] = decrypt_field(patient["guardian"])
         # 담당 간호사: 이 환자의 병실을 담당(assigned_room=병실번호)하거나 전체 담당('all')인 간호사
         cursor.execute(
-            "SELECT name, employee_no FROM nurses "
+            "SELECT name, employee_no, phone FROM nurses "
             "WHERE assigned_room = %s OR assigned_room = 'all' ORDER BY id",
             (patient["room_number"],),
         )
         nurses = cursor.fetchall()
         for n in nurses:
-            n["name"] = decrypt_field(n["name"])  # 이름은 암호화 저장이므로 복호화
+            n["name"] = decrypt_field(n["name"])    # 이름·전화번호는 암호화 저장이므로 복호화
+            n["phone"] = decrypt_field(n["phone"])
+        # 이 보호자의 매핑 코드 (가입 시 guardian_applications에 user_id로 남아 있음)
+        cursor.execute(
+            "SELECT mapping_code FROM guardian_applications WHERE user_id = %s",
+            (session.get("user_id"),),
+        )
+        mc = cursor.fetchone()
+        patient["mapping_code"] = mc["mapping_code"] if mc else None
     cursor.close()
     conn.close()
     if patient:
@@ -1056,14 +1073,57 @@ def api_fall_log_confirm(log_id):
 
     conn = get_db()
     cursor = conn.cursor()
+    # confirmed_at = 처리(확정) 시각. 보호자 화면이 이 시각 기준으로 낙상(10분)→주의로 바꾼다.
     cursor.execute(
-        "UPDATE fall_log SET patient_id = %s, confirmed_by = %s, memo = %s, done = TRUE WHERE id = %s",
+        "UPDATE fall_log SET patient_id = %s, confirmed_by = %s, memo = %s, done = TRUE, "
+        "confirmed_at = NOW() WHERE id = %s",
         (patient_id, session.get("user_id"), memo, log_id),
     )
     conn.commit()
     cursor.close()
     conn.close()
     return jsonify({"ok": True})
+
+
+@app.route("/api/my-fall-state")
+@login_required
+def api_my_fall_state():
+    # 로그인한 보호자의 환자에 대해 '오늘' 확정된 낙상이 있는지 보고 상태를 정한다.
+    #   normal  : 오늘 확정된 낙상 없음 (초록)
+    #   fall    : 확정(처리) 후 10분 이내 (빨강)
+    #   warning : 확정 10분 경과 ~ 그날 자정까지 (노랑, '낙상 있었음')
+    # 다음 날이 되면 오늘 기록이 아니므로 자동으로 normal로 돌아간다.
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("SELECT id FROM patients WHERE user_id = %s", (session.get("user_id"),))
+    prow = cursor.fetchone()
+    state = "normal"
+    if prow:
+        cursor.execute(
+            "SELECT confirmed_at FROM fall_log "
+            "WHERE patient_id = %s AND done = TRUE AND confirmed_at IS NOT NULL "
+            "AND DATE(confirmed_at) = CURDATE() "
+            "ORDER BY confirmed_at DESC LIMIT 1",
+            (prow["id"],),
+        )
+        row = cursor.fetchone()
+        if row and row["confirmed_at"]:
+            elapsed = (datetime.datetime.now() - row["confirmed_at"]).total_seconds()
+            # state = "fall" if elapsed < 600 else "warning"   # 600초 = 10분
+
+            # --- 테스트용 (원래: 낙상 600초, 주의 그날 종일) ---
+            if elapsed < 30:
+                state = "fall"          # 0~30초: 빨강
+            elif elapsed < 50:         # 30~50초 (30 + 20): 노랑
+                state = "warning"
+            else:
+                state = "normal"       # 50초 이후: 다시 초록
+
+
+
+    cursor.close()
+    conn.close()
+    return jsonify({"ok": True, "state": state})
 
 
 # ===== 캘린더 일정: DB(calendar_events)에 저장 (여러 브라우저가 같은 일정을 공유) =====

@@ -388,15 +388,15 @@
                 <h2>안녕하세요, <span id="g-greet-name">보호자</span> 님</h2>
                 <p><strong id="g-hero-patient">-</strong> 님의 오늘 상태를 한눈에 확인하세요.</p>
             </div>
-            <span class="g-chip g-chip-ok"><i></i>현재 안정</span>
+            <span class="g-chip g-chip-ok" id="g-hero-chip"><i></i>현재 안정</span>
         </header>
 
         <!-- 4대 핵심 요약 카드 -->
         <div class="stat-row g-stagger">
             <div class="stat-tile">
                 <span class="stat-tile-label">현재 환자 상태</span>
-                <span class="stat-tile-num" style="color:#1a9d43;">안정</span>
-                <span class="stat-tile-sub"><span class="g-dot g-dot-ok"></span>이상 징후 없음</span>
+                <span class="stat-tile-num" id="g-status-num" style="color:#1a9d43;">안정</span>
+                <span class="stat-tile-sub" id="g-status-sub"><span class="g-dot g-dot-ok"></span>이상 징후 없음</span>
             </div>
             <div class="stat-tile">
                 <span class="stat-tile-label">병실 번호</span>
@@ -404,7 +404,7 @@
             </div>
             <div class="stat-tile">
                 <span class="stat-tile-label">최근 순찰 시각</span>
-                <span class="stat-tile-num">16:20</span>
+                <span class="stat-tile-num" id="g-live-lasttile" style="font-size:19px;line-height:1.45;">-</span>
                 <span class="stat-tile-sub">정기 순찰 완료</span>
             </div>
             <div class="stat-tile">
@@ -472,8 +472,8 @@
                 <div class="panel-head">병실 상세 정보</div>
                 <dl class="pd-list">
                     <div><dt>병실 번호</dt><dd id="g-room-no">-</dd></div>
-                    <div><dt>현재 환자 상태</dt><dd><span class="g-ok">안정</span></dd></div>
-                    <div><dt>최근 감지</dt><dd>없음</dd></div>
+                    <div><dt>현재 환자 상태</dt><dd id="g-pt-status"><span class="g-ok">안정</span></dd></div>
+                    <div><dt>최근 감지</dt><dd id="g-pt-lastdetect">없음</dd></div>
                     <div><dt>병상 유형</dt><dd id="g-room-type">-</dd></div>
                 </dl>
             </div>
@@ -481,9 +481,14 @@
             <!-- 카드 3 · 담당 의료진 & 케어 안내 -->
             <div class="panel">
                 <div class="panel-head">담당 의료진 · 케어 안내</div>
-                <dl class="pd-list">
-                    <div><dt>담당 간호사</dt><dd id="g-nurse-name">-</dd></div>
-                    <div><dt>간호사 사번</dt><dd id="g-nurse-tel">-</dd></div>
+                <!-- 담당 간호사: 여러 명이면 행으로 추가되어 카드가 가로로 넘치지 않는다 (renderGuardian이 채움) -->
+                <div class="table-wrap">
+                    <table class="data-table">
+                        <thead><tr><th>담당 간호사</th><th>사번</th><th>연락처</th></tr></thead>
+                        <tbody id="g-nurse-tbody"><tr><td colspan="3">-</td></tr></tbody>
+                    </table>
+                </div>
+                <dl class="pd-list" style="margin-top:14px;">
                     <div><dt>면회 가능 시간</dt><dd>10:00 ~ 20:00</dd></div>
                 </dl>
                 <div class="g-care-note">
@@ -513,11 +518,11 @@
                 <div class="panel-head panel-head-row">
                     환자 상태 <span class="g-readonly">열람 전용</span>
                 </div>
-                <div class="g-state">
+                <div class="g-state" id="g-state-box">
                     <span class="g-state-ring"><span class="g-state-dot"></span></span>
                     <div>
                         <strong class="g-ok" id="g-fall-state">정상</strong>
-                        <p><b id="g-live-patient">-</b> · 낙상 감지 없음</p>
+                        <p><b id="g-live-patient">-</b> · <span id="g-fall-substate">낙상 감지 없음</span></p>
                     </div>
                 </div>
                 <dl class="pd-list">
@@ -533,7 +538,7 @@
                     순찰 로봇 <span class="g-chip g-chip-live g-chip-sm"><i></i>LIVE</span>
                 </div>
                 <dl class="pd-list">
-                    <div><dt>로봇 상태</dt><dd id="g-robot-state">순찰 중</dd></div>
+                    <div><dt>로봇 상태</dt><dd id="g-robot-state">-</dd></div>
                     <div><dt>현재 위치</dt><dd id="g-robot-loc">-</dd></div>
                     <div><dt>카메라</dt><dd class="g-ok" id="g-camera">정상 연결</dd></div>
                     <div><dt>최근 순찰</dt><dd id="g-live-last">-</dd></div>
@@ -1187,7 +1192,7 @@
                 <div style="display:grid; grid-template-columns:repeat(2,1fr); gap:8px;">
                     <input id="nf-name" class="form-input form-input-sm" type="text" placeholder="이름">
                     <input id="nf-empno" class="form-input form-input-sm" type="text" placeholder="사번">
-                    <input id="nf-phone" class="form-input form-input-sm" type="text" placeholder="전화번호">
+                    <input id="nf-phone" class="form-input form-input-sm" type="tel" inputmode="numeric" maxlength="13" placeholder="010-0000-0000" oninput="formatPhone(this)">
                     <select id="nf-room" class="form-input form-input-sm">
                         <option value="all">전체 (101~104호)</option>
                         <option value="101">101호</option>
@@ -1252,13 +1257,15 @@
 <!-- ===== 탭 콘텐츠 끝 ===== -->
 
 <!-- * 팝업 부분 수정 * -->
-<div id="fall-alert-overlay" class="fall-alert-overlay"> <!-- * 팝업 부분 수정 * -->
-    <div class="fall-alert-box"> <!-- * 팝업 부분 수정 * -->
-        <button class="fall-alert-close" onclick="closeFallAlert()">&times;</button> <!-- * 팝업 부분 수정 * -->
-        <div class="fall-alert-icon">⚠️</div> <!-- * 팝업 부분 수정 * -->
-        <div class="fall-alert-title">낙상 환자 감지</div> <!-- * 팝업 부분 수정 * -->
-        <div class="fall-alert-room" id="fall-alert-room"></div> <!-- * 팝업 부분 수정 * -->
-        <button class="fall-alert-confirm" onclick="closeFallAlert()">닫기</button> <!-- * 팝업 부분 수정 * -->
+<div id="fall-alert-overlay" class="fall-alert-overlay">
+    <div class="fall-alert-box">
+        <button class="fall-alert-close" onclick="closeFallAlert()">&times;</button>
+        <div class="fall-alert-pulse"><span class="fall-alert-icon">🚨</span></div>
+        <div class="fall-alert-eyebrow">긴급 알림</div>
+        <div class="fall-alert-title">낙상 환자 감지</div>
+        <div class="fall-alert-room" id="fall-alert-room"></div>
+        <p class="fall-alert-desc">순찰 로봇이 낙상을 감지했습니다.<br>즉시 현장을 확인해 주세요.</p>
+        <button class="fall-alert-confirm" onclick="goFallMonitoring()">확인하러 가기</button>
     </div>
 </div>
 
@@ -2571,6 +2578,9 @@ async function createNurse() {
     };
     err.innerText = "";
     if (!payload.name) { err.innerText = "이름은 필수입니다."; return; }
+    if (payload.phone && !/^01[016789]-\d{3,4}-\d{4}$/.test(payload.phone)) {
+        err.innerText = "전화번호를 010-0000-0000 형식으로 끝까지 입력해 주세요."; return;
+    }
 
     try {
         const res = await fetch("/api/nurses", {
@@ -2727,9 +2737,18 @@ async function renderPatrolLog(patient) {
 
     // "오늘 순찰"/"최근 30일 순찰" 개수는 이 목록(최대 20건)이 아니라 loadGuardianStats()의
     // 정확한 COUNT 집계값을 쓴다 — 여기서는 "가장 최근 순찰 시각"만 채운다.
-    const fmtTime = dt => dt ? String(dt).replace("T", " ").slice(11, 16) : "";
+    // 서버가 "YYYY-MM-DD HH:MM:SS" 형식으로 내려준다
+    const fmtTime = dt => dt ? String(dt).slice(11, 16) : "";   // HH:MM (타임라인용)
+    const fmtDateTime = dt => {                                  // 2026년 8월 7일 16:20 (최근 순찰용)
+        if (!dt) return "";
+        const m = String(dt).match(/(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/);
+        return m ? `${m[1]}년 ${+m[2]}월 ${+m[3]}일 ${m[4]}:${m[5]}` : String(dt).slice(0, 16);
+    };
     const set = (id, v) => { const el = document.getElementById(id); if (el) el.innerText = v; };
-    set("g-live-last", logs.length ? fmtTime(logs[0].patrolled_at) : "기록 없음");
+    // 해당 병실을 순찰한 가장 최근 시각을 날짜+시간으로 표시 (순찰 기록이 쌓이면 자동 갱신)
+    const lastPatrol = logs.length ? fmtDateTime(logs[0].patrolled_at) : "기록 없음";
+    set("g-live-last", lastPatrol);
+    set("g-live-lasttile", lastPatrol);
 
     if (!logs.length) {
         ul.innerHTML = '<li class="g-log-empty">아직 오늘 순찰 기록이 없습니다.</li>';
@@ -2830,6 +2849,8 @@ async function renderGuardian() {
          "g-pt-lastfall", "g-room-no", "g-room-type", "g-live-room", "g-live-room2",
          "g-live-type", "g-live-patient", "g-stats-patient",
          "g-link-patient", "g-link-code"].forEach(id => set(id, "연동 정보 없음"));
+        const nt = document.getElementById("g-nurse-tbody");
+        if (nt) nt.innerHTML = `<tr><td colspan="3">연동 정보 없음</td></tr>`;
         currentGuardianRoom = null;
         renderPatrolLog(null);
         renderGuardianFalls(null);
@@ -2863,14 +2884,20 @@ async function renderGuardian() {
         noteEl.style.display = (patient.risk_level === "높음" || patient.risk_level === "매우 높음") ? "" : "none";
     }
 
-    // 내 병실 · 병실 상세 (담당 간호사는 관리자가 nurses 테이블에 배정한 값을 DB에서 가져온다)
-    const nurses = patient.nurses || [];
-    const nurseNames = nurses.map(n => n.name).filter(Boolean).join(" · ");
-    const nurseEmpNos = nurses.map(n => n.employee_no).filter(Boolean).join(" · ");
+    // 내 병실 · 병실 상세
     set("g-room-no", room);
     set("g-room-type", roomTypeOf(patient.room_number));
-    set("g-nurse-name", nurseNames || "-");
-    set("g-nurse-tel", nurseEmpNos || "-");
+
+    // 담당 간호사: 표 형식으로 한 명당 한 행 (여러 명이어도 아래로 늘어남)
+    const nurses = patient.nurses || [];
+    const nurseTbody = document.getElementById("g-nurse-tbody");
+    if (nurseTbody) {
+        nurseTbody.innerHTML = nurses.length
+            ? nurses.map(n =>
+                `<tr><td>${n.name || "-"}</td><td>${n.employee_no || "-"}</td><td>${n.phone || "-"}</td></tr>`
+              ).join("")
+            : `<tr><td colspan="3">배정된 담당 간호사가 없습니다</td></tr>`;
+    }
 
     // 실시간 병실
     set("g-live-room", room);
@@ -2889,11 +2916,12 @@ async function renderGuardian() {
     set("g-me-id", username);
     set("g-me-phone", patient.phone || "-");
     set("g-link-patient", `${patient.name} (${room})`);
-    set("g-link-code", "-");
+    set("g-link-code", patient.mapping_code || "-");
 
     await renderPatrolLog(patient);
     renderGuardianFalls(patient);
     loadGuardianNoti();
+    refreshGuardianFallState();   // 확정 낙상 기준 환자 상태색 반영
 }
 
 const G_NOTI_KEY = "dabom-guardian-noti";
@@ -2923,11 +2951,81 @@ function syncGuardianLive(data) {
         mine ? `${currentGuardianRoom}호 순찰 중` : "복도 이동 중";
     document.getElementById("g-camera").innerText = data.camera || "-";
 
+    // 낙상 표시: 관리자가 확정한 낙상 상태(guardianFallState)가 우선한다.
+    // 확정 낙상이 없을 때만 로봇의 실시간 감지 신호를 반영한다.
     const fall = document.getElementById("g-fall-state");
-    const detected = mine && data.fall_status && data.fall_status.includes("감지");
-    fall.innerText = detected ? "낙상 감지" : "정상";
-    fall.classList.toggle("g-ok", !detected);
-    fall.classList.toggle("g-danger", detected);
+    if (guardianFallState === "fall") {
+        fall.innerText = "낙상 감지";
+        fall.classList.remove("g-ok"); fall.classList.add("g-danger");
+    } else if (guardianFallState === "warning") {
+        fall.innerText = "낙상 있었음";
+        fall.classList.remove("g-ok", "g-danger");
+        fall.style.color = "#e08c1a";
+    } else {
+        fall.style.color = "";
+        const detected = mine && data.fall_status && data.fall_status.includes("감지");
+        fall.innerText = detected ? "낙상 감지" : "정상";
+        fall.classList.toggle("g-ok", !detected);
+        fall.classList.toggle("g-danger", detected);
+    }
+}
+
+// ===== 보호자 환자 상태 (관리자가 확정한 낙상 기준: 낙상 10분 → 주의 → 다음날 정상) =====
+let guardianFallState = "normal";
+
+const FALL_STATE_UI = {
+    normal:  { color: "#1a9d43", status: "안정", detect: "감지 없음",   sub: "이상 징후 없음",       chip: "현재 안정",         heroChip: "#4ade80", heroBorder: "rgba(74, 222, 128, 0.55)" },
+    fall:    { color: "#e5484d", status: "낙상", detect: "감지됨",       sub: "낙상 발생 · 대응 중",   chip: "낙상 감지",         heroChip: "#ff9aa0", heroBorder: "rgba(255, 154, 160, 0.6)" },
+    warning: { color: "#e08c1a", status: "주의", detect: "낙상 있었음",  sub: "오늘 낙상 발생 이력",   chip: "주의 · 낙상 있었음", heroChip: "#ffcf82", heroBorder: "rgba(255, 207, 130, 0.6)" },
+};
+
+function applyGuardianFallState(stateKey) {
+    const ui = FALL_STATE_UI[stateKey] || FALL_STATE_UI.normal;
+    guardianFallState = stateKey in FALL_STATE_UI ? stateKey : "normal";
+    const setHTML = (id, html) => { const el = document.getElementById(id); if (el) el.innerHTML = html; };
+
+    // 홈 히어로 칩
+    const chip = document.getElementById("g-hero-chip");
+    if (chip) {
+        chip.innerHTML = `<i></i>${ui.chip}`;
+        chip.style.color = ui.heroChip;          // 글자 + 점(currentColor)
+        chip.style.borderColor = ui.heroBorder;  // 테두리
+    }
+    // 홈 요약카드 · 현재 환자 상태
+    const num = document.getElementById("g-status-num");
+    if (num) { num.innerText = ui.status; num.style.color = ui.color; }
+    setHTML("g-status-sub", `<span class="g-dot" style="background:${ui.color};box-shadow:0 0 0 3px ${ui.color}28"></span>${ui.sub}`);
+    // 내 병실 · 현재 환자 상태 / 최근 감지
+    setHTML("g-pt-status", `<span style="color:${ui.color};font-weight:700;">${ui.status}</span>`);
+    setHTML("g-pt-lastdetect", ui.detect);
+    // 실시간 병실 · 환자 상태 박스 색(테두리·배경·점) + 서브문구
+    const box = document.getElementById("g-state-box");
+    if (box) {
+        box.classList.remove("state-fall", "state-warning");
+        if (guardianFallState === "fall") box.classList.add("state-fall");
+        else if (guardianFallState === "warning") box.classList.add("state-warning");
+    }
+    const subEl = document.getElementById("g-fall-substate");
+    if (subEl) subEl.innerText = ui.detect === "감지 없음" ? "낙상 감지 없음" : ui.detect;
+    // 위 큰 문구(정상/낙상 감지/낙상 있었음)도 여기서 바로 바꿔 서브문구·색과 시점을 맞춘다.
+    // (syncGuardianLive가 1초마다 유지하지만, 전환 순간의 지연을 없애려고 즉시 반영)
+    const fs = document.getElementById("g-fall-state");
+    if (fs) {
+        fs.style.color = "";
+        fs.classList.remove("g-ok", "g-danger");
+        if (guardianFallState === "fall") { fs.innerText = "낙상 감지"; fs.classList.add("g-danger"); }
+        else if (guardianFallState === "warning") { fs.innerText = "낙상 있었음"; fs.style.color = "#e08c1a"; }
+        else { fs.innerText = "정상"; fs.classList.add("g-ok"); }
+    }
+}
+
+async function refreshGuardianFallState() {
+    if (currentRole() !== "guardian") return;   // 보호자일 때만 조회
+    try {
+        const res = await fetch("/api/my-fall-state");
+        const data = await res.json();
+        if (data.ok) applyGuardianFallState(data.state);
+    } catch (e) { /* 네트워크 오류 시 이전 상태 유지 */ }
 }
 
 async function doLogin() {
@@ -3041,6 +3139,12 @@ function showFallAlert(room) {  // * 팝업 부분 수정 *
 function closeFallAlert() {  // * 팝업 부분 수정 *
     document.getElementById("fall-alert-overlay").style.display = "none";  // * 팝업 부분 수정 *
 }  // * 팝업 부분 수정 *
+
+// 팝업 확인 → 닫고 '병실 모니터링' 탭으로 이동
+function goFallMonitoring() {
+    closeFallAlert();
+    showTab("monitoring");
+}
 
 function switchVideo(mode) {
     currentVideoMode = mode;
@@ -3168,6 +3272,10 @@ async function updateStatus() {
 
 setInterval(updateStatus, 1000);
 updateStatus();
+
+// 보호자 환자 상태(확정 낙상 → 10분 후 주의)는 분 단위로 바뀌므로 20초마다 갱신
+setInterval(refreshGuardianFallState, 20000);
+refreshGuardianFallState();
 
 // ===== 테마 =====
 const THEMES = [
