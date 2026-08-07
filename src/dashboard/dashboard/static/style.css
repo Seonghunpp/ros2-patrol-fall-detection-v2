@@ -2407,6 +2407,7 @@ html.reveal-on .rm-svc-grid .rm-svc-card:nth-child(8) { transition-delay: 0.49s;
     transition: opacity 0.12s;
 }
 
+.bc-bar.bc-critical { fill: #b3111f; }
 .bc-bar.bc-high { fill: #e5484d; }
 .bc-bar.bc-mid  { fill: #e08c1a; }
 .bc-bar.bc-low  { fill: #1a9d43; }
