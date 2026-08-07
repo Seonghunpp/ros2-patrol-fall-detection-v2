@@ -376,6 +376,36 @@ def api_logout():
     return jsonify({"ok": True})
 
 
+@app.route("/api/change-password", methods=["POST"])
+@login_required
+def api_change_password():
+    body = request.get_json(silent=True) or {}
+    current_pw = str(body.get("current_password", ""))
+    new_pw = str(body.get("new_password", ""))
+
+    if len(new_pw) < 4:
+        return jsonify({"ok": False, "error": "새 비밀번호는 4자 이상이어야 합니다."}), 400
+
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("SELECT password_hash FROM users WHERE id = %s", (session.get("user_id"),))
+    user = cursor.fetchone()
+
+    if user is None or not check_password_hash(user["password_hash"], current_pw):
+        cursor.close()
+        conn.close()
+        return jsonify({"ok": False, "error": "현재 비밀번호가 올바르지 않습니다."}), 401
+
+    cursor.execute(
+        "UPDATE users SET password_hash = %s WHERE id = %s",
+        (generate_password_hash(new_pw), session.get("user_id")),
+    )
+    conn.commit()
+    cursor.close()
+    conn.close()
+    return jsonify({"ok": True})
+
+
 def generate_mapping_code():
     return "KJ-" + secrets.token_hex(2).upper() + "-" + secrets.token_hex(2).upper()
 
@@ -654,6 +684,116 @@ def api_guardian_account_delete(user_id):
     return jsonify({"ok": True})
 
 
+# ===== 간호사 명부 (nurses 테이블 · 병실 단위 배정) =====
+# 간호사는 로그인 계정이 아니라 '직원 명부' 데이터다. 로그인은 admin 계정만 쓰고
+# 여러 간호사가 그 계정을 공유한다. 이름/전화번호는 환자처럼 암호화해서 저장한다.
+
+def _is_admin():
+    return session.get("role") == "admin"
+
+
+VALID_ROOMS = ("all", "101", "102", "103", "104")
+
+
+@app.route("/api/nurses")
+@login_required
+def api_nurses_list():
+    if not _is_admin():
+        return jsonify({"ok": False, "error": "권한이 없습니다."}), 403
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute(
+        "SELECT id, name, employee_no, phone, assigned_room FROM nurses ORDER BY id"
+    )
+    nurses = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    for n in nurses:
+        n["name"] = decrypt_field(n["name"])
+        n["phone"] = decrypt_field(n["phone"])
+    return jsonify({"ok": True, "nurses": nurses})
+
+
+@app.route("/api/nurses", methods=["POST"])
+@login_required
+def api_nurses_create():
+    if not _is_admin():
+        return jsonify({"ok": False, "error": "권한이 없습니다."}), 403
+    body = request.get_json(silent=True) or {}
+    name = str(body.get("name", "")).strip()
+    employee_no = str(body.get("employee_no", "")).strip()
+    phone = str(body.get("phone", "")).strip()
+    assigned_room = str(body.get("assigned_room", "all")).strip() or "all"
+
+    if not name:
+        return jsonify({"ok": False, "error": "이름은 필수입니다."}), 400
+    if assigned_room not in VALID_ROOMS:
+        return jsonify({"ok": False, "error": "잘못된 병실 값입니다."}), 400
+
+    conn = get_db()
+    cursor = conn.cursor()
+    try:
+        # 이름·전화번호는 암호화해서 저장 (환자 개인정보와 동일 정책)
+        cursor.execute(
+            "INSERT INTO nurses (name, employee_no, phone, assigned_room) "
+            "VALUES (%s, %s, %s, %s)",
+            (encrypt_field(name), employee_no, encrypt_field(phone), assigned_room),
+        )
+        conn.commit()
+    except mysql.connector.Error:
+        conn.rollback()
+        return jsonify({"ok": False, "error": "간호사 추가 중 오류가 발생했습니다."}), 500
+    finally:
+        cursor.close()
+        conn.close()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/nurses/<int:nurse_id>/room", methods=["POST"])
+@login_required
+def api_nurses_room(nurse_id):
+    if not _is_admin():
+        return jsonify({"ok": False, "error": "권한이 없습니다."}), 403
+    body = request.get_json(silent=True) or {}
+    assigned_room = str(body.get("assigned_room", "")).strip()
+    if assigned_room not in VALID_ROOMS:
+        return jsonify({"ok": False, "error": "잘못된 병실 값입니다."}), 400
+    conn = get_db()
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            "UPDATE nurses SET assigned_room = %s WHERE id = %s",
+            (assigned_room, nurse_id),
+        )
+        conn.commit()
+    except mysql.connector.Error:
+        conn.rollback()
+        return jsonify({"ok": False, "error": "저장 중 오류가 발생했습니다."}), 500
+    finally:
+        cursor.close()
+        conn.close()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/nurses/<int:nurse_id>/delete", methods=["POST"])
+@login_required
+def api_nurses_delete(nurse_id):
+    if not _is_admin():
+        return jsonify({"ok": False, "error": "권한이 없습니다."}), 403
+    conn = get_db()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("DELETE FROM nurses WHERE id = %s", (nurse_id,))
+        conn.commit()
+    except mysql.connector.Error:
+        conn.rollback()
+        return jsonify({"ok": False, "error": "삭제 중 오류가 발생했습니다."}), 500
+    finally:
+        cursor.close()
+        conn.close()
+    return jsonify({"ok": True})
+
+
 @app.route("/api/patrol-log")
 @login_required
 def api_patrol_log():
@@ -691,12 +831,24 @@ def api_my_patient():
         (session.get("user_id"),),
     )
     patient = cursor.fetchone()
-    cursor.close()
-    conn.close()
+    nurses = []
     if patient:
         patient["name"] = decrypt_field(patient["name"])
         patient["phone"] = decrypt_field(patient["phone"])
         patient["guardian"] = decrypt_field(patient["guardian"])
+        # 담당 간호사: 이 환자의 병실을 담당(assigned_room=병실번호)하거나 전체 담당('all')인 간호사
+        cursor.execute(
+            "SELECT name, employee_no FROM nurses "
+            "WHERE assigned_room = %s OR assigned_room = 'all' ORDER BY id",
+            (patient["room_number"],),
+        )
+        nurses = cursor.fetchall()
+        for n in nurses:
+            n["name"] = decrypt_field(n["name"])  # 이름은 암호화 저장이므로 복호화
+    cursor.close()
+    conn.close()
+    if patient:
+        patient["nurses"] = nurses
     return jsonify({"ok": True, "patient": patient})
 
 

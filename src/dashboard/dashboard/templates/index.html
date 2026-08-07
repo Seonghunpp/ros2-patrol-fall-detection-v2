@@ -483,7 +483,7 @@
                 <div class="panel-head">담당 의료진 · 케어 안내</div>
                 <dl class="pd-list">
                     <div><dt>담당 간호사</dt><dd id="g-nurse-name">-</dd></div>
-                    <div><dt>간호사 번호</dt><dd id="g-nurse-tel">-</dd></div>
+                    <div><dt>간호사 사번</dt><dd id="g-nurse-tel">-</dd></div>
                     <div><dt>면회 가능 시간</dt><dd>10:00 ~ 20:00</dd></div>
                 </dl>
                 <div class="g-care-note">
@@ -598,7 +598,7 @@
             <div class="panel">
                 <div class="panel-head">월별 낙상 발생 이력</div>
                 <div class="lc" id="lc-gstats-month"><!-- renderLineCharts()로 그림 --></div>
-                <p class="g-chart-note">6월 1건 · 7월 2건 발생. <span class="g-ok">최근 30일간은 0건입니다.</span></p>
+                <p class="g-chart-note">월별 낙상 발생 현황을 기록하여 안전 관리에 활용합니다.</p>
             </div>
 
             <!-- 시간대별 안심 순찰 -->
@@ -639,9 +639,11 @@
                     <div><dt>연락처</dt><dd id="g-me-phone">-</dd></div>
                 </dl>
                 <label class="form-label">비밀번호 변경</label>
-                <input class="form-input" type="password" placeholder="새 비밀번호">
-                <input class="form-input" type="password" placeholder="새 비밀번호 확인">
-                <button class="mini-btn" style="margin-top:6px;" onclick="rcToast('비밀번호가 변경되었습니다 (데모)')">비밀번호 변경</button>
+                <input id="pw-current" class="form-input" type="password" placeholder="현재 비밀번호" autocomplete="current-password">
+                <input id="pw-new" class="form-input" type="password" placeholder="새 비밀번호" autocomplete="new-password">
+                <input id="pw-new2" class="form-input" type="password" placeholder="새 비밀번호 확인" autocomplete="new-password">
+                <div id="pw-error" style="color:#e5484d;font-size:13px;min-height:16px;margin:4px 0;"></div>
+                <button class="mini-btn" style="margin-top:6px;" onclick="changePassword()">비밀번호 변경</button>
             </div>
 
             <!-- 환자 매핑 연동 -->
@@ -1066,7 +1068,7 @@
                 <div>
                     <label class="form-label" for="pt-room">병실</label>
                     <input id="pt-room" class="form-input" inputmode="numeric" maxlength="4"
-                           placeholder="105" oninput="onlyDigits(this, 4)">
+                           placeholder="104" oninput="onlyDigits(this, 4)">
                 </div>
                 <div>
                     <label class="form-label" for="pt-name">이름</label>
@@ -1185,24 +1187,33 @@
 
         <!-- 간호사 계정 -->
         <div class="panel" style="margin-top:18px;">
-            <div class="panel-head panel-head-row">간호사 계정<button class="mini-btn" onclick="rcToast('계정 생성 (데모)')">+ 계정 생성</button></div>
+            <div class="panel-head panel-head-row">간호사 관리<button class="mini-btn" onclick="toggleNurseForm()">+ 간호사 추가</button></div>
+
+            <!-- 간호사 추가 폼 (기본 숨김) -->
+            <div id="nurse-form" style="display:none; padding:12px; background:rgba(0,0,0,0.03); border-radius:10px; margin-bottom:14px;">
+                <div style="display:grid; grid-template-columns:repeat(2,1fr); gap:8px;">
+                    <input id="nf-name" class="form-input form-input-sm" type="text" placeholder="이름">
+                    <input id="nf-empno" class="form-input form-input-sm" type="text" placeholder="사번">
+                    <input id="nf-phone" class="form-input form-input-sm" type="text" placeholder="전화번호">
+                    <select id="nf-room" class="form-input form-input-sm">
+                        <option value="all">전체 (101~104호)</option>
+                        <option value="101">101호</option>
+                        <option value="102">102호</option>
+                        <option value="103">103호</option>
+                        <option value="104">104호</option>
+                    </select>
+                </div>
+                <div id="nf-error" style="color:#e5484d;font-size:13px;min-height:16px;margin:6px 0;"></div>
+                <div class="row-actions" style="justify-content:flex-end;">
+                    <button class="mini-btn" onclick="toggleNurseForm()">취소</button>
+                    <button class="mini-btn" style="background:#2563eb;color:#fff;border-color:#2563eb;" onclick="createNurse()">간호사 추가</button>
+                </div>
+            </div>
+
             <div class="table-wrap">
                 <table class="data-table">
-                    <thead><tr><th>이름</th><th>사번</th><th>연락처</th><th>담당 병실</th><th>권한</th><th>관리</th></tr></thead>
-                    <tbody>
-                        <tr>
-                            <td>김간호</td><td>N-2026-001</td><td>010-1234-5678</td>
-                            <td><select class="form-input form-input-sm"><option>전체 (101~104호)</option><option>101호</option><option>102호</option><option>103호</option><option>104호</option></select></td>
-                            <td><span class="role-fixed role-admin">ADMIN</span></td>
-                            <td class="row-actions"><button class="mini-btn mini-danger" onclick="deleteNurse(this)">계정 삭제</button></td>
-                        </tr>
-                        <tr>
-                            <td>이간호</td><td>N-2026-014</td><td>010-2345-6789</td>
-                            <td><select class="form-input form-input-sm"><option>전체 (101~104호)</option><option>101호</option><option>102호</option><option>103호</option><option>104호</option></select></td>
-                            <td><span class="role-fixed role-admin">ADMIN</span></td>
-                            <td class="row-actions"><button class="mini-btn mini-danger" onclick="deleteNurse(this)">계정 삭제</button></td>
-                        </tr>
-                    </tbody>
+                    <thead><tr><th>이름</th><th>사번</th><th>전화번호</th><th>담당 병실</th><th>관리</th></tr></thead>
+                    <tbody id="acc-nurse-tbody"><!-- renderNurses()로 채움 --></tbody>
                 </table>
             </div>
         </div>
@@ -2126,6 +2137,10 @@ const RISK_TEXT = { critical: "매우높음", high: "높음", mid: "보통", low
 // risk-chip 색상 클래스만 여기서 매핑해 쓴다.
 const RISK_CLASS = { "낮음": "low", "보통": "mid", "높음": "high", "매우 높음": "critical" };
 
+// 병실 번호 -> 병상 유형(몇 인실). 병원 구조가 고정이라 매핑으로 처리한다.
+const ROOM_TYPE = { "101": "1인실", "102": "2인실", "103": "2인실", "104": "4인실" };
+const roomTypeOf = (roomNo) => ROOM_TYPE[String(roomNo)] || "-";
+
 /* ============================================================
    데이터 계층 — 지금은 임시 데이터, 나중에 MySQL + Flask API 로 교체
    ------------------------------------------------------------
@@ -2489,17 +2504,105 @@ function dischargeByGuardian(i) {
     });
 }
 
-function deleteNurse(btn) {
-    const row = btn.closest("tr");
-    const name = row.cells[0].innerText.trim();
+// ===== 간호사 명부 (DB 연동) =====
+const ROOM_LABEL = { all: "전체 (101~104호)", "101": "101호", "102": "102호", "103": "103호", "104": "104호" };
+
+function toggleNurseForm() {
+    const f = document.getElementById("nurse-form");
+    if (!f) return;
+    const opening = f.style.display === "none";
+    f.style.display = opening ? "" : "none";
+    if (opening) {
+        ["nf-name", "nf-empno", "nf-phone"].forEach(id => {
+            const el = document.getElementById(id); if (el) el.value = "";
+        });
+        document.getElementById("nf-room").value = "all";
+        document.getElementById("nf-error").innerText = "";
+        document.getElementById("nf-name").focus();
+    }
+}
+
+async function renderNurses() {
+    const tb = document.getElementById("acc-nurse-tbody");
+    if (!tb) return;
+
+    let nurses = [];
+    try {
+        const res = await fetch("/api/nurses");
+        const data = await res.json();
+        if (data.ok) nurses = data.nurses;
+    } catch (e) { /* 네트워크 오류 시 빈 목록 */ }
+
+    tb.innerHTML = "";
+    nurses.forEach(n => {
+        const room = n.assigned_room || "all";
+        const opts = ["all", "101", "102", "103", "104"].map(v =>
+            `<option value="${v}"${v === room ? " selected" : ""}>${ROOM_LABEL[v]}</option>`
+        ).join("");
+        const safeName = (n.name || "").replace(/'/g, "");
+        const tr = document.createElement("tr");
+        tr.innerHTML =
+            `<td>${n.name || "-"}</td><td>${n.employee_no || "-"}</td><td>${n.phone || "-"}</td>` +
+            `<td><select class="form-input form-input-sm" onchange="updateNurseRoom(${n.id}, this)">${opts}</select></td>` +
+            `<td class="row-actions"><button class="mini-btn mini-danger" onclick="deleteNurse(${n.id}, '${safeName}')">삭제</button></td>`;
+        tb.appendChild(tr);
+    });
+}
+
+async function createNurse() {
+    const err = document.getElementById("nf-error");
+    const payload = {
+        name: document.getElementById("nf-name").value.trim(),
+        employee_no: document.getElementById("nf-empno").value.trim(),
+        phone: document.getElementById("nf-phone").value.trim(),
+        assigned_room: document.getElementById("nf-room").value,
+    };
+    err.innerText = "";
+    if (!payload.name) { err.innerText = "이름은 필수입니다."; return; }
+
+    try {
+        const res = await fetch("/api/nurses", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (!res.ok || !data.ok) { err.innerText = data.error || "간호사 추가 중 오류가 발생했습니다."; return; }
+    } catch (e) { err.innerText = "서버와 통신할 수 없습니다."; return; }
+
+    toggleNurseForm();
+    renderNurses();
+    rcToast(payload.name + " 간호사를 추가했습니다");
+}
+
+async function updateNurseRoom(id, sel) {
+    const room = sel.value;
+    try {
+        const res = await fetch(`/api/nurses/${id}/room`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ assigned_room: room })
+        });
+        const data = await res.json();
+        if (!res.ok || !data.ok) { rcToast(data.error || "저장 실패"); return; }
+    } catch (e) { rcToast("서버와 통신할 수 없습니다"); return; }
+    rcToast("담당 병실을 저장했습니다: " + (ROOM_LABEL[room] || room));
+}
+
+function deleteNurse(id, name) {
     askConfirm({
-        title: "간호사 계정 삭제",
-        body: `<b>${name}</b> 계정을 삭제합니다.<br>삭제하면 이 계정으로 다시 로그인할 수 없습니다.`,
-        okText: "계정 삭제",
+        title: "간호사 삭제",
+        body: `<b>${name}</b> 간호사를 삭제합니다.<br>삭제하면 이 계정으로 다시 로그인할 수 없습니다.`,
+        okText: "삭제",
         danger: true,
-        onOk: () => {
-            row.remove();
-            rcToast(name + " 계정을 삭제했습니다");
+        onOk: async () => {
+            try {
+                const res = await fetch(`/api/nurses/${id}/delete`, { method: "POST" });
+                const data = await res.json();
+                if (!res.ok || !data.ok) { rcToast(data.error || "삭제 중 오류가 발생했습니다"); return; }
+            } catch (e) { rcToast("서버와 통신할 수 없습니다"); return; }
+            renderNurses();
+            rcToast(name + " 간호사를 삭제했습니다");
         }
     });
 }
@@ -2739,16 +2842,19 @@ async function renderGuardian() {
         noteEl.style.display = (patient.risk_level === "높음" || patient.risk_level === "매우 높음") ? "" : "none";
     }
 
-    // 내 병실 · 병실 상세 (병실 유형/담당 간호사는 아직 DB에 없음)
+    // 내 병실 · 병실 상세 (담당 간호사는 관리자가 nurses 테이블에 배정한 값을 DB에서 가져온다)
+    const nurses = patient.nurses || [];
+    const nurseNames = nurses.map(n => n.name).filter(Boolean).join(" · ");
+    const nurseEmpNos = nurses.map(n => n.employee_no).filter(Boolean).join(" · ");
     set("g-room-no", room);
-    set("g-room-type", "-");
-    set("g-nurse-name", "-");
-    set("g-nurse-tel", "-");
+    set("g-room-type", roomTypeOf(patient.room_number));
+    set("g-nurse-name", nurseNames || "-");
+    set("g-nurse-tel", nurseEmpNos || "-");
 
     // 실시간 병실
     set("g-live-room", room);
     set("g-live-room2", room);
-    set("g-live-type", "-");
+    set("g-live-type", roomTypeOf(patient.room_number));
     set("g-live-patient", patient.name + " 님");
     set("g-map-room", room);
     set("g-map-patient", "내 병실 · " + patient.name + " 님");
@@ -2838,6 +2944,7 @@ async function doLogin() {
     if (toAppRole(data.role) === "admin") {
         renderPending();
         renderGuardians();
+        renderNurses();
         renderPatients();
         renderWardGrid();
     }
@@ -2861,6 +2968,41 @@ async function logout() {
     const el = document.getElementById(id);
     if (el) el.addEventListener("keydown", e => { if (e.key === "Enter") doLogin(); });
 });
+
+// 비밀번호 변경 (보호자 · 내 정보 탭)
+async function changePassword() {
+    const current = document.getElementById("pw-current").value;
+    const next = document.getElementById("pw-new").value;
+    const next2 = document.getElementById("pw-new2").value;
+    const err = document.getElementById("pw-error");
+    err.innerText = "";
+
+    if (!current || !next || !next2) { err.innerText = "모든 항목을 입력해 주세요."; return; }
+    if (next.length < 4) { err.innerText = "새 비밀번호는 4자 이상이어야 합니다."; return; }
+    if (next !== next2) { err.innerText = "새 비밀번호가 서로 일치하지 않습니다."; return; }
+    if (next === current) { err.innerText = "현재 비밀번호와 다른 비밀번호를 입력해 주세요."; return; }
+
+    try {
+        const res = await fetch("/api/change-password", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ current_password: current, new_password: next })
+        });
+        const data = await res.json();
+        if (!res.ok || !data.ok) {
+            err.innerText = data.error || "비밀번호를 변경할 수 없습니다.";
+            return;
+        }
+    } catch (e) {
+        err.innerText = "서버와 통신할 수 없습니다.";
+        return;
+    }
+
+    document.getElementById("pw-current").value = "";
+    document.getElementById("pw-new").value = "";
+    document.getElementById("pw-new2").value = "";
+    rcToast("비밀번호가 변경되었습니다.");
+}
 
 let currentVideoMode = "raw";
 let lastYoloSignal = false;
@@ -3646,6 +3788,7 @@ renderSettingsTheme();
 renderWardGrid();
 renderPending();
 renderGuardians();
+renderNurses();
 renderNav();
 renderGuardian();
 goHome();
