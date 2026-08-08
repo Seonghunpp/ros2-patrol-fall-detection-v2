@@ -77,7 +77,6 @@ ros2 run ros2_aruco aruco_node --ros-args \
 PC에서 실행한다.
 
 ```bash
-export ROS_DOMAIN_ID=5
 
 ros2 topic echo /aruco_markers
 ```

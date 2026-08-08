@@ -1,4 +1,4 @@
-[README](./README.md) | [ArUco 실행 방법](./Aruco.md)
+[ArUco 실행 방법](./Aruco.md)
 # ros2-patrol-fall-detection
 
 TurtleBot3 기반 **병실 순찰 로봇** — Nav2로 병실을 순회하며 ArUco 마커로 병실 번호를 인식하고, YOLOv8-pose로 낙상 환자를 감지.
