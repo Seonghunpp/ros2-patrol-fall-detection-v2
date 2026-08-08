@@ -13,7 +13,7 @@ DATA_YAML = Path(
 )
 
 PROJECT_PATH = BASE_DIR / "runs/pose"
-RUN_NAME = "printed_patient_v1"
+RUN_NAME = "printed_patient_v2"
 
 EPOCHS = 100
 IMAGE_SIZE = 640

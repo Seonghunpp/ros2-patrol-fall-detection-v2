@@ -11,8 +11,10 @@ from rclpy.qos import QoSHistoryPolicy, QoSProfile, QoSReliabilityPolicy
 from sensor_msgs.msg import CompressedImage
 from ultralytics import YOLO
 
-
-MODEL_PATH = Path(__file__).resolve().parent / "yolov8s-pose.pt"
+MODEL_PATH = Path(
+    "/home/kjw1796/Desktop/yolo_test/test/runs/pose/printed_patient_v2/weights/best.pt"
+)
+#MODEL_PATH = Path(__file__).resolve().parent / "yolov8s-pose.pt"
 INPUT_TOPIC = "/image_raw/compressed"
 OUTPUT_TOPIC = "/yolo_pose_test/annotated/compressed"
 
@@ -88,6 +90,7 @@ class YoloPoseRosTest(Node):
             source=frame,
             imgsz=IMAGE_SIZE,
             conf=PERSON_CONFIDENCE,
+            iou=0.20,
             device=self.device,
             verbose=False,
         )[0]
