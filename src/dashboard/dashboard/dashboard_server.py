@@ -828,6 +828,8 @@ def api_patient_delete(patient_id):
         cursor.close()
         conn.close()
         return jsonify({"ok": False, "error": "연동된 보호자 계정이 있어 삭제할 수 없습니다."}), 400
+    # fall_log.patient_id가 이 환자를 참조하고 있으면 FK 제약 위반이 나므로, 기록은 남기고 연결만 끊는다
+    cursor.execute("UPDATE fall_log SET patient_id = NULL WHERE patient_id = %s", (patient_id,))
     cursor.execute("DELETE FROM patients WHERE id = %s", (patient_id,))
     conn.commit()
     cursor.close()
