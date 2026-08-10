@@ -904,20 +904,105 @@
                     <span class="mon-note">이동할 위치를 클릭하세요</span>
                 </div>
 
-                <!-- 실제 SLAM 맵 이미지는 이 영역의 배경으로 교체 -->
+                <!-- SLAM 맵(map_final.pgm)의 배치를 옮긴 도면.
+                     안쪽 요소는 전부 "건물 좌표계"(720 x 330, 왼쪽 위가 원점)를 쓰고,
+                     기울기는 바깥 <g>에서 한 번만 준다. 로봇 아이콘도 같은 <g> 안에 있어서
+                     data-x / data-y 를 건물 좌표 그대로 쓸 수 있다. -->
                 <div class="rc-map" id="rc-map">
-                    <button class="rc-spot" data-dest="병실 101" style="left:12%; top:14%;"  onclick="rcGoTo(this)"><b>101</b><span>4인실</span></button>
-                    <button class="rc-spot" data-dest="병실 102" style="left:62%; top:14%;"  onclick="rcGoTo(this)"><b>102</b><span>2인실</span></button>
-                    <button class="rc-spot" data-dest="병실 103" style="left:12%; top:56%;"  onclick="rcGoTo(this)"><b>103</b><span>4인실</span></button>
-                    <button class="rc-spot" data-dest="병실 104" style="left:62%; top:56%;"  onclick="rcGoTo(this)"><b>104</b><span>1인실</span></button>
-                    <button class="rc-spot rc-spot-util" data-dest="대기 장소" style="left:37.5%; top:36%;" onclick="rcGoTo(this)"><b>대기</b><span>스테이션</span></button>
-                    <button class="rc-spot rc-spot-util" data-dest="충전 스테이션" style="left:37.5%; top:76%;" onclick="rcGoTo(this)"><b>충전</b><span>도킹</span></button>
-                    <div class="rc-robot" id="rm-robot">🤖</div>
+                    <!-- 이 도면의 치수는 waypoint_saver로 찍은 실제 좌표에서 역산한 것이다.
+                         축척 148 unit/m, 건물 4.87m x 3.05m.
+                         병실 중심·출입구·충전소·데스크 위치가 실측과 일치하므로
+                         MAP_ANCHORS 보정 오차가 0이 된다. 임의로 옮기면 그만큼 어긋난다. -->
+                    <svg class="rc-map-svg" viewBox="0 0 762 493" role="img" aria-label="병동 지도">
+                        <defs>
+                            <filter id="rcShadow" x="-15%" y="-15%" width="130%" height="130%">
+                                <feDropShadow dx="0" dy="7" stdDeviation="11"
+                                              flood-color="#0f172a" flood-opacity="0.18"/>
+                            </filter>
+                        </defs>
+
+                        <g transform="translate(21 21)">
+
+                            <!-- 바닥 = 복도. 병실은 그 위에 밝게 얹는다 -->
+                            <rect class="rc-floor" x="0" y="0" width="720" height="451" rx="7"
+                                  filter="url(#rcShadow)"/>
+
+                            <!-- 병실 4개 (왼쪽부터 101 → 104). data-x/data-y = 실측 inside 위치 -->
+                            <g class="rc-spot" data-dest="병실 101" data-x="90.3" data-y="125.8"
+                               onclick="rcGoTo(this)" tabindex="0" role="button" aria-label="병실 101로 이동">
+                                <rect class="rc-room" x="7" y="7" width="161" height="222" rx="3"/>
+                                <text class="rc-num" x="87" y="110">101</text>
+                                <text class="rc-sub" x="87" y="136">4인실</text>
+                            </g>
+                            <g class="rc-spot" data-dest="병실 102" data-x="258.5" data-y="124.6"
+                               onclick="rcGoTo(this)" tabindex="0" role="button" aria-label="병실 102로 이동">
+                                <rect class="rc-room" x="180" y="7" width="168" height="222" rx="3"/>
+                                <text class="rc-num" x="264" y="110">102</text>
+                                <text class="rc-sub" x="264" y="136">2인실</text>
+                            </g>
+                            <g class="rc-spot" data-dest="병실 103" data-x="448.5" data-y="109.3"
+                               onclick="rcGoTo(this)" tabindex="0" role="button" aria-label="병실 103로 이동">
+                                <rect class="rc-room" x="360" y="7" width="174" height="222" rx="3"/>
+                                <text class="rc-num" x="447" y="110">103</text>
+                                <text class="rc-sub" x="447" y="136">4인실</text>
+                            </g>
+                            <g class="rc-spot" data-dest="병실 104" data-x="630.5" data-y="125.8"
+                               onclick="rcGoTo(this)" tabindex="0" role="button" aria-label="병실 104로 이동">
+                                <rect class="rc-room" x="546" y="7" width="167" height="222" rx="3"/>
+                                <text class="rc-num" x="629" y="110">104</text>
+                                <text class="rc-sub" x="629" y="136">1인실</text>
+                            </g>
+
+                            <!-- 충전 스테이션 — 좌측 끝, 좌·하 벽에 붙음 -->
+                            <g class="rc-spot" data-dest="충전 스테이션" data-x="80.4" data-y="416.1"
+                               onclick="rcGoTo(this)" tabindex="0" role="button" aria-label="충전 스테이션으로 이동">
+                                <rect class="rc-dock" x="7" y="388" width="147" height="56" rx="5"/>
+                                <text class="rc-num rc-num-sm rc-on-fill" x="80" y="411">충전</text>
+                                <text class="rc-sub rc-on-fill" x="80" y="432">도킹</text>
+                            </g>
+
+                            <!-- 대기 장소 · 데스크 — 복도 중앙, 하단 벽에 붙음 -->
+                            <g class="rc-spot" data-dest="대기 장소" data-x="353.2" data-y="403.1"
+                               onclick="rcGoTo(this)" tabindex="0" role="button" aria-label="대기 장소로 이동">
+                                <rect class="rc-desk" x="268" y="366" width="170" height="78" rx="5"/>
+                                <text class="rc-num rc-num-sm rc-on-fill" x="353" y="400">대기</text>
+                                <text class="rc-sub rc-on-fill" x="353" y="421">데스크</text>
+                            </g>
+
+                            <!-- 벽. 클릭을 가리지 않도록 pointer-events 를 끈다.
+                                 출입구는 실측 hall 지점 바로 위에 뚫어서, 로봇이 지나는
+                                 자리와 문 위치가 화면에서도 맞아떨어지게 했다 -->
+                            <rect class="rc-wall" x="0" y="0" width="720" height="451" rx="7"/>
+                            <path class="rc-wall rc-wall-in" d="M174 0 V229 M354 0 V229 M540 0 V229"/>
+                            <path class="rc-wall rc-wall-door"
+                                  d="M7 229 H58    M122 229 H168
+                                     M180 229 H245 M309 229 H348
+                                     M360 229 H420 M484 229 H534
+                                     M546 229 H609 M673 229 H713"/>
+
+                            <!-- Nav2가 계획한 경로. 점 목록은 updateStatus()가 채운다 -->
+                            <polyline class="rc-path" id="rc-path" points=""/>
+
+                            <!-- 로봇 현재 위치. transform 은 건물 좌표 그대로 -->
+                            <g id="rm-robot" class="rc-robot" style="transform: translate(200px, 264px);">
+                                <circle class="rc-robot-halo" r="18"/>
+                                <circle class="rc-robot-dot" r="8.5"/>
+                            </g>
+                        </g>
+                    </svg>
                 </div>
 
-                <div class="rc-map-foot">
-                    <span>현재 위치 <strong id="rc-cur">병실 101</strong></span>
-                    <span>목적지 <strong id="rc-dest-label">—</strong></span>
+                <div class="rc-route">
+                    <div class="rc-route-item">
+                        <span class="rc-route-label">출발지</span>
+                        <strong id="rc-cur">—</strong>
+                    </div>
+                    <span class="rc-route-arrow" aria-hidden="true"></span>
+                    <div class="rc-route-item">
+                        <span class="rc-route-label">목적지</span>
+                        <strong id="rc-dest-label">—</strong>
+                    </div>
+                    <span class="rc-route-state" id="rc-route-state">대기 중</span>
                 </div>
                 <div class="rc-toast" id="rc-toast"></div>
             </section>
@@ -3188,6 +3273,18 @@ async function updateStatus() {
             robotMarker.style.display = "none";  // * 로봇 위치 추적 수정 *
         }
 
+        // 로봇 제어 지도의 실시간 위치. 폴링 간격(1초)에 맞춰 CSS가 사이를 이어 그린다
+        if (typeof data.robot_x === "number" && typeof data.robot_y === "number") {
+            rcPlaceRobotByMap(data.robot_x, data.robot_y);
+            rcSetMapLive(true);
+        } else {
+            rcSetMapLive(false);   // AMCL 없음 → 마지막 위치를 흐리게
+        }
+
+        rcDrawPath(data.path);                      // Nav2 경로
+        rcSetState(data.robot_status);              // 실제 이동 상태로 덮어씀
+        rcSetCurrent(room ? "병실 " + data.current_room : "위치 확인 중");
+
         lastYoloSignal = data.yolo_signal;
         if (currentVideoMode === "yolo") {
             document.getElementById("video-img").style.visibility = data.yolo_signal ? "visible" : "hidden";
@@ -3845,43 +3942,185 @@ function renderSettingsTheme() {
    지도에서 목적지를 눌러 이동시킨다. (※ 데모 — 실제 주행 명령은 로봇 API 연동)
    TODO(백엔드): POST /api/robot/goto  { waypoint: "wp_101" } 등으로 교체 */
 function rcSetState(state) {
-    const el = document.getElementById("rc-state");
-    if (el) el.innerText = state;
+    ["rc-state", "rc-route-state"].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.innerText = state;
+    });
 }
 
+// 목적지 표시. 출발지(현재 위치)는 rcSetCurrent()가 실제 위치로 따로 채운다.
+// 예전에는 목적지를 누르면 현재 위치까지 같이 바뀌었는데, 그건 아직 출발도
+// 안 한 시점이라 거짓 표시였다
 function rcSetPlace(dest) {
-    ["rc-cur", "rc-cur2"].forEach(id => {
-        const el = document.getElementById(id);
-        if (el) el.innerText = dest;
-    });
     const label = document.getElementById("rc-dest-label");
     if (label) label.innerText = dest;
 }
 
+// 출발지 · 현재 위치 표시 (ArUco 마커가 판정한 실제 병실)
+function rcSetCurrent(place) {
+    ["rc-cur", "rc-cur2"].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.innerText = place;
+    });
+}
+
 // 지도의 지점 클릭
-function rcGoTo(btn) {
+// 충전 복귀 요청이 날아가 있는 동안 중복 클릭을 막는다.
+// 맵의 충전 버튼과 옆 패널 버튼이 서로 다른 element라 btn.disabled로는 못 막는다
+let rcChargeBusy = false;
+
+// 로봇 아이콘을 도면 위 한 지점으로 옮긴다. 단위는 건물 좌표계(SVG user unit).
+function rcPlaceRobot(x, y) {
+    const robot = document.getElementById("rm-robot");
+    if (robot) {
+        robot.style.transform = `translate(${x}px, ${y}px)`;
+    }
+}
+
+// AMCL 위치가 들어오는 동안은 실제 위치가 우선이므로, 클릭으로 아이콘을 옮기지 않는다.
+// (안 그러면 1초 뒤 폴링이 제자리로 되돌려서 깜빡인다)
+let rcMapLive = false;
+
+function rcSetMapLive(on) {
+    if (on === rcMapLive) { return; }
+    rcMapLive = on;
+    const map = document.getElementById("rc-map");
+    if (map) { map.classList.toggle("rc-map-stale", !on); }
+}
+
+// 목적지 구역의 data-x / data-y 로 옮긴다 (실시간 위치가 없을 때만)
+function rcMoveIcon(el) {
+    if (rcMapLive || el.dataset.x === undefined) { return; }
+    rcPlaceRobot(el.dataset.x, el.dataset.y);
+}
+
+// ===== ROS map 좌표(m) → 도면 좌표(SVG unit) 변환 =====
+//
+// 회전 + 확대 + 이동 + 상하반전을 한꺼번에 처리한다.
+//   반전이 필요한 이유: ROS는 y축이 위로, 화면은 y축이 아래로 증가한다.
+//   회전이 필요한 이유: 건물이 ROS 맵 축에 대해 비스듬히 놓여 있다(SLAM 결과).
+//
+//   plan_x =  A*map_x + B*map_y + TX
+//   plan_y =  B*map_x - A*map_y + TY
+//
+// 미지수가 4개(A, B, TX, TY)라 기준점 2개면 정확히 풀린다.
+// waypoint_saver로 좌표를 찍은 뒤 아래 map: [x, y] 두 줄만 채우면 되고,
+// 각도나 배율을 직접 잴 필요는 없다. 오차를 줄이려면 서로 가장 먼 두 점을 쓴다.
+// 2026-08-10 실측. rooms.yaml의 값을 그대로 옮긴 것이라,
+// 좌표를 다시 찍으면 이 두 줄도 같이 갱신해야 한다.
+const MAP_ANCHORS = [
+    { map: [-2.132, 3.181], plan: [ 80.4, 416.1] },   // dock
+    { map: [ 0.904, 0.275], plan: [630.5, 125.8] },   // room4.inside
+];
+
+const MAP_TF = (function () {
+    const [p, q] = MAP_ANCHORS;
+    if (!p.map || !q.map) { return null; }   // 아직 좌표를 안 찍음
+
+    const dmx = q.map[0]  - p.map[0],  dmy = q.map[1]  - p.map[1];
+    const dpx = q.plan[0] - p.plan[0], dpy = q.plan[1] - p.plan[1];
+
+    const det = dmx * dmx + dmy * dmy;
+    if (det < 1e-9) { return null; }         // 두 기준점이 같은 자리
+
+    const A = (dmx * dpx - dmy * dpy) / det;
+    const B = (dmy * dpx + dmx * dpy) / det;
+
+    return {
+        A, B,
+        TX: p.plan[0] - (A * p.map[0] + B * p.map[1]),
+        TY: p.plan[1] - (B * p.map[0] - A * p.map[1]),
+    };
+})();
+
+// ROS map 좌표 한 점 → 도면 좌표 [x, y]. 보정 전이면 null
+function rcMapToPlan(mx, my) {
+    if (!MAP_TF) { return null; }
+    return [MAP_TF.A * mx + MAP_TF.B * my + MAP_TF.TX,
+            MAP_TF.B * mx - MAP_TF.A * my + MAP_TF.TY];
+}
+
+// 실시간 위치 표시
+function rcPlaceRobotByMap(mx, my) {
+    const p = rcMapToPlan(mx, my);
+    if (p) { rcPlaceRobot(p[0], p[1]); }
+}
+
+// Nav2가 계획한 경로 그리기. pts 는 [[x, y], ...] (map 좌표계)
+function rcDrawPath(pts) {
+    const el = document.getElementById("rc-path");
+    if (!el) { return; }
+
+    if (!MAP_TF || !Array.isArray(pts) || pts.length < 2) {
+        el.setAttribute("points", "");
+        return;
+    }
+
+    const plan = [];
+    for (const [mx, my] of pts) {
+        const p = rcMapToPlan(mx, my);
+        if (p) { plan.push(p[0].toFixed(1) + "," + p[1].toFixed(1)); }
+    }
+    el.setAttribute("points", plan.join(" "));
+}
+
+// 보정 검산용. 기준점으로 안 쓴 제3의 지점(예: 대기 데스크)의 ROS 좌표를 넣어
+// 콘솔에서 rcCheckMap(x, y) 를 부르면 도면 좌표가 찍힌다. (360, 290) 근처면 성공
+function rcCheckMap(mx, my) {
+    const p = rcMapToPlan(mx, my);
+    console.log(p ? ["plan =", p[0], p[1]] : "MAP_ANCHORS가 아직 비어 있습니다");
+}
+
+async function rcGoTo(btn) {
     const dest = btn.dataset.dest;
     document.querySelectorAll(".rc-spot").forEach(s => s.classList.remove("target"));
     btn.classList.add("target");
 
-    // 로봇 아이콘을 누른 지점으로 옮긴다 (실제로는 주행 완료 콜백에서 갱신)
-    const robot = document.getElementById("rm-robot");
-    if (robot) {
-        robot.style.left = btn.style.left;
-        robot.style.top = btn.style.top;
+    // 충전 스테이션만 실제 로봇에 명령이 나간다. 나머지 지점은 아직 화면 목업
+    if (dest !== "충전 스테이션") {
+        rcMoveIcon(btn);
+        rcSetState("이동 중");
+        rcSetPlace(dest);
+        rcToast(dest + "(으)로 이동합니다");
+        return;
     }
-    rcSetState("이동 중");
-    rcSetPlace(dest);
-    rcToast(dest + "(으)로 이동합니다");
+
+    if (rcChargeBusy) { return; }
+    rcChargeBusy = true;
+
+    try {
+        const res  = await fetch("/api/robot/charge", { method: "POST" });
+        const data = await res.json();
+
+        if (data.ok) {
+            // 로봇이 요청을 받아들인 뒤에만 화면을 움직인다
+            rcMoveIcon(btn);
+            rcSetState("복귀 중");
+            rcSetPlace(dest);
+            rcToast(data.message || "충전 스테이션으로 이동합니다");
+        } else {
+            btn.classList.remove("target");
+            rcToast(data.error || data.message || "이동 명령에 실패했습니다");
+        }
+    } catch (e) {
+        btn.classList.remove("target");
+        rcToast("요청을 보내지 못했습니다");
+    } finally {
+        rcChargeBusy = false;
+    }
 }
 
 // 버튼으로 이동 (대기 장소 · 충전 스테이션)
 function rcGoDest(dest, state) {
     const spot = [...document.querySelectorAll(".rc-spot")].find(s => s.dataset.dest === dest);
-    if (spot) { rcGoTo(spot); }
+    if (spot) {
+        rcGoTo(spot);   // 상태 표시와 토스트는 rcGoTo가 처리한다
+        return;
+    }
     rcSetState(state);
     rcToast(dest + "(으)로 이동합니다");
 }
+
 
 // 순찰 시작 · 일시정지 · 비상 정지
 function rcCommand(label, state) {
