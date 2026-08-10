@@ -1,5 +1,6 @@
 import datetime
 import os
+import re
 import secrets
 import threading
 import time
@@ -414,6 +415,36 @@ def api_logout():
     return jsonify({"ok": True})
 
 
+@app.route("/api/change-password", methods=["POST"])
+@login_required
+def api_change_password():
+    body = request.get_json(silent=True) or {}
+    current_pw = str(body.get("current_password", ""))
+    new_pw = str(body.get("new_password", ""))
+
+    if len(new_pw) < 4:
+        return jsonify({"ok": False, "error": "새 비밀번호는 4자 이상이어야 합니다."}), 400
+
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("SELECT password_hash FROM users WHERE id = %s", (session.get("user_id"),))
+    user = cursor.fetchone()
+
+    if user is None or not check_password_hash(user["password_hash"], current_pw):
+        cursor.close()
+        conn.close()
+        return jsonify({"ok": False, "error": "현재 비밀번호가 올바르지 않습니다."}), 401
+
+    cursor.execute(
+        "UPDATE users SET password_hash = %s WHERE id = %s",
+        (generate_password_hash(new_pw), session.get("user_id")),
+    )
+    conn.commit()
+    cursor.close()
+    conn.close()
+    return jsonify({"ok": True})
+
+
 def generate_mapping_code():
     return "KJ-" + secrets.token_hex(2).upper() + "-" + secrets.token_hex(2).upper()
 
@@ -695,6 +726,118 @@ def api_guardian_account_delete(user_id):
     return jsonify({"ok": True})
 
 
+# ===== 간호사 명부 (nurses 테이블 · 병실 단위 배정) =====
+# 간호사는 로그인 계정이 아니라 '직원 명부' 데이터다. 로그인은 admin 계정만 쓰고
+# 여러 간호사가 그 계정을 공유한다. 이름/전화번호는 환자처럼 암호화해서 저장한다.
+
+def _is_admin():
+    return session.get("role") == "admin"
+
+
+VALID_ROOMS = ("all", "101", "102", "103", "104")
+
+
+@app.route("/api/nurses")
+@login_required
+def api_nurses_list():
+    if not _is_admin():
+        return jsonify({"ok": False, "error": "권한이 없습니다."}), 403
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute(
+        "SELECT id, name, employee_no, phone, assigned_room FROM nurses ORDER BY id"
+    )
+    nurses = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    for n in nurses:
+        n["name"] = decrypt_field(n["name"])
+        n["phone"] = decrypt_field(n["phone"])
+    return jsonify({"ok": True, "nurses": nurses})
+
+
+@app.route("/api/nurses", methods=["POST"])
+@login_required
+def api_nurses_create():
+    if not _is_admin():
+        return jsonify({"ok": False, "error": "권한이 없습니다."}), 403
+    body = request.get_json(silent=True) or {}
+    name = str(body.get("name", "")).strip()
+    employee_no = str(body.get("employee_no", "")).strip()
+    phone = str(body.get("phone", "")).strip()
+    assigned_room = str(body.get("assigned_room", "all")).strip() or "all"
+
+    if not name:
+        return jsonify({"ok": False, "error": "이름은 필수입니다."}), 400
+    if phone and not re.match(r"^01[016789]-\d{3,4}-\d{4}$", phone):
+        return jsonify({"ok": False, "error": "전화번호 형식이 올바르지 않습니다."}), 400
+    if assigned_room not in VALID_ROOMS:
+        return jsonify({"ok": False, "error": "잘못된 병실 값입니다."}), 400
+
+    conn = get_db()
+    cursor = conn.cursor()
+    try:
+        # 이름·전화번호는 암호화해서 저장 (환자 개인정보와 동일 정책)
+        cursor.execute(
+            "INSERT INTO nurses (name, employee_no, phone, assigned_room) "
+            "VALUES (%s, %s, %s, %s)",
+            (encrypt_field(name), employee_no, encrypt_field(phone), assigned_room),
+        )
+        conn.commit()
+    except mysql.connector.Error:
+        conn.rollback()
+        return jsonify({"ok": False, "error": "간호사 추가 중 오류가 발생했습니다."}), 500
+    finally:
+        cursor.close()
+        conn.close()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/nurses/<int:nurse_id>/room", methods=["POST"])
+@login_required
+def api_nurses_room(nurse_id):
+    if not _is_admin():
+        return jsonify({"ok": False, "error": "권한이 없습니다."}), 403
+    body = request.get_json(silent=True) or {}
+    assigned_room = str(body.get("assigned_room", "")).strip()
+    if assigned_room not in VALID_ROOMS:
+        return jsonify({"ok": False, "error": "잘못된 병실 값입니다."}), 400
+    conn = get_db()
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            "UPDATE nurses SET assigned_room = %s WHERE id = %s",
+            (assigned_room, nurse_id),
+        )
+        conn.commit()
+    except mysql.connector.Error:
+        conn.rollback()
+        return jsonify({"ok": False, "error": "저장 중 오류가 발생했습니다."}), 500
+    finally:
+        cursor.close()
+        conn.close()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/nurses/<int:nurse_id>/delete", methods=["POST"])
+@login_required
+def api_nurses_delete(nurse_id):
+    if not _is_admin():
+        return jsonify({"ok": False, "error": "권한이 없습니다."}), 403
+    conn = get_db()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("DELETE FROM nurses WHERE id = %s", (nurse_id,))
+        conn.commit()
+    except mysql.connector.Error:
+        conn.rollback()
+        return jsonify({"ok": False, "error": "삭제 중 오류가 발생했습니다."}), 500
+    finally:
+        cursor.close()
+        conn.close()
+    return jsonify({"ok": True})
+
+
 @app.route("/api/patrol-log")
 @login_required
 def api_patrol_log():
@@ -719,6 +862,12 @@ def api_patrol_log():
     logs = cursor.fetchall()
     cursor.close()
     conn.close()
+    # datetime을 그대로 jsonify하면 "Fri, 07 Aug 2026 ..." 영어 형식이 되므로
+    # 프론트가 다루기 쉬운 "YYYY-MM-DD HH:MM:SS" 문자열로 통일해서 내보낸다.
+    for log in logs:
+        ts = log.get("patrolled_at")
+        if hasattr(ts, "strftime"):
+            log["patrolled_at"] = ts.strftime("%Y-%m-%d %H:%M:%S")
     return jsonify({"ok": True, "logs": logs})
 
 
@@ -732,12 +881,32 @@ def api_my_patient():
         (session.get("user_id"),),
     )
     patient = cursor.fetchone()
-    cursor.close()
-    conn.close()
+    nurses = []
     if patient:
         patient["name"] = decrypt_field(patient["name"])
         patient["phone"] = decrypt_field(patient["phone"])
         patient["guardian"] = decrypt_field(patient["guardian"])
+        # 담당 간호사: 이 환자의 병실을 담당(assigned_room=병실번호)하거나 전체 담당('all')인 간호사
+        cursor.execute(
+            "SELECT name, employee_no, phone FROM nurses "
+            "WHERE assigned_room = %s OR assigned_room = 'all' ORDER BY id",
+            (patient["room_number"],),
+        )
+        nurses = cursor.fetchall()
+        for n in nurses:
+            n["name"] = decrypt_field(n["name"])    # 이름·전화번호는 암호화 저장이므로 복호화
+            n["phone"] = decrypt_field(n["phone"])
+        # 이 보호자의 매핑 코드 (가입 시 guardian_applications에 user_id로 남아 있음)
+        cursor.execute(
+            "SELECT mapping_code FROM guardian_applications WHERE user_id = %s",
+            (session.get("user_id"),),
+        )
+        mc = cursor.fetchone()
+        patient["mapping_code"] = mc["mapping_code"] if mc else None
+    cursor.close()
+    conn.close()
+    if patient:
+        patient["nurses"] = nurses
     return jsonify({"ok": True, "patient": patient})
 
 
@@ -906,14 +1075,57 @@ def api_fall_log_confirm(log_id):
 
     conn = get_db()
     cursor = conn.cursor()
+    # confirmed_at = 처리(확정) 시각. 보호자 화면이 이 시각 기준으로 낙상(10분)→주의로 바꾼다.
     cursor.execute(
-        "UPDATE fall_log SET patient_id = %s, confirmed_by = %s, memo = %s, done = TRUE WHERE id = %s",
+        "UPDATE fall_log SET patient_id = %s, confirmed_by = %s, memo = %s, done = TRUE, "
+        "confirmed_at = NOW() WHERE id = %s",
         (patient_id, session.get("user_id"), memo, log_id),
     )
     conn.commit()
     cursor.close()
     conn.close()
     return jsonify({"ok": True})
+
+
+@app.route("/api/my-fall-state")
+@login_required
+def api_my_fall_state():
+    # 로그인한 보호자의 환자에 대해 '오늘' 확정된 낙상이 있는지 보고 상태를 정한다.
+    #   normal  : 오늘 확정된 낙상 없음 (초록)
+    #   fall    : 확정(처리) 후 10분 이내 (빨강)
+    #   warning : 확정 10분 경과 ~ 그날 자정까지 (노랑, '낙상 있었음')
+    # 다음 날이 되면 오늘 기록이 아니므로 자동으로 normal로 돌아간다.
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("SELECT id FROM patients WHERE user_id = %s", (session.get("user_id"),))
+    prow = cursor.fetchone()
+    state = "normal"
+    if prow:
+        cursor.execute(
+            "SELECT confirmed_at FROM fall_log "
+            "WHERE patient_id = %s AND done = TRUE AND confirmed_at IS NOT NULL "
+            "AND DATE(confirmed_at) = CURDATE() "
+            "ORDER BY confirmed_at DESC LIMIT 1",
+            (prow["id"],),
+        )
+        row = cursor.fetchone()
+        if row and row["confirmed_at"]:
+            elapsed = (datetime.datetime.now() - row["confirmed_at"]).total_seconds()
+            # state = "fall" if elapsed < 600 else "warning"   # 600초 = 10분
+
+            # --- 테스트용 (원래: 낙상 600초, 주의 그날 종일) ---
+            if elapsed < 30:
+                state = "fall"          # 0~30초: 빨강
+            elif elapsed < 50:         # 30~50초 (30 + 20): 노랑
+                state = "warning"
+            else:
+                state = "normal"       # 50초 이후: 다시 초록
+
+
+
+    cursor.close()
+    conn.close()
+    return jsonify({"ok": True, "state": state})
 
 
 # ===== 캘린더 일정: DB(calendar_events)에 저장 (여러 브라우저가 같은 일정을 공유) =====
