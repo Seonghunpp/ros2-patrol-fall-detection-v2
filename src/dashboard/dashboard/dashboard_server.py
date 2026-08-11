@@ -640,6 +640,19 @@ def api_apply():
         conn.close()
         return jsonify({"ok": False, "error": "이미 보호자 계정이 연동된 환자입니다."}), 400
 
+    # 같은 환자로 아직 처리 안 끝난 신청이 있으면 중복 신청을 막는다
+    pending_cursor = conn.cursor(dictionary=True)
+    pending_cursor.execute(
+        "SELECT patient_name FROM guardian_applications WHERE room_number = %s AND status IN ('pending', 'approved')",
+        (room,),
+    )
+    pending_rows = pending_cursor.fetchall()
+    pending_cursor.close()
+    normalized = patient.replace(" ", "")
+    if any(decrypt_field(r["patient_name"]).replace(" ", "") == normalized for r in pending_rows):
+        conn.close()
+        return jsonify({"ok": False, "error": "이미 처리 대기 중인 신청이 있습니다."}), 400
+
     cursor = conn.cursor()
     cursor.execute(
         "INSERT INTO guardian_applications (applicant_name, phone, patient_name, room_number) VALUES (%s, %s, %s, %s)",

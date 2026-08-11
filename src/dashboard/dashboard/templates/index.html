@@ -826,24 +826,12 @@
                 <h2>통계</h2>
                 <p>병원 전체 누적 낙상 데이터와 순찰 통계입니다.</p>
             </div>
-            <span class="a-chip a-chip-ok"><i></i>감지 정확도 96%</span>
+            <span class="a-chip">이번 달 낙상 <span id="a-stat-month-falls">0<span class="stat-tile-unit">건</span></span></span>
         </header>
 
         <div class="page-head" style="display:none;">
             <h2>통계</h2>
             <p>낙상 발생과 순찰 통계입니다. (※ 더미 데이터 — 실제 값은 통계 API 연동)</p>
-        </div>
-
-        <!-- 통계 카드 -->
-        <div class="stat-row stat-row-2">
-            <div class="stat-tile">
-                <span class="stat-tile-label">이번 달 낙상</span>
-                <span class="stat-tile-num" id="a-stat-month-falls">0<span class="stat-tile-unit">건</span></span>
-            </div>
-            <div class="stat-tile">
-                <span class="stat-tile-label">감지 정확도</span>
-                <span class="stat-tile-num">96<span class="stat-tile-unit">%</span></span>
-            </div>
         </div>
 
         <!-- 차트 -->
@@ -1094,7 +1082,7 @@
         </div>
         <div class="table-wrap">
             <table class="data-table">
-                <thead><tr><th>시각</th><th>병실</th><th>내용</th><th>캡처</th><th>처리 상태</th><th>관리</th></tr></thead>
+                <thead><tr><th>시각</th><th>병실</th><th>내용</th><th>처리 상태</th><th>관리</th></tr></thead>
                 <tbody id="events-tbody"><!-- JS(renderEvents)로 채움 --></tbody>
             </table>
         </div>
@@ -1747,6 +1735,8 @@ function openApply() {
     document.getElementById("apply-error").innerText = "";
     document.getElementById("apply-cols").style.display = "";
     document.getElementById("apply-done").style.display = "none";
+    ["apply-name", "apply-phone", "apply-patient", "apply-room"]
+        .forEach(id => { document.getElementById(id).value = ""; });
     document.getElementById("apply-overlay").classList.add("open");
     document.getElementById("apply-name").focus();
 }
@@ -4273,7 +4263,7 @@ function renderEventRows(rows) {
     if (!tb) return;
     tb.innerHTML = "";
     if (!rows.length) {
-        tb.innerHTML = '<tr><td colspan="6" style="color:var(--text-muted);">검색 결과가 없습니다.</td></tr>';
+        tb.innerHTML = '<tr><td colspan="5" style="color:var(--text-muted);">검색 결과가 없습니다.</td></tr>';
     } else {
         rows.forEach(e => {
             const tr = document.createElement("tr");
@@ -4283,13 +4273,13 @@ function renderEventRows(rows) {
                 : ' · <span class="ev-unknown">환자 미확인</span>';
             tr.innerHTML =
                 `<td>${e.detected_at}</td><td>병실 ${e.room_number}</td><td>낙상 감지${who}</td>` +
-                `<td><button class="mini-btn" onclick="openEvCapture(${e.id})">📷 보기</button></td>` +
                 `<td>${e.done
                     ? '<span class="risk-chip risk-low">대응 완료</span>'
                     : '<span class="risk-chip risk-mid">미처리</span>'}</td>` +
-                `<td class="row-actions">${e.done
-                    ? (e.memo ? `<span class="a-memo" title="${e.memo}">📝 메모</span>` : "-")
-                    : `<button class="mini-btn" onclick="openEvCapture(${e.id})">처리</button>`}</td>`;
+                `<td class="row-actions">` +
+                    `<button class="mini-btn" onclick="openEvCapture(${e.id})">${e.done ? "📷 보기" : "처리"}</button>` +
+                    `${e.done && e.memo ? `<span class="a-memo" title="${e.memo}">📝 메모</span>` : ""}` +
+                `</td>`;
             tb.appendChild(tr);
         });
     }
