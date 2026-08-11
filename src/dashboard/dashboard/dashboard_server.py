@@ -17,8 +17,9 @@ try:
     from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSHistoryPolicy
     from sensor_msgs.msg import CompressedImage, BatteryState #배터리 스테이트 추가
     from std_msgs.msg import String, Int32MultiArray
-    from nav_msgs.msg import Odometry
-    from geometry_msgs.msg import Twist
+    from nav_msgs.msg import Odometry, Path
+    from geometry_msgs.msg import Twist, PoseWithCovarianceStamped
+    from std_srvs.srv import Trigger
     ROS_AVAILABLE = True
 except Exception:
     ROS_AVAILABLE = False
@@ -91,6 +92,13 @@ CMD_VEL_TIMEOUT_SEC = 1.0
 FALL_EVENT_COOLDOWN_SEC = 15.0
 last_fall_event_time = 0.0
 
+# Nav2 경로(/plan)는 한 번에 수백 점이 온다. 화면에 그리는 데는 이 정도면 충분하고,
+# 그대로 실으면 1초마다 나가는 /api/status 응답이 쓸데없이 커진다
+PATH_MAX_POINTS = 40
+# 새 경로가 이만큼 안 오면 주행이 끝났다고 보고 지운다
+PLAN_STALE_SEC = 5.0
+last_plan_time = 0.0
+
 last_odom_linear = 0.0
 last_odom_angular = 0.0
 last_cmd_vel_linear = 0.0
@@ -115,6 +123,11 @@ PATROL_ROOM_NAME_TO_NUMBER = {
 
 state = {
     "current_room": None,
+    # AMCL이 추정한 map 좌표계 위치(m). Nav2가 안 떠 있으면 계속 None
+    "robot_x": None,
+    "robot_y": None,
+    # Nav2가 계획한 경로. [[x, y], ...] (map 좌표계)
+    "path": [],
     "robot_status": "대기 중",
     "fall_status": "정상",
     "battery": "배터리 대기",
@@ -124,6 +137,7 @@ state = {
     "events": []
 }
 
+bridge_node = None
 
 def add_event(text):
     now = time.strftime("%H:%M:%S")
@@ -245,10 +259,75 @@ class DashboardBridge(Node):
             10
         )
 
+        # 지도에 실시간 위치를 그리기 위한 map 좌표. odom이 아니라 amcl_pose를 쓰는 이유는
+        # odom은 시작 지점 기준이라 맵과 좌표계가 다르기 때문
+        self.create_subscription(
+            PoseWithCovarianceStamped,
+            "/amcl_pose",
+            self.amcl_pose_callback,
+            10
+        )
+
+        # Nav2가 계획한 주행 경로. 목적지가 새로 잡히거나 재계획될 때마다 들어온다
+        self.create_subscription(
+            Path,
+            "/plan",
+            self.plan_callback,
+            10
+        )
+
+        self.charge_cli = self.create_client(Trigger, "/go_to_charging_station")
+
         self.create_timer(1.0, self.check_network_callback)
         self.create_timer(1.0, self.check_movement_callback)
 
         self.get_logger().info("dashboard_bridge started")
+
+    def amcl_pose_callback(self, msg):
+        global last_heartbeat
+        last_heartbeat = time.time()
+
+        p = msg.pose.pose.position
+        state["robot_x"] = round(p.x, 3)
+        state["robot_y"] = round(p.y, 3)
+
+    def plan_callback(self, msg):
+        global last_plan_time
+        last_plan_time = time.time()
+
+        poses = msg.poses
+        if not poses:
+            state["path"] = []
+            return
+
+        # 균등하게 솎아내되, 끝점(목적지)은 반드시 남긴다
+        step = max(1, len(poses) // PATH_MAX_POINTS)
+        pts = [[round(p.pose.position.x, 3), round(p.pose.position.y, 3)]
+               for p in poses[::step]]
+
+        goal = poses[-1].pose.position
+        last = [round(goal.x, 3), round(goal.y, 3)]
+        if pts[-1] != last:
+            pts.append(last)
+
+        state["path"] = pts
+
+    def request_charging_station(self, timeout=3.0):
+        if not self.charge_cli.wait_for_service(timeout_sec=0.5):
+            return False, "로봇 제어 노드에 연결할 수 없습니다."
+
+        future = self.charge_cli.call_async(Trigger.Request())
+        done = threading.Event()
+        future.add_done_callback(lambda _f: done.set())
+
+        if not done.wait(timeout):
+            return False, "로봇이 응답하지 않습니다."
+
+        result = future.result()
+        if result is None:
+            return False, "로봇 응답을 받지 못했습니다."
+        return result.success, result.message
+
 
     def check_network_callback(self):
         elapsed = time.time() - last_heartbeat
@@ -315,9 +394,11 @@ class DashboardBridge(Node):
             or abs(last_cmd_vel_angular) > ANGULAR_MOVING_THRESHOLD
         )
 
-        old_status = state["robot_status"]
-        new_status = "이동 중" if (odom_moving or cmd_vel_moving) else "대기 중"
-        state["robot_status"] = new_status
+        state["robot_status"] = "이동 중" if (odom_moving or cmd_vel_moving) else "대기 중"
+
+        # Nav2가 경로를 그만 내보내면 주행이 끝난 것. 지워야 화면에 옛 경로가 남지 않는다
+        if state["path"] and (time.time() - last_plan_time) > PLAN_STALE_SEC:
+            state["path"] = []
 
     def fall_status_callback(self, msg):
         global last_fall_event_time
@@ -1419,19 +1500,35 @@ def api_stats_guardian():
         "patrol_30d": patrol_30d,
     })
 
+@app.route("/api/robot/charge", methods=["POST"])
+@login_required
+def api_robot_charge():
+    if not _is_admin():
+        return jsonify({"ok": False, "error": "권한이 없습니다."}), 403
+    if bridge_node is None:
+        return jsonify({"ok": False, "error": "ROS2에 연결되지 않았습니다."}), 503
+
+    ok, message = bridge_node.request_charging_station()
+    if ok:
+        add_event("충전 스테이션 복귀 명령")
+
+    # 순찰 중이라 거절된 건 서버 장애가 아니라 "지금 상태에선 불가"라서 409
+    return jsonify({"ok": ok, "message": message}), (200 if ok else 409)
 
 def ros_spin():
+    global bridge_node
+
     if not ROS_AVAILABLE:
         add_event("ROS2 모듈 없음: 웹 화면만 테스트 중")
         return
 
     rclpy.init()
-    node = DashboardBridge()
+    bridge_node = DashboardBridge()
 
     try:
-        rclpy.spin(node)
+        rclpy.spin(bridge_node)
     finally:
-        node.destroy_node()
+        bridge_node.destroy_node()
         rclpy.shutdown()
 
 
