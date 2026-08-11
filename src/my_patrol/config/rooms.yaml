@@ -1,3 +1,10 @@
+labels:
+  room1: 병실 101
+  room2: 병실 102
+  room3: 병실 103
+  room4: 병실 104
+  standby: 대기 장소
+  dock: 충전 스테이션
 dock:
   x: -2.132
   y: 3.181

@@ -7,6 +7,7 @@ import time
 from functools import wraps
 
 import mysql.connector
+import yaml
 from cryptography.fernet import Fernet, InvalidToken
 from flask import Flask, Response, jsonify, render_template, request, send_from_directory, session
 from werkzeug.security import check_password_hash, generate_password_hash
@@ -121,6 +122,9 @@ PATROL_ROOM_NAME_TO_NUMBER = {
     "room4": "104",
 }
 
+# 환자를 등록할 수 있는 병실. 순찰 대상 병실과 같아야 하므로 위 매핑에서 그대로 가져온다
+PATIENT_ROOM_NUMBERS = set(PATROL_ROOM_NAME_TO_NUMBER.values())
+
 state = {
     "current_room": None,
     # AMCL이 추정한 map 좌표계 위치(m). Nav2가 안 떠 있으면 계속 None
@@ -191,6 +195,64 @@ def log_fall_detected(room):
         conn.close()
     except mysql.connector.Error as e:
         print(f"[dashboard] fall_log 기록 실패: {e}")
+
+
+# ===== 이동 목적지 — my_patrol의 rooms.yaml 하나만 본다 =====
+#
+# 좌표를 대시보드에도 적어두면 waypoint_saver로 다시 찍었을 때 화면과 로봇이
+# 서로 다른 곳을 가리키게 된다. 그래서 로봇(navigation_service)이 읽는 것과
+# 같은 파일을 읽는다. yaml의 키(dock/standby/room1~4)가 그대로 ROS 서비스
+# 이름이 된다: room1 -> /go_to_room1
+def _rooms_yaml_path():
+    # 설치본(share)이 정석이지만, ROS 없이 웹만 띄워 볼 때를 위해 소스 경로로 넘어간다
+    try:
+        from ament_index_python.packages import get_package_share_directory
+        return os.path.join(get_package_share_directory("my_patrol"), "config", "rooms.yaml")
+    except Exception:
+        return os.path.expanduser(
+            "~/turtlebot3_ws/ros2-patrol-fall-detection/src/my_patrol/config/rooms.yaml")
+
+
+ROOMS_YAML = os.environ.get("ROOMS_YAML") or _rooms_yaml_path()
+
+
+def load_places():
+    """rooms.yaml -> {키: {label, room_number, x, y}}. 화면 순서(병실 → 대기 → 충전)대로.
+
+    좌표를 다시 찍어도 서버 재시작 없이 반영되도록 호출할 때마다 읽는다
+    (파일 하나라 비용이 사실상 없음). 파일이 없거나 깨졌으면 빈 dict.
+    """
+    try:
+        with open(ROOMS_YAML, encoding="utf-8") as f:
+            data = yaml.safe_load(f) or {}
+    except (OSError, yaml.YAMLError) as e:
+        print(f"[dashboard] rooms.yaml 읽기 실패: {e}")
+        return {}
+
+    labels = data.get("labels") or {}
+    places = {}
+
+    def add(key, point):
+        # 좌표가 덜 찍힌 항목은 건너뛴다 (화면에 0,0으로 찍히면 오해 소지)
+        if not isinstance(point, dict) or "x" not in point or "y" not in point:
+            return
+        # yaml에 표시 이름이 없으면 병실은 번호로, 나머지는 키 그대로 보여준다
+        number = PATROL_ROOM_NAME_TO_NUMBER.get(key)
+        places[key] = {
+            "label": labels.get(key) or (f"병실 {number}" if number else key),
+            "room_number": number,
+            "x": round(float(point["x"]), 3),
+            "y": round(float(point["y"]), 3),
+        }
+
+    for key, room in (data.get("rooms") or {}).items():
+        # 병실은 hall(문 앞) → inside(안) 두 지점이지만, 화면에 쓰는 건 최종 목적지인 inside
+        add(key, room.get("inside", room) if isinstance(room, dict) else room)
+
+    for key in ("standby", "dock"):
+        add(key, data.get(key))
+
+    return places
 
 
 class DashboardBridge(Node):
@@ -276,7 +338,12 @@ class DashboardBridge(Node):
             10
         )
 
-        self.charge_cli = self.create_client(Trigger, "/go_to_charging_station")
+        # 목적지 하나당 Trigger 서비스 하나(/go_to_dock, /go_to_room1 ...).
+        # 노드가 뜬 뒤 yaml에 목적지를 추가하면 서버를 다시 켜야 한다
+        self.goto_cli = {
+            key: self.create_client(Trigger, f"/go_to_{key}")
+            for key in load_places()
+        }
 
         self.create_timer(1.0, self.check_network_callback)
         self.create_timer(1.0, self.check_movement_callback)
@@ -312,11 +379,15 @@ class DashboardBridge(Node):
 
         state["path"] = pts
 
-    def request_charging_station(self, timeout=3.0):
-        if not self.charge_cli.wait_for_service(timeout_sec=0.5):
+    def request_goto(self, place, timeout=3.0):
+        client = self.goto_cli.get(place)
+        if client is None:
+            return False, "알 수 없는 목적지입니다."
+
+        if not client.wait_for_service(timeout_sec=0.5):
             return False, "로봇 제어 노드에 연결할 수 없습니다."
 
-        future = self.charge_cli.call_async(Trigger.Request())
+        future = client.call_async(Trigger.Request())
         done = threading.Event()
         future.add_done_callback(lambda _f: done.set())
 
@@ -1046,6 +1117,10 @@ def api_patients_add():
     if not room or not name:
         return jsonify({"ok": False, "error": "병실과 이름은 필수입니다."}), 400
 
+    # 화면에서는 select로 막아두지만, API를 직접 부르면 그만이므로 서버에서도 막는다
+    if room not in PATIENT_ROOM_NUMBERS:
+        return jsonify({"ok": False, "error": "병실은 101~104호만 등록할 수 있습니다."}), 400
+
     conn = get_db()
     try:
         patient_id = find_patient_id_by_name_room(conn, name, room)
@@ -1506,20 +1581,39 @@ def api_stats_guardian():
         "patrol_30d": patrol_30d,
     })
 
-@app.route("/api/robot/charge", methods=["POST"])
+@app.route("/api/robot/places")
 @login_required
-def api_robot_charge():
+def api_robot_places():
+    """이동 가능한 목적지 목록. 좌표·이름 모두 rooms.yaml이 원본이다."""
+    places = load_places()
+    if not places:
+        return jsonify({"ok": False, "error": "등록된 좌표가 없습니다.", "places": []}), 503
+
+    return jsonify({
+        "ok": True,
+        "places": [dict(key=key, **info) for key, info in places.items()],
+    })
+
+
+@app.route("/api/robot/goto/<place>", methods=["POST"])
+@login_required
+def api_robot_goto(place):
     if not _is_admin():
         return jsonify({"ok": False, "error": "권한이 없습니다."}), 403
+
+    places = load_places()
+    if place not in places:
+        return jsonify({"ok": False, "error": "등록되지 않은 목적지입니다."}), 404
     if bridge_node is None:
         return jsonify({"ok": False, "error": "ROS2에 연결되지 않았습니다."}), 503
 
-    ok, message = bridge_node.request_charging_station()
+    label = places[place]["label"]
+    ok, message = bridge_node.request_goto(place)
     if ok:
-        add_event("충전 스테이션 복귀 명령")
+        add_event(f"{label} 이동 명령")
 
-    # 순찰 중이라 거절된 건 서버 장애가 아니라 "지금 상태에선 불가"라서 409
-    return jsonify({"ok": ok, "message": message}), (200 if ok else 409)
+    # 이미 이동 중이라 거절된 건 서버 장애가 아니라 "지금 상태에선 불가"라서 409
+    return jsonify({"ok": ok, "message": message, "label": label}), (200 if ok else 409)
 
 def ros_spin():
     global bridge_node

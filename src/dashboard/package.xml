@@ -13,6 +13,8 @@
   <depend>std_msgs</depend>
   <depend>turtlebot3_msgs</depend>
   <depend>std_srvs</depend>
+  <!-- 이동 목적지 좌표(config/rooms.yaml)를 my_patrol의 share 경로에서 읽는다 -->
+  <exec_depend>my_patrol</exec_depend>
 
   <export>
     <build_type>ament_python</build_type>

@@ -763,10 +763,11 @@
                     <h3 class="mon-title">현재 위치</h3>
                     <p class="mon-loc" id="current-room-text">-</p>
                     <div class="mon-rooms">
-                        <div class="room" id="room-101"><strong>101</strong><span>4인실</span></div>
+                        <!-- 병상 유형은 ROOM_INFO가 원본. syncRoomLabels()가 아래 span을 덮어쓴다 -->
+                        <div class="room" id="room-101"><strong>101</strong><span>1인실</span></div>
                         <div class="room" id="room-102"><strong>102</strong><span>2인실</span></div>
-                        <div class="room" id="room-103"><strong>103</strong><span>4인실</span></div>
-                        <div class="room" id="room-104"><strong>104</strong><span>1인실</span></div>
+                        <div class="room" id="room-103"><strong>103</strong><span>2인실</span></div>
+                        <div class="room" id="room-104"><strong>104</strong><span>4인실</span></div>
                         <div class="robot-marker" id="robot-marker" style="display:none;">🤖</div>
                     </div>
                     <p class="mon-note">순찰 중인 병실이 파랗게 표시됩니다.</p>
@@ -928,33 +929,33 @@
                                   filter="url(#rcShadow)"/>
 
                             <!-- 병실 4개 (왼쪽부터 101 → 104). data-x/data-y = 실측 inside 위치 -->
-                            <g class="rc-spot" data-dest="병실 101" data-x="90.3" data-y="125.8"
+                            <g class="rc-spot" data-place="room1" data-dest="병실 101" data-x="90.3" data-y="125.8"
                                onclick="rcGoTo(this)" tabindex="0" role="button" aria-label="병실 101로 이동">
                                 <rect class="rc-room" x="7" y="7" width="161" height="222" rx="3"/>
                                 <text class="rc-num" x="87" y="110">101</text>
-                                <text class="rc-sub" x="87" y="136">4인실</text>
+                                <text class="rc-sub" x="87" y="136">1인실</text>
                             </g>
-                            <g class="rc-spot" data-dest="병실 102" data-x="258.5" data-y="124.6"
+                            <g class="rc-spot" data-place="room2" data-dest="병실 102" data-x="258.5" data-y="124.6"
                                onclick="rcGoTo(this)" tabindex="0" role="button" aria-label="병실 102로 이동">
                                 <rect class="rc-room" x="180" y="7" width="168" height="222" rx="3"/>
                                 <text class="rc-num" x="264" y="110">102</text>
                                 <text class="rc-sub" x="264" y="136">2인실</text>
                             </g>
-                            <g class="rc-spot" data-dest="병실 103" data-x="448.5" data-y="109.3"
+                            <g class="rc-spot" data-place="room3" data-dest="병실 103" data-x="448.5" data-y="109.3"
                                onclick="rcGoTo(this)" tabindex="0" role="button" aria-label="병실 103로 이동">
                                 <rect class="rc-room" x="360" y="7" width="174" height="222" rx="3"/>
                                 <text class="rc-num" x="447" y="110">103</text>
-                                <text class="rc-sub" x="447" y="136">4인실</text>
+                                <text class="rc-sub" x="447" y="136">2인실</text>
                             </g>
-                            <g class="rc-spot" data-dest="병실 104" data-x="630.5" data-y="125.8"
+                            <g class="rc-spot" data-place="room4" data-dest="병실 104" data-x="630.5" data-y="125.8"
                                onclick="rcGoTo(this)" tabindex="0" role="button" aria-label="병실 104로 이동">
                                 <rect class="rc-room" x="546" y="7" width="167" height="222" rx="3"/>
                                 <text class="rc-num" x="629" y="110">104</text>
-                                <text class="rc-sub" x="629" y="136">1인실</text>
+                                <text class="rc-sub" x="629" y="136">4인실</text>
                             </g>
 
                             <!-- 충전 스테이션 — 좌측 끝, 좌·하 벽에 붙음 -->
-                            <g class="rc-spot" data-dest="충전 스테이션" data-x="80.4" data-y="416.1"
+                            <g class="rc-spot" data-place="dock" data-dest="충전 스테이션" data-x="80.4" data-y="416.1"
                                onclick="rcGoTo(this)" tabindex="0" role="button" aria-label="충전 스테이션으로 이동">
                                 <rect class="rc-dock" x="7" y="388" width="147" height="56" rx="5"/>
                                 <text class="rc-num rc-num-sm rc-on-fill" x="80" y="411">충전</text>
@@ -962,7 +963,7 @@
                             </g>
 
                             <!-- 대기 장소 · 데스크 — 복도 중앙, 하단 벽에 붙음 -->
-                            <g class="rc-spot" data-dest="대기 장소" data-x="353.2" data-y="403.1"
+                            <g class="rc-spot" data-place="standby" data-dest="대기 장소" data-x="353.2" data-y="403.1"
                                onclick="rcGoTo(this)" tabindex="0" role="button" aria-label="대기 장소로 이동">
                                 <rect class="rc-desk" x="268" y="366" width="170" height="78" rx="5"/>
                                 <text class="rc-num rc-num-sm rc-on-fill" x="353" y="400">대기</text>
@@ -1028,8 +1029,8 @@
                     <div class="rc-btns">
                         <button class="rc-btn rc-btn-primary" onclick="rcCommand('순찰 시작', '순찰 중')">순찰 시작</button>
                         <button class="rc-btn" onclick="rcCommand('일시정지', '일시정지')">일시정지</button>
-                        <button class="rc-btn" onclick="rcGoDest('대기 장소', '이동 중')">대기 장소로 이동</button>
-                        <button class="rc-btn" onclick="rcGoDest('충전 스테이션', '복귀 중')">충전 스테이션으로 이동</button>
+                        <button class="rc-btn" onclick="rcGoDest('standby')">대기 장소로 이동</button>
+                        <button class="rc-btn" onclick="rcGoDest('dock')">충전 스테이션으로 이동</button>
                     </div>
                     <button class="rc-btn rc-btn-stop" onclick="rcCommand('비상 정지', '정지됨')">비상 정지 (E-Stop)</button>
                 </section>
@@ -1045,12 +1046,9 @@
             <div class="table-wrap">
                 <table class="data-table">
                     <thead><tr><th>순번</th><th>Waypoint</th><th>연결 위치</th><th>좌표 (x, y)</th><th>상태</th></tr></thead>
-                    <tbody>
-                        <tr><td>1</td><td>wp_101</td><td>병실 101</td><td>1.24, 3.80</td><td><span class="risk-chip risk-low">등록됨</span></td></tr>
-                        <tr><td>2</td><td>wp_102</td><td>병실 102</td><td>4.62, 3.80</td><td><span class="risk-chip risk-low">등록됨</span></td></tr>
-                        <tr><td>3</td><td>wp_103</td><td>병실 103</td><td>1.24, 0.95</td><td><span class="risk-chip risk-low">등록됨</span></td></tr>
-                        <tr><td>4</td><td>wp_104</td><td>병실 104</td><td>4.62, 0.95</td><td><span class="risk-chip risk-low">등록됨</span></td></tr>
-                        <tr><td>5</td><td>wp_dock</td><td>충전 스테이션</td><td>2.90, 0.20</td><td><span class="risk-chip risk-low">등록됨</span></td></tr>
+                    <!-- rooms.yaml에 저장된 좌표를 rcRenderWaypoints()가 채운다 -->
+                    <tbody id="rc-wp-tbody">
+                        <tr><td colspan="5">좌표를 불러오는 중...</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -1150,8 +1148,8 @@
             <div class="pt-form">
                 <div>
                     <label class="form-label" for="pt-room">병실</label>
-                    <input id="pt-room" class="form-input" inputmode="numeric" maxlength="4"
-                           placeholder="104" oninput="onlyDigits(this, 4)">
+                    <!-- 선택지는 renderRoomOptions()가 ROOM_INFO로 채운다 (101~104호만) -->
+                    <select id="pt-room" class="form-input"></select>
                 </div>
                 <div>
                     <label class="form-label" for="pt-name">이름</label>
@@ -2235,9 +2233,44 @@ const RISK_TEXT = { critical: "매우높음", high: "높음", mid: "보통", low
 // risk-chip 색상 클래스만 여기서 매핑해 쓴다.
 const RISK_CLASS = { "낮음": "low", "보통": "mid", "높음": "high", "매우 높음": "critical" };
 
-// 병실 번호 -> 병상 유형(몇 인실). 병원 구조가 고정이라 매핑으로 처리한다.
-const ROOM_TYPE = { "101": "1인실", "102": "2인실", "103": "2인실", "104": "4인실" };
-const roomTypeOf = (roomNo) => ROOM_TYPE[String(roomNo)] || "-";
+// ===== 병실 구성 — 이 표 하나가 원본 =====
+// 병원 구조가 고정이라 매핑으로 처리한다. 유형·정원이 화면 여러 곳에 흩어져 있으면
+// 서로 어긋나므로(실제로 어긋난 적 있음) 여기만 고치면 전부 따라오게 한다.
+//   - 현재 위치 목록 / 로봇 제어 도면 라벨  -> syncRoomLabels()
+//   - 환자 등록 병실 선택지               -> renderRoomOptions()
+//   - 등록 정원 검사                      -> roomCapacityOf()
+const ROOM_INFO = {
+    "101": { type: "1인실", capacity: 1 },
+    "102": { type: "2인실", capacity: 2 },
+    "103": { type: "2인실", capacity: 2 },
+    "104": { type: "4인실", capacity: 4 },
+};
+const ROOM_NUMBERS = Object.keys(ROOM_INFO);
+const roomTypeOf = (roomNo) => (ROOM_INFO[String(roomNo)] || {}).type || "-";
+const roomCapacityOf = (roomNo) => (ROOM_INFO[String(roomNo)] || {}).capacity;
+
+// 환자 등록 병실 선택지 (101~104호만 고를 수 있게 한다)
+function renderRoomOptions() {
+    const sel = document.getElementById("pt-room");
+    if (!sel) { return; }
+    sel.innerHTML = '<option value="">선택</option>' + ROOM_NUMBERS.map(no =>
+        `<option value="${no}">${no}호 (${ROOM_INFO[no].type})</option>`
+    ).join("");
+}
+
+// 현재 위치 목록·로봇 제어 도면의 "n인실" 라벨을 ROOM_INFO에 맞춘다.
+// 도면 쪽은 병실 번호를 RC_PLACES(=rooms.yaml)에서 받으므로 rcLoadPlaces()가 한 번 더 부른다
+function syncRoomLabels() {
+    ROOM_NUMBERS.forEach(no => {
+        const cell = document.querySelector(`#room-${no} span`);
+        if (cell) { cell.innerText = ROOM_INFO[no].type; }
+    });
+    document.querySelectorAll(".rc-spot").forEach(spot => {
+        const info = ROOM_INFO[(RC_PLACES[spot.dataset.place] || {}).room_number];
+        const sub = info && spot.querySelector(".rc-sub");
+        if (sub) { sub.textContent = info.type; }
+    });
+}
 
 /* ============================================================
    데이터 계층 — 지금은 임시 데이터, 나중에 MySQL + Flask API 로 교체
@@ -2262,30 +2295,31 @@ const roomTypeOf = (roomNo) => ROOM_TYPE[String(roomNo)] || "-";
 const DB = {
     // ----- 임시 시드 (화면 확인용) : 연동 시 삭제 -----
     patients: [
-        { patient_id: 1, name: "홍길동", room_number: "101", room_type: "4인실",
+        { patient_id: 1, name: "홍길동", room_number: "101", room_type: "1인실",
           age: 78, gender: "남", diagnosis: "뇌졸중 후유증", risk_level: "high",
           last_fall_at: "2026-07-14 03:20", admitted: 1, nurse_name: "김간호", nurse_tel: "02-1234-5678" },
         { patient_id: 2, name: "김영수", room_number: "102", room_type: "2인실",
           age: 72, gender: "남", diagnosis: "고관절 골절 회복", risk_level: "low",
           last_fall_at: "2026-07-02 21:10", admitted: 1, nurse_name: "이간호", nurse_tel: "02-1234-5679" },
-        { patient_id: 3, name: "이순자", room_number: "103", room_type: "4인실",
+        { patient_id: 3, name: "이순자", room_number: "103", room_type: "2인실",
           age: 81, gender: "여", diagnosis: "파킨슨병", risk_level: "mid",
           last_fall_at: "2026-07-15 11:05", admitted: 1, nurse_name: "김간호", nurse_tel: "02-1234-5678" },
-        { patient_id: 4, name: "최판서", room_number: "104", room_type: "1인실",
+        { patient_id: 4, name: "최판서", room_number: "104", room_type: "4인실",
           age: 69, gender: "남", diagnosis: "당뇨 · 저혈압", risk_level: "low",
           last_fall_at: "낙상 이력 없음", admitted: 1, nurse_name: "이간호", nurse_tel: "02-1234-5679" },
 
-        // 같은 병실을 쓰는 다른 환자들 — 낙상 감지 시 "누가 넘어졌는지" 고르는 후보가 된다
-        { patient_id: 5, name: "장복순", room_number: "101", room_type: "4인실",
+        // 같은 병실을 쓰는 다른 환자들 — 낙상 감지 시 "누가 넘어졌는지" 고르는 후보가 된다.
+        // 101호는 1인실이라 후보가 1명뿐이므로, 여러 명 고르는 흐름은 104호(4인실)로 확인한다
+        { patient_id: 5, name: "장복순", room_number: "104", room_type: "4인실",
           age: 84, gender: "여", diagnosis: "고관절 수술 후 회복", risk_level: "high",
           last_fall_at: "2026-06-28 05:40", admitted: 1, nurse_name: "김간호", nurse_tel: "02-1234-5678" },
-        { patient_id: 6, name: "오갑수", room_number: "101", room_type: "4인실",
+        { patient_id: 6, name: "오갑수", room_number: "104", room_type: "4인실",
           age: 76, gender: "남", diagnosis: "척추관 협착증", risk_level: "mid",
           last_fall_at: "낙상 이력 없음", admitted: 1, nurse_name: "김간호", nurse_tel: "02-1234-5678" },
-        { patient_id: 7, name: "윤말자", room_number: "101", room_type: "4인실",
+        { patient_id: 7, name: "윤말자", room_number: "104", room_type: "4인실",
           age: 79, gender: "여", diagnosis: "당뇨 합병증", risk_level: "low",
           last_fall_at: "낙상 이력 없음", admitted: 1, nurse_name: "김간호", nurse_tel: "02-1234-5678" },
-        { patient_id: 8, name: "한정식", room_number: "103", room_type: "4인실",
+        { patient_id: 8, name: "한정식", room_number: "103", room_type: "2인실",
           age: 83, gender: "남", diagnosis: "뇌경색 후유증", risk_level: "mid",
           last_fall_at: "낙상 이력 없음", admitted: 1, nurse_name: "김간호", nurse_tel: "02-1234-5678" },
         { patient_id: 9, name: "서금자", room_number: "102", room_type: "2인실",
@@ -2293,8 +2327,7 @@ const DB = {
           last_fall_at: "낙상 이력 없음", admitted: 1, nurse_name: "이간호", nurse_tel: "02-1234-5679" }
     ],
 
-    // 병실 정원 (낙상 환자 후보를 고를 때와 환자 등록 때 쓴다)
-    ROOM_CAPACITY: { "101": 4, "102": 2, "103": 4, "104": 1 },
+    // 병실 정원은 ROOM_INFO(roomCapacityOf)가 원본이라 여기서는 들고 있지 않는다
 
     guardians: [
         { guardian_id: 1, username: "cus", name: "박보호", phone: "010-3456-7890",
@@ -3821,18 +3854,18 @@ async function addPatient() {
     const age = val("pt-age"), diagnosis = val("pt-diag");
     const err = document.getElementById("pt-error");
 
-    if (!/^\d{3,4}$/.test(room)) { err.innerText = "병실 번호를 숫자 3~4자리로 입력해 주세요."; return; }
+    if (!ROOM_INFO[room]) { err.innerText = "병실은 101~104호만 등록할 수 있습니다."; return; }
 
     if (name.length < 2) { err.innerText = "환자 이름을 2자 이상 입력해 주세요."; return; }
 
     // 같은 병실에 이름이 이미 있으면 새 입원이 아니라 정보 수정이므로 정원 체크는 건너뛴다
     const isEdit = WARDS.some(w => w.room === room && w.name.replace(/\s/g, "") === name.replace(/\s/g, ""));
     if (!isEdit) {
-        // 병실 정원까지만 새로 등록할 수 있다 (4인실 4명 · 2인실 2명 · 1인실 1명)
-        const cap = DB.ROOM_CAPACITY[room];
+        // 병실 정원까지만 새로 등록할 수 있다 (ROOM_INFO의 capacity)
+        const cap = roomCapacityOf(room);
         const inRoom = WARDS.filter(w => w.room === room).length;
         if (cap && inRoom >= cap) {
-            err.innerText = `${room}호는 정원 ${cap}명이 모두 찼습니다.`;
+            err.innerText = `${room}호는 ${ROOM_INFO[room].type} 정원 ${cap}명이 모두 찼습니다.`;
             return;
         }
     }
@@ -3968,10 +4001,57 @@ function rcSetCurrent(place) {
     });
 }
 
-// 지도의 지점 클릭
-// 충전 복귀 요청이 날아가 있는 동안 중복 클릭을 막는다.
-// 맵의 충전 버튼과 옆 패널 버튼이 서로 다른 element라 btn.disabled로는 못 막는다
-let rcChargeBusy = false;
+// 이동 요청이 날아가 있는 동안 중복 클릭을 막는다 (rcGoTo에서 사용)
+let rcGoBusy = false;
+
+// ===== 이동 목적지 — rooms.yaml이 원본 =====
+// 좌표와 이름을 화면에 또 적어두면 waypoint_saver로 좌표를 다시 찍었을 때
+// 화면과 로봇이 어긋난다. 그래서 서버(/api/robot/places)를 통해 받아온다.
+// { room1: {label, room_number, x, y}, ... }
+let RC_PLACES = {};
+
+async function rcLoadPlaces() {
+    try {
+        const res  = await fetch("/api/robot/places");
+        const data = await res.json();
+        if (!data.ok) { return; }
+
+        RC_PLACES = {};
+        data.places.forEach(p => { RC_PLACES[p.key] = p; });
+
+        // 도면의 지점 이름도 yaml 값으로 맞춘다
+        document.querySelectorAll(".rc-spot").forEach(spot => {
+            const p = RC_PLACES[spot.dataset.place];
+            if (p) { spot.dataset.dest = p.label; }
+        });
+
+        rcRenderWaypoints(data.places);
+        syncRoomLabels();   // 도면의 "n인실" 라벨은 병실 번호를 알아야 채울 수 있다
+    } catch (e) {
+        console.error(e);
+    }
+}
+
+// SLAM · Waypoint 표. 등록된 좌표를 그대로 보여준다
+function rcRenderWaypoints(places) {
+    const tbody = document.getElementById("rc-wp-tbody");
+    if (!tbody) { return; }
+
+    if (!places.length) {
+        tbody.innerHTML = '<tr><td colspan="5">등록된 좌표가 없습니다. ' +
+                          'waypoint_saver로 먼저 저장해 주세요.</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = places.map((p, i) =>
+        `<tr><td>${i + 1}</td><td>wp_${p.key}</td><td>${p.label}</td>` +
+        `<td>${p.x.toFixed(2)}, ${p.y.toFixed(2)}</td>` +
+        `<td><span class="risk-chip risk-low">등록됨</span></td></tr>`
+    ).join("");
+}
+
+// 목적지 목록은 좌표를 다시 찍었을 때만 바뀌므로 화면을 열 때 한 번만 받아온다
+rcLoadPlaces();
 
 // 로봇 아이콘을 도면 위 한 지점으로 옮긴다. 단위는 건물 좌표계(SVG user unit).
 function rcPlaceRobot(x, y) {
@@ -4076,32 +4156,34 @@ function rcCheckMap(mx, my) {
 }
 
 async function rcGoTo(btn) {
-    const dest = btn.dataset.dest;
+    const place = btn.dataset.place;
+    // 이름은 rooms.yaml에서 온 값을 우선 쓴다. 아직 목록을 못 받았으면 도면에 적힌 이름으로
+    const dest = (RC_PLACES[place] || {}).label || btn.dataset.dest;
+
     document.querySelectorAll(".rc-spot").forEach(s => s.classList.remove("target"));
     btn.classList.add("target");
 
-    // 충전 스테이션만 실제 로봇에 명령이 나간다. 나머지 지점은 아직 화면 목업
-    if (dest !== "충전 스테이션") {
-        rcMoveIcon(btn);
-        rcSetState("이동 중");
-        rcSetPlace(dest);
-        rcToast(dest + "(으)로 이동합니다");
+    if (!place) {                       // 도면에만 있고 좌표가 없는 지점
+        rcToast("등록되지 않은 목적지입니다");
+        btn.classList.remove("target");
         return;
     }
 
-    if (rcChargeBusy) { return; }
-    rcChargeBusy = true;
+    // 로봇은 한 번에 한 곳만 간다. 맵의 지점과 옆 패널 버튼이 서로 다른 element라
+    // btn.disabled로는 중복 클릭을 못 막아서 플래그로 잠근다
+    if (rcGoBusy) { return; }
+    rcGoBusy = true;
 
     try {
-        const res  = await fetch("/api/robot/charge", { method: "POST" });
+        const res  = await fetch("/api/robot/goto/" + place, { method: "POST" });
         const data = await res.json();
 
         if (data.ok) {
             // 로봇이 요청을 받아들인 뒤에만 화면을 움직인다
             rcMoveIcon(btn);
-            rcSetState("복귀 중");
+            rcSetState(place === "dock" ? "복귀 중" : "이동 중");
             rcSetPlace(dest);
-            rcToast(data.message || "충전 스테이션으로 이동합니다");
+            rcToast(dest + "(으)로 이동합니다");
         } else {
             btn.classList.remove("target");
             rcToast(data.error || data.message || "이동 명령에 실패했습니다");
@@ -4110,19 +4192,18 @@ async function rcGoTo(btn) {
         btn.classList.remove("target");
         rcToast("요청을 보내지 못했습니다");
     } finally {
-        rcChargeBusy = false;
+        rcGoBusy = false;
     }
 }
 
-// 버튼으로 이동 (대기 장소 · 충전 스테이션)
-function rcGoDest(dest, state) {
-    const spot = [...document.querySelectorAll(".rc-spot")].find(s => s.dataset.dest === dest);
+// 버튼으로 이동 (대기 장소 · 충전 스테이션). place = rooms.yaml의 키
+function rcGoDest(place) {
+    const spot = [...document.querySelectorAll(".rc-spot")].find(s => s.dataset.place === place);
     if (spot) {
-        rcGoTo(spot);   // 상태 표시와 토스트는 rcGoTo가 처리한다
+        rcGoTo(spot);   // 명령 전송·상태 표시·토스트는 rcGoTo가 처리한다
         return;
     }
-    rcSetState(state);
-    rcToast(dest + "(으)로 이동합니다");
+    rcToast("도면에 없는 목적지입니다");
 }
 
 
@@ -4241,6 +4322,8 @@ renderFalls();
 renderEvents();
 renderSettingsTheme();
 renderWardGrid();
+renderRoomOptions();   // 환자 등록 병실 선택지 (101~104호)
+syncRoomLabels();      // 화면의 "n인실" 라벨을 ROOM_INFO에 맞춤
 renderPending();
 renderGuardians();
 renderNurses();
