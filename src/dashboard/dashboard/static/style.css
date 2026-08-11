@@ -2703,10 +2703,34 @@ html.reveal-on .rm-svc-grid .rm-svc-card:nth-child(8) { transition-delay: 0.49s;
 .mon-rooms .room strong { font-size: 14px; font-weight: 700; }
 .mon-rooms .room span { font-size: 11px; color: var(--text-muted); }
 
+/* 병실별 낙상 건수 · 순찰 횟수 */
+.mon-rooms .room .room-tally {
+    font-size: 11px;
+    font-style: normal;
+    color: var(--text-muted);
+    margin-top: 3px;
+}
+
+/* 낙상이 잦을수록 붉게. 그 병실에서 가장 많은 곳을 기준으로 3단계.
+   rgba로 덮어서 라이트/다크 배경 어디에도 얹힌다 */
+.mon-rooms .room.fall-low  { background: rgba(234, 179, 8, 0.10);  border-color: rgba(234, 179, 8, 0.45); }
+.mon-rooms .room.fall-mid  { background: rgba(249, 115, 22, 0.14); border-color: rgba(249, 115, 22, 0.55); }
+.mon-rooms .room.fall-high { background: rgba(239, 68, 68, 0.18);  border-color: rgba(239, 68, 68, 0.65); }
+
+.mon-rooms .room.fall-high .room-tally,
+.mon-rooms .room.fall-mid .room-tally { color: var(--text); font-weight: 600; }
+
+/* 로봇 위치와 낙상 빈도는 서로 다른 채널로 표시해서 둘 다 보이게 한다.
+   배경 = 낙상 빈도, 테두리+링 = 로봇 위치.
+   그래야 "로봇이 지금 가장 위험한 병실에 있다"가 한눈에 읽힌다 */
 .mon-rooms .room.active-room {
     border-color: #0284c7;
+    box-shadow: 0 0 0 3px rgba(2, 132, 199, 0.18);
+}
+
+/* 낙상 색이 없는(0건) 병실에 로봇이 있을 때만 배경까지 파랗게 */
+.mon-rooms .room.active-room:not(.fall-low):not(.fall-mid):not(.fall-high) {
     background: #eaf4ff;
-    box-shadow: 0 0 0 3px rgba(2, 132, 199, 0.12);
 }
 
 .mon-rooms .robot-marker {
