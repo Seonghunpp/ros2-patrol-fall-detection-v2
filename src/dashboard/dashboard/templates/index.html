@@ -969,13 +969,14 @@
                             <rect class="rc-wall" x="0" y="0" width="720" height="451" rx="7"/>
                             <path class="rc-wall rc-wall-in" d="M174 0 V257 M354 0 V257 M540 0 V257"/>
                             <!-- 출입구 폭 96. 벽이 끊긴 구간의 중심을 실측 hall 좌표의
-                                 도면 x에 맞췄다 (90.9 / 258.3 / 438.5 / 628.1).
-                                 로봇이 문을 지나는 자리와 그림의 문 위치가 일치한다 -->
+                                 도면 x에 맞췄다 (91.2 / 260.3 / 442.4 / 634.0).
+                                 로봇이 문을 지나는 자리와 그림의 문 위치가 일치한다.
+                                 ※ 좌표를 다시 찍으면 MAP_ANCHORS와 함께 이 값도 갱신 -->
                             <path class="rc-wall rc-wall-door"
                                   d="M7 257 H43    M139 257 H168
-                                     M180 257 H210 M306 257 H348
-                                     M360 257 H390 M487 257 H534
-                                     M546 257 H580 M676 257 H713"/>
+                                     M180 257 H212 M308 257 H348
+                                     M360 257 H394 M490 257 H534
+                                     M546 257 H586 M682 257 H713"/>
 
                             <!-- Nav2가 계획한 경로. 점 목록은 updateStatus()가 채운다 -->
                             <polyline class="rc-path" id="rc-path" points=""/>
@@ -4100,7 +4101,13 @@ async function rcLoadPlaces() {
     try {
         const res  = await fetch("/api/robot/places");
         const data = await res.json();
-        if (!data.ok) { return; }
+
+        // 실패를 조용히 넘기면 Waypoint 표가 "불러오는 중"에 멈춘 채로 남아서
+        // 원인을 알 수 없다. 화면에 이유를 띄운다
+        if (!data.ok) {
+            rcRenderWaypointsError(data.error || "좌표를 불러오지 못했습니다.");
+            return;
+        }
 
         RC_PLACES = {};
         data.places.forEach(p => { RC_PLACES[p.key] = p; });
@@ -4115,6 +4122,15 @@ async function rcLoadPlaces() {
         syncRoomLabels();   // 도면의 "n인실" 라벨은 병실 번호를 알아야 채울 수 있다
     } catch (e) {
         console.error(e);
+        rcRenderWaypointsError("서버에 연결하지 못했습니다. (F12 콘솔 확인)");
+    }
+}
+
+// Waypoint 표에 실패 사유를 남긴다
+function rcRenderWaypointsError(message) {
+    const tbody = document.getElementById("rc-wp-tbody");
+    if (tbody) {
+        tbody.innerHTML = `<tr><td colspan="5">${message}</td></tr>`;
     }
 }
 
@@ -4180,7 +4196,7 @@ function rcMoveIcon(el) {
 // 좌표를 다시 찍으면 이 두 줄도 같이 갱신해야 한다.
 const MAP_ANCHORS = [
     { map: [-2.132, 3.181], plan: [ 80.4, 416.1] },   // dock
-    { map: [ 0.904, 0.275], plan: [630.5, 125.8] },   // room4.inside
+    { map: [ 0.882, 0.315], plan: [630.5, 125.8] },   // room4.inside
 ];
 
 const MAP_TF = (function () {

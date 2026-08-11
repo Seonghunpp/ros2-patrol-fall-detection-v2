@@ -21,6 +21,7 @@ try:
     from nav_msgs.msg import Odometry, Path
     from geometry_msgs.msg import Twist, PoseWithCovarianceStamped
     from std_srvs.srv import Trigger
+    from tf2_ros import Buffer, TransformListener
     ROS_AVAILABLE = True
 except Exception:
     ROS_AVAILABLE = False
@@ -356,12 +357,42 @@ class DashboardBridge(Node):
         self.pause_cli = self.create_client(Trigger, "/pause_navigation")
         self.resume_cli = self.create_client(Trigger, "/resume_navigation")
 
+        # ===== 로봇 현재 위치 =====
+        # /amcl_pose는 로봇이 '움직일 때만' 발행돼서, 정지 상태로 대시보드를 켜면
+        # 위치가 계속 비어 있었다(현재 위치·병실 표시가 안 뜸). TF는 멈춰 있어도
+        # 계속 나오므로 이쪽을 주 경로로 쓴다. amcl_pose 구독은 보조로 남겨둔다.
+        self.tf_buffer = Buffer()
+        self.tf_listener = TransformListener(self.tf_buffer, self)
+
+        # 화면 폴링이 1초라 그보다 조금 빠르게만 갱신하면 충분하다
+        self.create_timer(0.5, self.update_robot_pose)
+
         self.create_timer(1.0, self.check_network_callback)
         self.create_timer(1.0, self.check_movement_callback)
 
         self.get_logger().info("dashboard_bridge started")
 
+    def update_robot_pose(self):
+        """TF(map -> base_footprint)로 현재 위치를 읽는다.
+
+        정지 중에도 계속 나오므로, 로봇을 세워둔 채 대시보드를 켜도 위치가 뜬다.
+        Nav2/AMCL이 아직 안 떴으면 조회가 실패하는데, 그건 정상 상황이라 조용히 넘긴다.
+        """
+        global last_heartbeat
+
+        try:
+            tf = self.tf_buffer.lookup_transform(
+                "map", "base_footprint", rclpy.time.Time())
+        except Exception:
+            return
+
+        t = tf.transform.translation
+        state["robot_x"] = round(t.x, 3)
+        state["robot_y"] = round(t.y, 3)
+        last_heartbeat = time.time()
+
     def amcl_pose_callback(self, msg):
+        # TF가 주 경로. 이건 TF가 막혔을 때를 대비한 보조 (같은 AMCL 값이라 충돌 없음)
         global last_heartbeat
         last_heartbeat = time.time()
 
@@ -1694,7 +1725,12 @@ def api_robot_places():
     """이동 가능한 목적지 목록. 좌표·이름 모두 rooms.yaml이 원본이다."""
     places = load_places()
     if not places:
-        return jsonify({"ok": False, "error": "등록된 좌표가 없습니다.", "places": []}), 503
+        # 어느 파일을 못 읽었는지까지 알려줘야 원인을 찾을 수 있다
+        return jsonify({
+            "ok": False,
+            "error": f"등록된 좌표가 없습니다. ({ROOMS_YAML})",
+            "places": [],
+        }), 503
 
     return jsonify({
         "ok": True,
