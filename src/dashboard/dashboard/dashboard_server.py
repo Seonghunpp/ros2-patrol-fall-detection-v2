@@ -472,6 +472,7 @@ def api_login():
     username = str(body.get("username", "")).strip()
     password = str(body.get("password", ""))
     remember = bool(body.get("remember"))
+    login_role = str(body.get("role", ""))
 
     conn = get_db()
     cursor = conn.cursor(dictionary=True)
@@ -482,6 +483,11 @@ def api_login():
 
     if user is None or not check_password_hash(user["password_hash"], password):
         return jsonify({"ok": False, "error": "아이디 또는 비밀번호가 올바르지 않습니다."}), 401
+
+    # 로그인 탭(간호사/보호자)에서 고른 유형과 실제 계정 권한이 다르면 로그인을 막는다
+    expected_role = "admin" if login_role == "admin" else "user"
+    if user["role"] != expected_role:
+        return jsonify({"ok": False, "error": "선택한 로그인 유형과 계정이 일치하지 않습니다."}), 401
 
     session.permanent = remember
     session["user"] = user["username"]

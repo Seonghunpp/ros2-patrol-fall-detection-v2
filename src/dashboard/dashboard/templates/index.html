@@ -1694,6 +1694,9 @@ function setLoginRole(role) {
     if (!r) return;
     loginRole = role;
 
+    document.getElementById("login-id").value = "";
+    document.getElementById("login-pw").value = "";
+
     document.querySelectorAll(".login-tab").forEach(b => {
         b.classList.toggle("active", b.dataset.role === role);
     });
@@ -3123,7 +3126,7 @@ async function doLogin() {
         const res = await fetch("/api/login", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ username: id, password: pw, remember: auto })
+            body: JSON.stringify({ username: id, password: pw, remember: auto, role: loginRole })
         });
         data = await res.json();
         if (!res.ok || !data.ok) {
@@ -3143,6 +3146,7 @@ async function doLogin() {
     store.setItem(USER_KEY, data.username);
     document.getElementById("login-error").innerText = "";
     document.getElementById("login-pw").value = "";
+    document.getElementById("login-id").value = "";
     closeLogin();
     renderNav();
     if (toAppRole(data.role) === "admin") {
