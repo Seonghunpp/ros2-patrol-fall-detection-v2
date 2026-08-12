@@ -50,13 +50,14 @@
 - 마커의 좌우 오차와 화면 대비 크기를 계산하는 `marker_geometry()`
 - 병실 마커와 충전소 마커를 분리해 발행하는 함수
 
-### `patrol_node_v2.py`
+### `charging_return.py`
 
 - 충전소 마커 상태 변수 `charger_visible`, `latest_charger_offset`,
   `charger_offset_time`
 - `/charger_marker`, `/charger_offset` 구독과 콜백 함수
-- 최근 충전소 offset 수신 여부를 판단하는 `_charger_marker_visible()`
-- ID 249를 기준으로 미세 정렬하는 `align_to_charger()`
+- 최근 충전소 offset 수신 여부를 판단하는 `charger_marker_visible()`
+- 360도 범위에서 ID 249를 찾는 탐색 상태
+- ID 249를 기준으로 미세 정렬하는 정렬 상태
 - 정렬 완료 후 odom 기준 180도 회전
 - odom 최초 수신을 최대 3초 기다리는 처리
 - 성공 시 `충전중 ...` 로그와 `True`, 실패 시 정지 후 `False` 반환
@@ -88,11 +89,11 @@
 | `/odom` | 180도 회전량 측정 |
 | `/cmd_vel` | 제자리 회전 명령 발행 |
 
-## 현재 `align_to_charger()` 동작
+## 현재 충전소 정렬 동작
 
 1. ArUco 인식을 활성화한다.
-2. 정지 상태로 ID 249 입력을 최대 10초 기다린다.
-3. 마커가 보이면 `/charger_offset`을 이용해 중앙으로 미세 정렬한다.
+2. odom 기준 최대 360도 범위에서 ID 249를 탐색한다.
+3. 마커를 찾으면 회전을 멈추고 `/charger_offset`으로 중앙 정렬한다.
 4. 오차가 `±0.05` 이내이면 정지한다.
 5. ArUco 인식을 비활성화한다.
 6. `/odom`을 최대 3초 기다린다.
@@ -135,7 +136,7 @@ bringup과 카메라를 먼저 실행하고, 아래 두 명령은 각각 별도 
 | 실행 대상 | 명령어 |
 | --- | --- |
 | ArUco V2 노드 | `ros2 run my_patrol aruco_id` |
-| 충전소 정렬 단독 테스트 | `python3 -c "import rclpy; from my_patrol.patrol_node_v2 import MarkerListener; rclpy.init(); node=MarkerListener(); result=node.align_to_charger(timeout=30.0); print('result:', result); node.destroy_node(); rclpy.shutdown()"` |
+| 충전소 복귀 서비스 | `ros2 run my_patrol charging_return` |
 
 ID와 측정값은 다음 명령으로 확인한다.
 
@@ -148,9 +149,9 @@ ros2 topic echo /charger_size --once
 정상 로그 흐름:
 
 ```text
-충전소 마커 정렬 대기
-ID 249 마커를 기다리는 중 ...
-마커 중앙 정렬 완료, 180도 회전 시작
+ID 249 충전소 마커 탐색 시작
+ID 249 발견, 중앙 정렬 시작
+중앙 정렬 완료, 180도 회전 시작
 충전중 ...
 result: True
 ```

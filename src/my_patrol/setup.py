@@ -27,6 +27,7 @@ setup(
             'patrol = my_patrol.patrol_node_v2:main',
             'aruco_id = my_patrol.aruco_id_node_v2:main',
             'fall_detection = my_patrol.fall_detection_node:main',
+            'charging_return = my_patrol.charging_return:main',
         ],
     },
 )

@@ -1,290 +1,289 @@
 import cv2
-import logging
 import numpy as np
+from ultralytics import YOLO
 from pathlib import Path
 
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSHistoryPolicy
-
 from sensor_msgs.msg import CompressedImage
-from std_msgs.msg import String, Bool
-from std_srvs.srv import SetBool
 
-from ultralytics import YOLO
-
-
-logging.getLogger("ultralytics").setLevel(logging.ERROR)
-
+LEFT_SHOULDER = 5
+RIGHT_SHOULDER = 6
+LEFT_ELBOW = 7
+RIGHT_ELBOW = 8
+LEFT_HIP = 11
+RIGHT_HIP = 12
+LEFT_KNEE = 13
+RIGHT_KNEE = 14
 
 class FallJudge:
     def __init__(
         self,
-        lie_ratio=1.2, # 바운딩박스 가로/세로 비율이 이보다 크면 누움으로 판단
-        torso_ratio=1.0, # 몸통 관절(어깨↔엉덩이) 수평 여부 판단 기준 비율
-        keypoint_conf=0.23, # 관절 신뢰도 기준 (낮으면 수평 판단에서 제외)
-        threshold_count=10, # 연속 프레임 수평/누움 카운트가 이보다 크면 낙상으로 판단
+        body_ratio=1.0,          # 몸통 수평 판정 기준
+        keypoint_conf=0.25,      # 관절을 사용할 수 있는 최소 신뢰도
+        threshold_count=10,      # 낙상으로 확정할 연속 프레임 수
     ):
-        self.lie_ratio = lie_ratio
-        self.torso_ratio = torso_ratio
+        self.body_ratio = body_ratio
         self.keypoint_conf = keypoint_conf
         self.threshold_count = threshold_count
         self.fall_count = 0
 
-    def _check_torso_horizontal(self, keypoints, keypoint_scores):
-        required = (5, 6, 11, 12) #관절 번호
 
-        if keypoints is None or keypoint_scores is None:
+
+    def _is_keypoint_valid(self, keypoint_scores, index): #keypoint_scores 한 사람의 17개 관절 신뢰도 / index 확인할 관절 번호
+        if keypoint_scores is None:
             return False
 
-        if any(keypoint_scores[index] < self.keypoint_conf for index in required):
+        if index >= len(keypoint_scores):
             return False
 
-        shoulder_center = (keypoints[5] + keypoints[6]) / 2
-        hip_center = (keypoints[11] + keypoints[12]) / 2
+        return float(keypoint_scores[index]) >= self.keypoint_conf
 
-        dx, dy = np.abs(hip_center - shoulder_center)
+    def _get_joint_center(self, keypoints, left_index, right_index): # 좌우 관절의 가운데 좌표 계산
+        left_x, left_y = keypoints[left_index]
+        right_x, right_y = keypoints[right_index]
 
-        return dx > dy * self.torso_ratio
+        center_x = (left_x + right_x) / 2
+        center_y = (left_y + right_y) / 2
 
-    def check(self, x1, y1, x2, y2, keypoints, keypoint_scores):
-        person_w = x2 - x1
-        person_h = y2 - y1
-        bbox_horizontal = person_w > person_h * self.lie_ratio
-        torso_horizontal = self._is_torso_horizontal(keypoints, keypoint_scores)
+        return center_x, center_y
 
-        lying_pose = bbox_horizontal or torso_horizontal
+    def _is_horizontal(self, point_a, point_b): # 두 점이 수평인지 확인
+        x1, y1 = point_a
+        x2, y2 = point_b
 
-        return lying_pose, bbox_horizontal, torso_horizontal
+        x_distance = abs(x2 - x1)
+        y_distance = abs(y2 - y1)
 
+        return x_distance > y_distance * self.body_ratio
+
+    def _check_primary_joints(self, keypoints, keypoint_scores): # 어깨·골반으로 기본 수평 판정
+        required = (
+            LEFT_SHOULDER,
+            RIGHT_SHOULDER,
+            LEFT_HIP,
+            RIGHT_HIP,
+        )
+
+        for index in required:
+            if not self._is_keypoint_valid(keypoint_scores, index):
+                return None
+
+        shoulder_center = self._get_joint_center(
+            keypoints,
+            LEFT_SHOULDER,
+            RIGHT_SHOULDER,
+        )
+
+        hip_center = self._get_joint_center(
+            keypoints,
+            LEFT_HIP,
+            RIGHT_HIP,
+        )
+
+        return self._is_horizontal(
+            shoulder_center,
+            hip_center,
+        )
+
+    def _check_fallback_joints(self, keypoints, keypoint_scores): #기본 관절이 가리면 보조 관절로 판정
+        if (
+            self._is_keypoint_valid(keypoint_scores, LEFT_SHOULDER)
+            and self._is_keypoint_valid(keypoint_scores, LEFT_HIP)
+        ):
+            return self._is_horizontal(
+                keypoints[LEFT_SHOULDER],
+                keypoints[LEFT_HIP],
+            )
+
+        if (
+            self._is_keypoint_valid(keypoint_scores, RIGHT_SHOULDER)
+            and self._is_keypoint_valid(keypoint_scores, RIGHT_HIP)
+        ):
+            return self._is_horizontal(
+                keypoints[RIGHT_SHOULDER],
+                keypoints[RIGHT_HIP],
+            )
+
+        required = (
+            LEFT_ELBOW,
+            RIGHT_ELBOW,
+            LEFT_KNEE,
+            RIGHT_KNEE,
+        )
+
+        for index in required:
+            if not self._is_keypoint_valid(keypoint_scores, index):
+                return None
+
+        elbow_center = self._get_joint_center(
+            keypoints,
+            LEFT_ELBOW,
+            RIGHT_ELBOW,
+        )
+
+        knee_center = self._get_joint_center(
+            keypoints,
+            LEFT_KNEE,
+            RIGHT_KNEE,
+        )
+
+        return self._is_horizontal(
+            elbow_center,
+            knee_center,
+        )
+    
+    def _check_body_horizontal(self, keypoints, keypoint_scores): # 기본 판정 후 필요할 때 보조 판정 실행
+        primary_result = self._check_primary_joints(
+            keypoints,
+            keypoint_scores,
+        )
+
+        if primary_result is not None:
+            return primary_result
+
+        return self._check_fallback_joints(
+            keypoints,
+            keypoint_scores,
+        )
+    
+    def _update_fall_count(self, horizontal_result): # 수평이면 증가, 벗어나면 초기화
+        if horizontal_result:
+            self.fall_count += 1
+        else:
+            self.fall_count = 0 
+
+        return self.fall_count
+    
+    def _check_fall_threshold(self): # 카운트가 기준에 도달했는지 확인
+        return self.fall_count >= self.threshold_count
+    
 
 class FallDetectionNode(Node):
     def __init__(self):
         super().__init__("fall_detection_node")
 
-        default_model = str(Path.home() / "yolov8n-pose.pt")
+        default_model = str(                    # 욜로 모델 경로
+             Path(__file__).resolve().parent 
+            / "runs"
+            / "pose"
+            / "printed_patient_v2" 
+            / "weights" 
+            / "best.pt" 
+        )
         self.declare_parameter("model_path", default_model)
-        model_path = self.get_parameter("model_path").get_parameter_value().string_value
+
+        model_path = (                          # 욜로 모델 경로 가져오기
+            self.get_parameter("model_path")
+            .get_parameter_value()
+            .string_value
+        )
 
         self.model = YOLO(model_path)
         self.judge = FallJudge()
 
-        # 감지선: 화면 높이 * 비율 아래쪽(발 기준)만 감지
-        # 0.67 = 화면 위에서 2/3 지점 → 위 2/3는 감지 안 함, 아래 1/3만 감지
-        self.declare_parameter("detect_line_ratio", 0.67)
-        self.detect_line_ratio = (
-            self.get_parameter("detect_line_ratio").get_parameter_value().double_value
-        )
+        self.fall_image_dir = Path.home() / "fall_images"
+        self.fall_image_dir.mkdir(parents=True, exist_ok=True)
 
-        self.enabled = True
 
-        image_qos = QoSProfile(
+        image_qos = QoSProfile(                 # 이미지 구독 QoS 설정
             depth=1,
             reliability=QoSReliabilityPolicy.BEST_EFFORT,
             history=QoSHistoryPolicy.KEEP_LAST,
         )
-        self.image_sub = self.create_subscription(
+
+        self.image_sub = self.create_subscription(# 이미지 구독
             CompressedImage,
             "/image_raw/compressed",
             self.image_callback,
             image_qos,
         )
-        self.create_service(SetBool, "fall_enable", self.enable_callback)
 
-        self.status_pub = self.create_publisher(String, "/fall_status", 10)
-        self.fall_pub = self.create_publisher(Bool, "/fall_detected", 10)
-        self.annotated_image_pub = self.create_publisher(
-            CompressedImage, "/image_annotated/compressed", 10
+        self.annotated_image_pub = self.create_publisher(# 이미지 발행
+            CompressedImage,
+            "/image_annotated/compressed",
+            10,
         )
 
-        self.get_logger().info("fall_detection_node started")
-        self.get_logger().info(f"model path: {model_path}")
+    def _decode_image(self, compressed_image_msg):
+        np_arr = np.frombuffer(compressed_image_msg.data, np.uint8)
+        image = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
 
-    def enable_callback(self, request, response):
-        self.enabled = request.data
-        if self.enabled:
-            self.judge.fall_count = 0
-        state = "ON" if self.enabled else "OFF"
-        self.get_logger().info(f"fall detection {state}")
-        response.success = True
-        response.message = f"fall detection {state}"
-        return response
+        if image is None:
+            self.get_logger().warning("image decode failed")
+            return None
 
-    def image_callback(self, msg):
-        if not self.enabled:
-            return
+        return image
 
-        np_arr = np.frombuffer(msg.data, np.uint8)
-        frame = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+    def _run_pose_model(self, image):   # YOLO Pose 실행
+        result = self.model.predict(
+            image,
+            imgsz=640,
+            conf=0.25,
+            iou=0.20,
+            verbose=False,
+        )[0]
 
-        if frame is None:
-            self.get_logger().warn("image decode failed")
-            return
+        return result
 
-        # 감지선 y좌표 (발=박스 하단 y2가 이 선 아래인 사람만 감지)
-        line_y = int(frame.shape[0] * self.detect_line_ratio)
+    def _extract_persons(self, result):  # 사람별 박스와 해당 관절 묶기
+        boxes = getattr(result, "boxes", None)
+        keypoints = getattr(result, "keypoints", None)
 
-        results = self.model(frame, conf=0.23, imgsz=640, verbose=False)
+        return boxes, keypoints
 
-        person_detected = False
-        frame_has_lying_pose = False
-        final_status = "NO_PERSON"
-        final_fall_detected = False
-        detected_persons = []
+    def _save_fall_image(self, image): # 낙상감지시 이미지 저장
+        timestamp = self.get_clock().now().seconds
+        image_path = self.fall_image_dir / f"fall_{timestamp}.jpg"
 
-        for result in results:
-            frame = result.plot(boxes=False, labels=False)
+        saved = cv2.imwrite(str(image_path), image)
 
-            boxes = getattr(result, "boxes", None)
-            keypoints = getattr(result, "keypoints", None)
+        if not saved:
+            self.get_logger().error("fall image save failed")
+            return None
 
-            if boxes is None or keypoints is None:
-                continue
-            if len(boxes) == 0:
-                continue
-            if getattr(keypoints, "xy", None) is None or len(keypoints.xy) == 0:
-                continue
+        self.get_logger().info(f"fall image saved: {image_path}")
+        return image_path
 
-            keypoints_xy = (
-                keypoints.xy.cpu().numpy()
-                if hasattr(keypoints.xy, "cpu")
-                else np.array(keypoints.xy)
-            )
-            keypoints_conf = None
-            if getattr(keypoints, "conf", None) is not None:
-                keypoints_conf = (
-                    keypoints.conf.cpu().numpy()
-                    if hasattr(keypoints.conf, "cpu")
-                    else np.array(keypoints.conf)
-                )
+    def _draw_person_box(self, image, person, fall_detected):
+        x1, y1, x2, y2 = person["box"]
+        confidence = person["confidence"]
 
-            for index, box in enumerate(boxes):
-                try:
-                    conf = float(box.conf[0])
-                except Exception:
-                    conf = 1.0
-
-                if conf < 0.23:
-                    continue
-
-                xyxy = (
-                    box.xyxy[0].cpu().numpy()
-                    if hasattr(box.xyxy, "cpu")
-                    else box.xyxy[0]
-                )
-                x1, y1, x2, y2 = map(int, xyxy)
-
-                # 발(박스 하단 y2)이 감지선 위쪽이면 감지 x
-                if y2 < line_y:
-                    continue
-
-                person_detected = True
-
-                # keypoint 존재 여부로 유효한 감지 판단 (Pose 모델은 사람만 탐지)
-                if keypoints_conf is None:
-                    continue
-
-                if index >= len(keypoints_xy) or index >= len(keypoints_conf):
-                    continue
-
-                lying_pose, bbox_horizontal, torso_horizontal = self.judge.check(
-                    x1,
-                    y1,
-                    x2,
-                    y2,
-                    keypoints_xy[index],
-                    keypoints_conf[index],
-                )
-
-                if lying_pose:
-                    frame_has_lying_pose = True
-
-                person_w = x2 - x1
-                person_h = y2 - y1
-
-                detected_persons.append(
-                    (x1, y1, x2, y2, conf, bbox_horizontal, torso_horizontal, person_w, person_h)
-                )
-
-        if not person_detected:
-            self.judge.fall_count = 0
-            final_status = "NO_PERSON"
-            final_fall_detected = False
+        if fall_detected:
+            label = "FALL"
+            color = (0, 0, 255)
         else:
-            if frame_has_lying_pose:
-                self.judge.fall_count += 1
-            else:
-                self.judge.fall_count = 0
+            label = "PERSON"
+            color = (0, 255, 0)
 
-            if self.judge.fall_count >= self.judge.threshold_count:
-                final_status = "FALL"
-                final_fall_detected = True
-            else:
-                final_status = "PERSON"
-                final_fall_detected = False
+        cv2.rectangle(
+            image,
+            (x1, y1),
+            (x2, y2),
+            color,
+            2,
+        )
 
-        label = "FALL" if final_fall_detected else "PERSON"
-        color = (0, 0, 255) if final_fall_detected else (0, 255, 0)
+        text = (
+            f"{label} "
+            f"conf:{confidence:.2f} "
+            f"cnt:{self.judge.fall_count}"
+        )
 
-        for (x1, y1, x2, y2, conf, bbox_horizontal, torso_horizontal,
-             person_w, person_h) in detected_persons:
-            cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
-
-            text = (
-                f"{label} conf:{conf:.2f} "
-                f"box:{int(bbox_horizontal)} pose:{int(torso_horizontal)} "
-                f"cnt:{self.judge.fall_count}"  # 프레임 단위 수평/누움 카운트
-            )
-
-            cv2.putText(
-                frame,
-                text,
-                (x1, max(y1 - 10, 20)),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.6,
-                color,
-                2,
-            )
-
-            self.get_logger().info(
-                f"person conf={conf:.2f}, "
-                f"w={person_w}, h={person_h}, "
-                f"bbox_horizontal={bbox_horizontal}, "
-                f"torso_horizontal={torso_horizontal}, "
-                f"fall={final_fall_detected}"
-            )
-
-        # 감지 기준선은 대시보드 웹화면에 CSS로 표기
-
-        status_msg = String()
-        status_msg.data = final_status
-        self.status_pub.publish(status_msg)
-
-        fall_msg = Bool()
-        fall_msg.data = final_fall_detected
-        self.fall_pub.publish(fall_msg)
-
-        ok, encoded = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 90])
-        if ok:
-            annotated_msg = CompressedImage()
-            annotated_msg.header = msg.header
-            annotated_msg.format = "jpeg"
-            annotated_msg.data = encoded.tobytes()
-            self.annotated_image_pub.publish(annotated_msg)
+        cv2.putText(
+            image,
+            text,
+            (x1, max(y1 - 10, 20)),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.6,
+            color,
+            2,
+        )
 
 def main(args=None):
     rclpy.init(args=args)
-
     node = FallDetectionNode()
-
-    try:
-        rclpy.spin(node)
-    except KeyboardInterrupt:
-        pass
-    finally:
-        node.destroy_node()
-        if rclpy.ok():
-            rclpy.shutdown()
-
-if __name__ == "__main__":
-    main()
+    rclpy.spin(node)
+    node.destroy_node()
+    rclpy.shutdown()

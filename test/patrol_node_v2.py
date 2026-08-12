@@ -178,7 +178,7 @@ class MarkerListener(Node):
             self.get_logger().warn('충전소 마커 정렬 실패')
             return False
 
-        # 2. odom 기준 제자리 180도 회전
+        # 2. odom 기준 제자리 180도 회전_draw_per_draw_per
         odom_wait_end = time.time() + 3.0
         while self.yaw is None and time.time() < odom_wait_end and rclpy.ok():
             self.cmd_pub.publish(Twist())
