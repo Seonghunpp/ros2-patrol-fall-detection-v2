@@ -21,6 +21,7 @@ try:
     from nav_msgs.msg import Odometry, Path
     from geometry_msgs.msg import Twist, PoseWithCovarianceStamped
     from std_srvs.srv import Trigger
+    from tf2_ros import Buffer, TransformListener
     ROS_AVAILABLE = True
 except Exception:
     ROS_AVAILABLE = False
@@ -134,10 +135,17 @@ state = {
     "path": [],
     "robot_status": "대기 중",
     "fall_status": "정상",
+    # odom이 알려주는 실주행 속도(m/s, rad/s). 명령값(cmd_vel)이 아니라 실제로 움직인 값
+    "speed": 0.0,
+    "angular_speed": 0.0,
     "battery": "배터리 대기",
+    "speed": 0.0,
+    "angular_speed": 0.0,
     "camera": "카메라 대기",
     "network": "네트워크 대기",
     "fall_alert_id": 0,
+    # 이동을 일시정지한 상태인지. 화면에서 버튼 표시를 바꾸는 데 쓴다
+    "robot_paused": False,
     "events": []
 }
 
@@ -345,12 +353,46 @@ class DashboardBridge(Node):
             for key in load_places()
         }
 
+        # 이동 중 일시정지 / 이어서 이동. 일시정지해야 다른 목적지를 찍을 수 있다
+        self.pause_cli = self.create_client(Trigger, "/pause_navigation")
+        self.resume_cli = self.create_client(Trigger, "/resume_navigation")
+
+        # ===== 로봇 현재 위치 =====
+        # /amcl_pose는 로봇이 '움직일 때만' 발행돼서, 정지 상태로 대시보드를 켜면
+        # 위치가 계속 비어 있었다(현재 위치·병실 표시가 안 뜸). TF는 멈춰 있어도
+        # 계속 나오므로 이쪽을 주 경로로 쓴다. amcl_pose 구독은 보조로 남겨둔다.
+        self.tf_buffer = Buffer()
+        self.tf_listener = TransformListener(self.tf_buffer, self)
+
+        # 화면 폴링이 1초라 그보다 조금 빠르게만 갱신하면 충분하다
+        self.create_timer(0.5, self.update_robot_pose)
+
         self.create_timer(1.0, self.check_network_callback)
         self.create_timer(1.0, self.check_movement_callback)
 
         self.get_logger().info("dashboard_bridge started")
 
+    def update_robot_pose(self):
+        """TF(map -> base_footprint)로 현재 위치를 읽는다.
+
+        정지 중에도 계속 나오므로, 로봇을 세워둔 채 대시보드를 켜도 위치가 뜬다.
+        Nav2/AMCL이 아직 안 떴으면 조회가 실패하는데, 그건 정상 상황이라 조용히 넘긴다.
+        """
+        global last_heartbeat
+
+        try:
+            tf = self.tf_buffer.lookup_transform(
+                "map", "base_footprint", rclpy.time.Time())
+        except Exception:
+            return
+
+        t = tf.transform.translation
+        state["robot_x"] = round(t.x, 3)
+        state["robot_y"] = round(t.y, 3)
+        last_heartbeat = time.time()
+
     def amcl_pose_callback(self, msg):
+        # TF가 주 경로. 이건 TF가 막혔을 때를 대비한 보조 (같은 AMCL 값이라 충돌 없음)
         global last_heartbeat
         last_heartbeat = time.time()
 
@@ -379,11 +421,7 @@ class DashboardBridge(Node):
 
         state["path"] = pts
 
-    def request_goto(self, place, timeout=3.0):
-        client = self.goto_cli.get(place)
-        if client is None:
-            return False, "알 수 없는 목적지입니다."
-
+    def _call_trigger(self, client, timeout=3.0):
         if not client.wait_for_service(timeout_sec=0.5):
             return False, "로봇 제어 노드에 연결할 수 없습니다."
 
@@ -398,6 +436,18 @@ class DashboardBridge(Node):
         if result is None:
             return False, "로봇 응답을 받지 못했습니다."
         return result.success, result.message
+
+    def request_goto(self, place, timeout=3.0):
+        client = self.goto_cli.get(place)
+        if client is None:
+            return False, "알 수 없는 목적지입니다."
+        return self._call_trigger(client, timeout)
+
+    def request_pause(self, timeout=3.0):
+        return self._call_trigger(self.pause_cli, timeout)
+
+    def request_resume(self, timeout=3.0):
+        return self._call_trigger(self.resume_cli, timeout)
 
 
     def check_network_callback(self):
@@ -447,6 +497,13 @@ class DashboardBridge(Node):
         last_odom_linear = msg.twist.twist.linear.x
         last_odom_angular = msg.twist.twist.angular.z
 
+        # 후진도 있으므로 크기만 쓴다 (화면에 음수 속도를 보여줄 이유가 없음)
+        state["speed"] = round(abs(last_odom_linear), 2)
+        state["angular_speed"] = round(abs(last_odom_angular), 2)
+
+        state["speed"] = round(abs(last_odom_linear), 2)
+        state["angular_speed"] = round(abs(last_odom_angular), 2)
+
     def cmd_vel_callback(self, msg):
         global last_heartbeat, last_cmd_vel_linear, last_cmd_vel_angular, last_cmd_vel_time
         last_heartbeat = time.time()
@@ -467,9 +524,18 @@ class DashboardBridge(Node):
 
         state["robot_status"] = "이동 중" if (odom_moving or cmd_vel_moving) else "대기 중"
 
+        # 정지로 판정되면 속도도 0으로 떨어뜨린다.
+        # odom이 끊기면 odom_callback이 안 불려서 마지막 속도가 화면에 남는다
+        if not (odom_moving or cmd_vel_moving):
+            state["speed"] = 0.0
+            state["angular_speed"] = 0.0
+
         # Nav2가 경로를 그만 내보내면 주행이 끝난 것. 지워야 화면에 옛 경로가 남지 않는다
         if state["path"] and (time.time() - last_plan_time) > PLAN_STALE_SEC:
             state["path"] = []
+        if not (odom_moving or cmd_vel_moving):
+            state["speed"] = 0.0
+            state["angular_speed"] = 0.0
 
     def fall_status_callback(self, msg):
         global last_fall_event_time
@@ -490,7 +556,15 @@ class DashboardBridge(Node):
         global last_heartbeat
         last_heartbeat = time.time()
 
-        battery_percent = int(round(msg.percentage))
+        # sensor_msgs/BatteryState 표준은 percentage가 0.0~1.0인데, TurtleBot3(OpenCR)
+        # 펌웨어 버전에 따라 0~100으로 주기도 한다. 어느 쪽이 와도 맞게 환산한다.
+        # ※ 0~1 스케일이면 실제 1%(0.01)도 1%로 나오므로 문제없지만,
+        #   0~100 스케일에서 진짜 1%일 때만 100%로 잘못 보인다 (거의 방전 직전 한순간)
+        percentage = float(msg.percentage)
+        if percentage <= 1.0:
+            percentage *= 100.0
+
+        battery_percent = max(0, min(100, int(round(percentage))))
         state["battery"] = f"{battery_percent}%"
 
 
@@ -1434,6 +1508,57 @@ STATS_RISK_RANK = {"매우 높음": 4, "높음": 3, "보통": 2, "낮음": 1}
 STATS_RISK_CLASS = {"매우 높음": "critical", "높음": "high", "보통": "mid", "낮음": "low"}
 
 
+@app.route("/api/rooms/summary")
+@login_required
+def api_rooms_summary():
+    """병실별 낙상 건수 · 순찰 횟수. 병실 모니터링 화면이 쓴다.
+
+    통계 탭의 /api/stats/admin은 차트 6종을 한꺼번에 만드느라 무거워서,
+    병실 카드에 필요한 두 숫자만 따로 뽑는다.
+    """
+    conn = get_db()
+    cursor = conn.cursor()
+
+    cursor.execute(
+        "SELECT room_number, COUNT(*) FROM fall_log "
+        "WHERE room_number IS NOT NULL GROUP BY room_number"
+    )
+    falls = dict(cursor.fetchall())
+
+    cursor.execute(
+        "SELECT room_number, COUNT(*) FROM patrol_log "
+        "WHERE room_number IS NOT NULL GROUP BY room_number"
+    )
+    patrols = dict(cursor.fetchall())
+
+    cursor.execute(
+        "SELECT room_number, COUNT(*) FROM patrol_log "
+        "WHERE room_number IS NOT NULL AND DATE(patrolled_at) = CURDATE() "
+        "GROUP BY room_number"
+    )
+    patrols_today = dict(cursor.fetchall())
+
+    cursor.close()
+    conn.close()
+
+    # 등록된 병실은 기록이 하나도 없어도 0으로 항상 내려준다 (카드가 사라지면 안 됨).
+    # 반대로 로그에만 있는 병실도 빠뜨리지 않는다
+    rooms = sorted(PATIENT_ROOM_NUMBERS | set(falls) | set(patrols))
+
+    return jsonify({
+        "ok": True,
+        "rooms": [
+            {
+                "room": room,
+                "falls": falls.get(room, 0),
+                "patrols": patrols.get(room, 0),
+                "patrols_today": patrols_today.get(room, 0),
+            }
+            for room in rooms
+        ],
+    })
+
+
 @app.route("/api/stats/admin")
 @login_required
 def api_stats_admin():
@@ -1600,7 +1725,12 @@ def api_robot_places():
     """이동 가능한 목적지 목록. 좌표·이름 모두 rooms.yaml이 원본이다."""
     places = load_places()
     if not places:
-        return jsonify({"ok": False, "error": "등록된 좌표가 없습니다.", "places": []}), 503
+        # 어느 파일을 못 읽었는지까지 알려줘야 원인을 찾을 수 있다
+        return jsonify({
+            "ok": False,
+            "error": f"등록된 좌표가 없습니다. ({ROOMS_YAML})",
+            "places": [],
+        }), 503
 
     return jsonify({
         "ok": True,
@@ -1624,9 +1754,42 @@ def api_robot_goto(place):
     ok, message = bridge_node.request_goto(place)
     if ok:
         add_event(f"{label} 이동 명령")
+        state["robot_paused"] = False   # 새 목적지로 출발했으니 일시정지 해제
 
     # 이미 이동 중이라 거절된 건 서버 장애가 아니라 "지금 상태에선 불가"라서 409
     return jsonify({"ok": ok, "message": message, "label": label}), (200 if ok else 409)
+
+
+@app.route("/api/robot/pause", methods=["POST"])
+@login_required
+def api_robot_pause():
+    if not _is_admin():
+        return jsonify({"ok": False, "error": "권한이 없습니다."}), 403
+    if bridge_node is None:
+        return jsonify({"ok": False, "error": "ROS2에 연결되지 않았습니다."}), 503
+
+    ok, message = bridge_node.request_pause()
+    if ok:
+        add_event("이동 일시정지")
+        state["robot_paused"] = True
+
+    return jsonify({"ok": ok, "message": message}), (200 if ok else 409)
+
+
+@app.route("/api/robot/resume", methods=["POST"])
+@login_required
+def api_robot_resume():
+    if not _is_admin():
+        return jsonify({"ok": False, "error": "권한이 없습니다."}), 403
+    if bridge_node is None:
+        return jsonify({"ok": False, "error": "ROS2에 연결되지 않았습니다."}), 503
+
+    ok, message = bridge_node.request_resume()
+    if ok:
+        add_event("이동 재개")
+        state["robot_paused"] = False
+
+    return jsonify({"ok": ok, "message": message}), (200 if ok else 409)
 
 def ros_spin():
     global bridge_node

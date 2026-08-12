@@ -706,7 +706,7 @@
             <div class="stat-tile a-tile-danger"><span class="stat-tile-label">위험 병실</span><span class="stat-tile-num" style="color:#e5484d;" id="a-stat-risk-rooms">0<span class="stat-tile-unit">실</span></span><span class="stat-tile-sub">고위험군 재실</span></div>
             <div class="stat-tile"><span class="stat-tile-label">오늘 낙상</span><span class="stat-tile-num" id="a-stat-today-falls">0<span class="stat-tile-unit">건</span></span><span class="stat-tile-sub">당일 누적</span></div>
             <div class="stat-tile"><span class="stat-tile-label">Robot 상태</span><span class="stat-tile-num" style="color:#1a9d43;" id="stat-robot-state">순찰 중</span><span class="stat-tile-sub" id="stat-current-room">101호 순찰</span></div>
-            <div class="stat-tile"><span class="stat-tile-label">배터리</span><span class="stat-tile-num" id="stat-battery">82%</span><span class="stat-tile-sub">충전 복귀 30% 이하</span></div>
+            <div class="stat-tile"><span class="stat-tile-label">배터리</span><span class="stat-tile-num" id="stat-battery">-</span><span class="stat-tile-sub">충전 복귀 30% 이하</span></div>
             <div class="stat-tile"><span class="stat-tile-label">긴급 알림</span><span class="stat-tile-num" style="color:#e5484d;">0<span class="stat-tile-unit">건</span></span><span class="stat-tile-sub">미처리 기준</span></div>
         </div>
         <div class="ahome-grid">
@@ -745,7 +745,7 @@
             <aside class="mon-side">
                 <section class="mon-block">
                     <h3 class="mon-title">로봇 상태</h3>
-                    <div class="mon-conn"><span class="mon-dot"></span>연결됨</div>
+                    <div class="mon-conn"><span class="mon-dot"></span><span id="mon-conn-text">-</span></div>
                     <dl class="mon-kv">
                         <div><dt>이동 상태</dt><dd id="robot-status">-</dd></div>
                         <div><dt>카메라</dt><dd id="camera">-</dd></div>
@@ -755,7 +755,7 @@
                         <div class="mon-batt-head">
                             <span>배터리</span><strong id="battery">-</strong>
                         </div>
-                        <div class="mon-batt-bar"><span id="battery-bar" style="width:82%"></span></div>
+                        <div class="mon-batt-bar"><span id="battery-bar" style="width:0%"></span></div>
                     </div>
                 </section>
 
@@ -763,14 +763,19 @@
                     <h3 class="mon-title">현재 위치</h3>
                     <p class="mon-loc" id="current-room-text">-</p>
                     <div class="mon-rooms">
-                        <!-- 병상 유형은 ROOM_INFO가 원본. syncRoomLabels()가 아래 span을 덮어쓴다 -->
-                        <div class="room" id="room-101"><strong>101</strong><span>1인실</span></div>
-                        <div class="room" id="room-102"><strong>102</strong><span>2인실</span></div>
-                        <div class="room" id="room-103"><strong>103</strong><span>2인실</span></div>
-                        <div class="room" id="room-104"><strong>104</strong><span>4인실</span></div>
+                        <!-- 병상 유형은 ROOM_INFO가 원본. syncRoomLabels()가 아래 span을 덮어쓴다.
+                             room-tally(낙상·순찰 수치)와 낙상 위험 배경색은 renderRoomTally()가 채운다 -->
+                        <div class="room" id="room-101"><strong>101</strong><span>1인실</span>
+                            <em class="room-tally" id="tally-101">-</em></div>
+                        <div class="room" id="room-102"><strong>102</strong><span>2인실</span>
+                            <em class="room-tally" id="tally-102">-</em></div>
+                        <div class="room" id="room-103"><strong>103</strong><span>2인실</span>
+                            <em class="room-tally" id="tally-103">-</em></div>
+                        <div class="room" id="room-104"><strong>104</strong><span>4인실</span>
+                            <em class="room-tally" id="tally-104">-</em></div>
                         <div class="robot-marker" id="robot-marker" style="display:none;">🤖</div>
                     </div>
-                    <p class="mon-note">순찰 중인 병실이 파랗게 표시됩니다.</p>
+                    <p class="mon-note">로봇이 있는 병실이 파랗게, 낙상이 잦은 병실이 붉게 표시됩니다.</p>
                 </section>
             </aside>
 
@@ -882,9 +887,9 @@
             <div class="a-hero-copy">
                 <span class="a-hero-eyebrow">DABOM ADMIN · 제어 권한</span>
                 <h2>Robot Control</h2>
-                <p>순찰 로봇의 주행을 원격으로 관제합니다. (※ 데모 — 실제 제어는 로봇 API 연동)</p>
+                <p>순찰 로봇의 주행을 원격으로 관제합니다.</p>
             </div>
-            <span class="a-chip a-chip-ok"><i></i>연결됨 · 지연 42ms</span>
+            <span class="a-chip a-chip-ok" id="rc-conn-chip"><i></i><span id="rc-conn-chip-text">-</span></span>
         </header>
         <div class="rc-layout">
             <!-- 중앙: 지도에서 목적지를 눌러 이동 -->
@@ -920,27 +925,27 @@
                             <!-- 병실 4개 (왼쪽부터 101 → 104). data-x/data-y = 실측 inside 위치 -->
                             <g class="rc-spot" data-place="room1" data-dest="병실 101" data-x="90.3" data-y="125.8"
                                onclick="rcGoTo(this)" tabindex="0" role="button" aria-label="병실 101로 이동">
-                                <rect class="rc-room" x="7" y="7" width="161" height="222" rx="3"/>
-                                <text class="rc-num" x="87" y="110">101</text>
-                                <text class="rc-sub" x="87" y="136">1인실</text>
+                                <rect class="rc-room" x="7" y="7" width="161" height="250" rx="3"/>
+                                <text class="rc-num" x="87" y="124">101</text>
+                                <text class="rc-sub" x="87" y="150">1인실</text>
                             </g>
                             <g class="rc-spot" data-place="room2" data-dest="병실 102" data-x="258.5" data-y="124.6"
                                onclick="rcGoTo(this)" tabindex="0" role="button" aria-label="병실 102로 이동">
-                                <rect class="rc-room" x="180" y="7" width="168" height="222" rx="3"/>
-                                <text class="rc-num" x="264" y="110">102</text>
-                                <text class="rc-sub" x="264" y="136">2인실</text>
+                                <rect class="rc-room" x="180" y="7" width="168" height="250" rx="3"/>
+                                <text class="rc-num" x="264" y="124">102</text>
+                                <text class="rc-sub" x="264" y="150">2인실</text>
                             </g>
                             <g class="rc-spot" data-place="room3" data-dest="병실 103" data-x="448.5" data-y="109.3"
                                onclick="rcGoTo(this)" tabindex="0" role="button" aria-label="병실 103로 이동">
-                                <rect class="rc-room" x="360" y="7" width="174" height="222" rx="3"/>
-                                <text class="rc-num" x="447" y="110">103</text>
-                                <text class="rc-sub" x="447" y="136">2인실</text>
+                                <rect class="rc-room" x="360" y="7" width="174" height="250" rx="3"/>
+                                <text class="rc-num" x="447" y="124">103</text>
+                                <text class="rc-sub" x="447" y="150">2인실</text>
                             </g>
                             <g class="rc-spot" data-place="room4" data-dest="병실 104" data-x="630.5" data-y="125.8"
                                onclick="rcGoTo(this)" tabindex="0" role="button" aria-label="병실 104로 이동">
-                                <rect class="rc-room" x="546" y="7" width="167" height="222" rx="3"/>
-                                <text class="rc-num" x="629" y="110">104</text>
-                                <text class="rc-sub" x="629" y="136">4인실</text>
+                                <rect class="rc-room" x="546" y="7" width="167" height="250" rx="3"/>
+                                <text class="rc-num" x="629" y="124">104</text>
+                                <text class="rc-sub" x="629" y="150">4인실</text>
                             </g>
 
                             <!-- 충전 스테이션 — 좌측 끝, 좌·하 벽에 붙음 -->
@@ -963,12 +968,16 @@
                                  출입구는 실측 hall 지점 바로 위에 뚫어서, 로봇이 지나는
                                  자리와 문 위치가 화면에서도 맞아떨어지게 했다 -->
                             <rect class="rc-wall" x="0" y="0" width="720" height="451" rx="7"/>
-                            <path class="rc-wall rc-wall-in" d="M174 0 V229 M354 0 V229 M540 0 V229"/>
+                            <path class="rc-wall rc-wall-in" d="M174 0 V257 M354 0 V257 M540 0 V257"/>
+                            <!-- 출입구 폭 96. 벽이 끊긴 구간의 중심을 실측 hall 좌표의
+                                 도면 x에 맞췄다 (91.2 / 260.3 / 442.4 / 634.0).
+                                 로봇이 문을 지나는 자리와 그림의 문 위치가 일치한다.
+                                 ※ 좌표를 다시 찍으면 MAP_ANCHORS와 함께 이 값도 갱신 -->
                             <path class="rc-wall rc-wall-door"
-                                  d="M7 229 H58    M122 229 H168
-                                     M180 229 H245 M309 229 H348
-                                     M360 229 H420 M484 229 H534
-                                     M546 229 H609 M673 229 H713"/>
+                                  d="M7 257 H43    M139 257 H168
+                                     M180 257 H212 M308 257 H348
+                                     M360 257 H394 M490 257 H534
+                                     M546 257 H586 M682 257 H713"/>
 
                             <!-- Nav2가 계획한 경로. 점 목록은 updateStatus()가 채운다 -->
                             <polyline class="rc-path" id="rc-path" points=""/>
@@ -984,7 +993,7 @@
 
                 <div class="rc-route">
                     <div class="rc-route-item">
-                        <span class="rc-route-label">출발지</span>
+                        <span class="rc-route-label">현재 위치</span>
                         <strong id="rc-cur">—</strong>
                     </div>
                     <span class="rc-route-arrow" aria-hidden="true"></span>
@@ -1001,15 +1010,17 @@
             <aside class="rc-side">
                 <section class="mon-block">
                     <h3 class="mon-title">로봇 상태</h3>
-                    <div class="mon-conn"><span class="mon-dot"></span>연결됨 · 지연 42ms</div>
+                    <!-- 초기값은 전부 "-". 그럴듯한 값을 넣어두면 로봇이 꺼져 있거나
+                         /api/status가 실패했을 때 가짜 데이터가 진짜처럼 보인다 -->
+                    <div class="mon-conn"><span class="mon-dot"></span><span id="rc-conn">-</span></div>
                     <dl class="mon-kv">
-                        <div><dt>이동 상태</dt><dd id="rc-state">순찰 중</dd></div>
-                        <div><dt>현재 속도</dt><dd>0.4 m/s</dd></div>
-                        <div><dt>현재 위치</dt><dd id="rc-cur2">병실 101</dd></div>
+                        <div><dt>이동 상태</dt><dd id="rc-state">-</dd></div>
+                        <div><dt>현재 속도</dt><dd id="rc-speed">-</dd></div>
+                        <div><dt>현재 위치</dt><dd id="rc-cur2">-</dd></div>
                     </dl>
                     <div class="mon-batt">
-                        <div class="mon-batt-head"><span>배터리</span><strong>82%</strong></div>
-                        <div class="mon-batt-bar"><span style="width:82%"></span></div>
+                        <div class="mon-batt-head"><span>배터리</span><strong id="rc-battery">-</strong></div>
+                        <div class="mon-batt-bar"><span id="rc-battery-bar" style="width:0%"></span></div>
                     </div>
                 </section>
 
@@ -1017,7 +1028,8 @@
                     <h3 class="mon-title">순찰 제어</h3>
                     <div class="rc-btns">
                         <button class="rc-btn rc-btn-primary" onclick="rcCommand('순찰 시작', '순찰 중')">순찰 시작</button>
-                        <button class="rc-btn" onclick="rcCommand('일시정지', '일시정지')">일시정지</button>
+                        <!-- 라벨은 rcSyncPauseButton()이 일시정지 상태에 맞춰 바꾼다 -->
+                        <button class="rc-btn" id="rc-pause-btn" onclick="rcTogglePause()">일시정지</button>
                         <button class="rc-btn" onclick="rcGoDest('standby')">대기 장소로 이동</button>
                         <button class="rc-btn" onclick="rcGoDest('dock')">충전 스테이션으로 이동</button>
                     </div>
@@ -3281,6 +3293,62 @@ function switchVideo(mode) {
     }
 }
 
+// 배터리 표시(숫자 + 막대) 한 쌍을 갱신한다.
+// 모니터링 탭과 Robot Control이 같은 값을 서로 다른 element에 그려서 함수로 뺐다.
+// 30% 이하 주의(low), 15% 이하 위험(crit) — 색은 style.css가 정한다
+function renderBattery(textId, barId, battery) {
+    const text = document.getElementById(textId);
+    if (text) { text.innerText = battery; }
+
+    const bar = document.getElementById(barId);
+    if (!bar) { return; }
+
+    const pct = parseInt(String(battery).replace(/[^0-9]/g, ""), 10);
+    if (isNaN(pct)) {
+        // "배터리 대기" 처럼 숫자가 없으면 막대를 비운다
+        bar.style.width = "0%";
+        bar.className = "";
+        return;
+    }
+
+    bar.style.width = pct + "%";
+    bar.className = pct <= 15 ? "crit" : pct <= 30 ? "low" : "";
+}
+
+// ===== 병실별 낙상 · 순찰 집계 =====
+// 병실 카드에 "순찰 n회 · 낙상 n건"을 적고, 낙상이 잦은 병실일수록 붉게 칠한다.
+// 절대 건수가 아니라 '가장 많은 병실 대비 비율'로 칠하는 이유: 운영 초기에는
+// 전체 건수가 적어서 고정 기준(예: 5건 이상 빨강)으로는 아무 색도 안 나온다.
+async function renderRoomTally() {
+    try {
+        const res = await fetch("/api/rooms/summary");
+        const data = await res.json();
+        if (!data.ok) { return; }
+
+        const maxFalls = Math.max(0, ...data.rooms.map(r => r.falls));
+
+        data.rooms.forEach(r => {
+            const tally = document.getElementById("tally-" + r.room);
+            if (tally) {
+                tally.innerText = `순찰 ${r.patrols}회 · 낙상 ${r.falls}건`;
+                tally.title = `오늘 순찰 ${r.patrols_today}회`;
+            }
+
+            const cell = document.getElementById("room-" + r.room);
+            if (!cell) { return; }
+
+            cell.classList.remove("fall-low", "fall-mid", "fall-high");
+            if (!r.falls) { return; }   // 0건이면 색 없음
+
+            const ratio = r.falls / maxFalls;
+            cell.classList.add(
+                ratio > 0.66 ? "fall-high" : ratio > 0.33 ? "fall-mid" : "fall-low");
+        });
+    } catch (e) {
+        console.error(e);
+    }
+}
+
 async function updateStatus() {
     try {
         const res = await fetch("/api/status");
@@ -3291,27 +3359,36 @@ async function updateStatus() {
             room.classList.remove("active-room");
         });
 
-        const room = document.getElementById("room-" + data.current_room);
-        const robotMarker = document.getElementById("robot-marker");  // * 로봇 위치 추적 수정 *
+        // 로봇이 있는 병실은 실제 좌표로 판정한다. ArUco 마커(current_room)는 마커를
+        // 다시 볼 때까지 값이 안 바뀌어서, 병실을 나온 뒤에도 그 병실에 남아 보였다
+        const robotRoom = robotRoomNumber(data);
+
+        const room = document.getElementById("room-" + robotRoom);
+        const robotMarker = document.getElementById("robot-marker");
         if (room) {
             room.classList.add("active-room");
-            room.appendChild(robotMarker);  // * 로봇 위치 추적 수정 *
-            robotMarker.style.display = "block";  // * 로봇 위치 추적 수정 *
+            room.appendChild(robotMarker);
+            robotMarker.style.display = "block";
         } else {
-            robotMarker.style.display = "none";  // * 로봇 위치 추적 수정 *
+            robotMarker.style.display = "none";   // 복도 등 병실 밖
         }
 
         // 로봇 제어 지도의 실시간 위치. 폴링 간격(1초)에 맞춰 CSS가 사이를 이어 그린다
         if (typeof data.robot_x === "number" && typeof data.robot_y === "number") {
             rcPlaceRobotByMap(data.robot_x, data.robot_y);
             rcSetMapLive(true);
+            // 현재 위치는 마커가 아니라 실제 좌표가 어느 구역에 드는지로 정한다
+            const zoneKey = rcZoneKeyByMap(data.robot_x, data.robot_y);
+            rcSetCurrent(zoneKey === undefined ? "위치 확인 중" : rcZoneLabel(zoneKey));
         } else {
             rcSetMapLive(false);   // AMCL 없음 → 마지막 위치를 흐리게
+            rcSetCurrent("위치 확인 중");
         }
 
         rcDrawPath(data.path);                      // Nav2 경로
-        rcSetState(data.robot_status);              // 실제 이동 상태로 덮어씀
-        rcSetCurrent(room ? "병실 " + data.current_room : "위치 확인 중");
+        rcSyncPauseButton(!!data.robot_paused);     // 새로고침해도 버튼 라벨이 맞도록
+        // 일시정지 중에는 로봇이 안 움직여 "대기 중"으로 잡히므로 구분해서 보여준다
+        rcSetState(data.robot_paused ? "일시정지" : data.robot_status);
 
         lastYoloSignal = data.yolo_signal;
         if (currentVideoMode === "yolo") {
@@ -3322,6 +3399,7 @@ async function updateStatus() {
             lastSeenAlertId = data.fall_alert_id;  // * 팝업 부분 수정 *
         } else if (data.fall_alert_id !== lastSeenAlertId) {  // * 팝업 부분 수정 *
             lastSeenAlertId = data.fall_alert_id;  // * 팝업 부분 수정 *
+            renderRoomTally();   // 낙상이 새로 났으니 병실 색·건수를 30초 기다리지 말고 갱신
             // 관리자 계정에만 낙상 팝업을 띄운다
             if (currentRole() === "admin") {
                 showFallAlert(data.current_room);  // * 팝업 부분 수정 *
@@ -3330,23 +3408,38 @@ async function updateStatus() {
 
         document.getElementById("robot-status").innerText = data.robot_status;
         document.getElementById("fall-status").innerText = data.fall_status;
-        document.getElementById("battery").innerText = data.battery;
         document.getElementById("camera").innerText = data.camera;
         document.getElementById("network").innerText = data.network;
-        const locText = room ? "병실 " + data.current_room : "위치 확인 중";
+        const hasPos = typeof data.robot_x === "number" && typeof data.robot_y === "number";
+        const locText = robotRoom ? "병실 " + robotRoom : (hasPos ? "복도" : "위치 확인 중");
         document.getElementById("current-room-text").innerText = locText;
 
         // 모니터링 콘솔: 영상 위 병실 표기 · 배터리 막대 · 낙상 강조
         const stageRoom = document.getElementById("mon-stage-room");
         if (stageRoom) stageRoom.innerText = locText;
 
-        const bar = document.getElementById("battery-bar");
-        if (bar) {
-            const pct = parseInt(String(data.battery).replace(/[^0-9]/g, ""), 10);
-            if (!isNaN(pct)) {
-                bar.style.width = pct + "%";
-                bar.className = pct <= 15 ? "crit" : pct <= 30 ? "low" : "";
-            }
+        // 배터리 · 속도 · 연결 상태 (모니터링 탭과 Robot Control 양쪽)
+        renderBattery("battery", "battery-bar", data.battery);
+        renderBattery("rc-battery", "rc-battery-bar", data.battery);
+
+        const speedEl = document.getElementById("rc-speed");
+        if (speedEl) {
+            speedEl.innerText = typeof data.speed === "number"
+                ? data.speed.toFixed(2) + " m/s" : "-";
+        }
+
+        // 로봇에서 데이터가 들어오는지 여부. 하드코딩된 "연결됨"을 대체한다
+        const connected = data.network === "네트워크 연결";
+        ["mon-conn-text", "rc-conn", "rc-conn-chip-text"].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) { el.innerText = data.network; }
+        });
+
+        // 끊기면 칩 색도 경고로 (초록 그대로면 끊긴 걸 못 알아챈다)
+        const connChip = document.getElementById("rc-conn-chip");
+        if (connChip) {
+            connChip.classList.toggle("a-chip-ok", connected);
+            connChip.classList.toggle("a-chip-warn", !connected);
         }
 
         const fallBox = document.getElementById("mon-fall-box");
@@ -3397,6 +3490,10 @@ async function updateStatus() {
 
 setInterval(updateStatus, 1000);
 updateStatus();
+
+// 순찰·낙상 집계는 DB 조회라 1초마다 돌릴 필요가 없다 (순찰 1회에 수십 초 단위)
+setInterval(renderRoomTally, 30000);
+renderRoomTally();
 
 // 보호자 환자 상태(확정 낙상 → 10분 후 주의)는 분 단위로 바뀌므로 20초마다 갱신
 setInterval(refreshGuardianFallState, 20000);
@@ -3968,8 +4065,8 @@ function renderSettingsTheme() {
 
 // ===== Robot Control 토스트 =====
 /* ----- Robot Control -----
-   지도에서 목적지를 눌러 이동시킨다. (※ 데모 — 실제 주행 명령은 로봇 API 연동)
-   TODO(백엔드): POST /api/robot/goto  { waypoint: "wp_101" } 등으로 교체 */
+   지도에서 목적지를 누르면 POST /api/robot/goto/<place> 로 실제 이동 명령이 나간다.
+   place 는 rooms.yaml 의 키(room1 / dock / standby ...) */
 function rcSetState(state) {
     ["rc-state", "rc-route-state"].forEach(id => {
         const el = document.getElementById(id);
@@ -3977,7 +4074,7 @@ function rcSetState(state) {
     });
 }
 
-// 목적지 표시. 출발지(현재 위치)는 rcSetCurrent()가 실제 위치로 따로 채운다.
+// 목적지 표시. 현재 위치는 rcSetCurrent()가 실제 좌표로 따로 채운다.
 // 예전에는 목적지를 누르면 현재 위치까지 같이 바뀌었는데, 그건 아직 출발도
 // 안 한 시점이라 거짓 표시였다
 function rcSetPlace(dest) {
@@ -3985,7 +4082,7 @@ function rcSetPlace(dest) {
     if (label) label.innerText = dest;
 }
 
-// 출발지 · 현재 위치 표시 (ArUco 마커가 판정한 실제 병실)
+// 현재 위치 표시 (경로 패널 · 로봇 상태). AMCL 좌표가 든 구역 이름
 function rcSetCurrent(place) {
     ["rc-cur", "rc-cur2"].forEach(id => {
         const el = document.getElementById(id);
@@ -4006,7 +4103,13 @@ async function rcLoadPlaces() {
     try {
         const res  = await fetch("/api/robot/places");
         const data = await res.json();
-        if (!data.ok) { return; }
+
+        // 실패를 조용히 넘기면 Waypoint 표가 "불러오는 중"에 멈춘 채로 남아서
+        // 원인을 알 수 없다. 화면에 이유를 띄운다
+        if (!data.ok) {
+            rcRenderWaypointsError(data.error || "좌표를 불러오지 못했습니다.");
+            return;
+        }
 
         RC_PLACES = {};
         data.places.forEach(p => { RC_PLACES[p.key] = p; });
@@ -4021,6 +4124,15 @@ async function rcLoadPlaces() {
         syncRoomLabels();   // 도면의 "n인실" 라벨은 병실 번호를 알아야 채울 수 있다
     } catch (e) {
         console.error(e);
+        rcRenderWaypointsError("서버에 연결하지 못했습니다. (F12 콘솔 확인)");
+    }
+}
+
+// Waypoint 표에 실패 사유를 남긴다
+function rcRenderWaypointsError(message) {
+    const tbody = document.getElementById("rc-wp-tbody");
+    if (tbody) {
+        tbody.innerHTML = `<tr><td colspan="5">${message}</td></tr>`;
     }
 }
 
@@ -4086,7 +4198,7 @@ function rcMoveIcon(el) {
 // 좌표를 다시 찍으면 이 두 줄도 같이 갱신해야 한다.
 const MAP_ANCHORS = [
     { map: [-2.132, 3.181], plan: [ 80.4, 416.1] },   // dock
-    { map: [ 0.904, 0.275], plan: [630.5, 125.8] },   // room4.inside
+    { map: [ 0.882, 0.315], plan: [630.5, 125.8] },   // room4.inside
 ];
 
 const MAP_TF = (function () {
@@ -4120,6 +4232,50 @@ function rcMapToPlan(mx, my) {
 function rcPlaceRobotByMap(mx, my) {
     const p = rcMapToPlan(mx, my);
     if (p) { rcPlaceRobot(p[0], p[1]); }
+}
+
+// ===== 로봇이 지금 어느 구역에 있나 =====
+// 도면 좌표가 어느 구역 사각형 안에 들어가는지로 판정한다. 구역 크기는 SVG의
+// <rect>에서 직접 읽으므로, 도면을 넓히거나 늘려도 여기를 같이 고칠 필요가 없다.
+// 반환값은 rooms.yaml의 키(room1 / dock / ...), 어느 구역에도 안 들면 null(=복도).
+function rcZoneKeyAt(px, py) {
+    for (const spot of document.querySelectorAll(".rc-spot")) {
+        const rect = spot.querySelector("rect");
+        if (!rect) { continue; }
+
+        const x = +rect.getAttribute("x"), y = +rect.getAttribute("y");
+        const w = +rect.getAttribute("width"), h = +rect.getAttribute("height");
+
+        if (px >= x && px <= x + w && py >= y && py <= y + h) {
+            return spot.dataset.place;
+        }
+    }
+    return null;
+}
+
+// ROS map 좌표 -> 구역 키. 아직 도면 보정(MAP_ANCHORS) 전이면 undefined.
+// null(복도)과 구분해야 해서 반환값이 셋이다
+function rcZoneKeyByMap(mx, my) {
+    const p = rcMapToPlan(mx, my);
+    return p ? rcZoneKeyAt(p[0], p[1]) : undefined;
+}
+
+// 구역 키 -> 화면에 쓸 이름
+function rcZoneLabel(key) {
+    if (!key) { return "복도"; }
+    return (RC_PLACES[key] || {}).label || key;
+}
+
+// 로봇이 있는 병실 번호("101" 등). 병실 밖이면 null.
+// 좌표 판정을 우선하고, 좌표가 없거나 보정 전이면 ArUco 마커 값으로 대체한다
+function robotRoomNumber(data) {
+    if (typeof data.robot_x === "number" && typeof data.robot_y === "number") {
+        const key = rcZoneKeyByMap(data.robot_x, data.robot_y);
+        if (key !== undefined) {
+            return (RC_PLACES[key] || {}).room_number || null;
+        }
+    }
+    return data.current_room || null;
 }
 
 // Nav2가 계획한 경로 그리기. pts 는 [[x, y], ...] (map 좌표계)
@@ -4185,6 +4341,46 @@ async function rcGoTo(btn) {
         rcToast("요청을 보내지 못했습니다");
     } finally {
         rcGoBusy = false;
+    }
+}
+
+// ===== 일시정지 · 이어서 이동 =====
+// 로봇은 한 번에 한 곳만 가므로, 이동 중에 다른 목적지를 찍으려면 먼저 멈춰야 한다.
+// 일시정지는 Nav2 goal을 취소하는 것이고, 남은 경유점은 로봇이 들고 있다가
+// '이어서 이동'을 누르면 취소된 지점부터 다시 간다.
+let rcPaused = false;
+let rcPauseBusy = false;
+
+function rcSyncPauseButton(paused) {
+    if (paused === rcPaused) { return; }
+    rcPaused = paused;
+
+    const btn = document.getElementById("rc-pause-btn");
+    if (btn) { btn.innerText = paused ? "이어서 이동" : "일시정지"; }
+}
+
+async function rcTogglePause() {
+    if (rcPauseBusy) { return; }
+    rcPauseBusy = true;
+
+    const resume = rcPaused;
+
+    try {
+        const res  = await fetch(resume ? "/api/robot/resume" : "/api/robot/pause",
+                                 { method: "POST" });
+        const data = await res.json();
+
+        if (data.ok) {
+            rcSyncPauseButton(!resume);
+            rcSetState(resume ? "이동 중" : "일시정지");
+            rcToast(data.message || (resume ? "이동을 다시 시작합니다" : "이동을 일시정지했습니다"));
+        } else {
+            rcToast(data.error || data.message || "명령에 실패했습니다");
+        }
+    } catch (e) {
+        rcToast("요청을 보내지 못했습니다");
+    } finally {
+        rcPauseBusy = false;
     }
 }
 
