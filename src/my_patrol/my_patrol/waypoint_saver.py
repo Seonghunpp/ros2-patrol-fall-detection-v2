@@ -17,7 +17,7 @@ import yaml
 
 
 DEFAULT_ROOMS = os.path.expanduser(
-    '~/turtlebot3_ws/src/my_patrol/config/rooms.yaml')
+    '~/turtlebot3_ws/ros2-patrol-fall-detection/src/my_patrol/config/rooms.yaml')
 
 
 class WaypointSaver(Node):
@@ -67,12 +67,14 @@ def main():
 
     rooms = {}
     print('=' * 50)
-    print(' save point (hall + inside)')
-    print(' 1) Enter the ward name')
-    print(' 2) Move robot to the hallway in front of the door, press Enter -> hall saved')
-    print('    (or press s to skip hall and save inside only)')
-    print(' 3) Move robot inside the ward, press Enter -> inside saved')
-    print(' 4) Type q at the name prompt to finish')
+    print(' STEP 1/2 — wards (hall + inside)')
+    print('  1) Enter the ward name (room1 ... room4)')
+    print('  2) Move robot to the hallway in front of the door, press Enter -> hall saved')
+    print('     (or press s to skip hall and save inside only)')
+    print('  3) Move robot inside the ward, press Enter -> inside saved')
+    print('  4) Type q at the name prompt to move on to STEP 2')
+    print('')
+    print(' STEP 2/2 — charging station, standby desk (one point each)')
     print('=' * 50)
 
     while rclpy.ok():
@@ -104,13 +106,61 @@ def main():
             print(f'  ✔ {name} saved — hall=({hall["x"]:.2f},{hall["y"]:.2f}) '
                   f'inside=({inside["x"]:.2f},{inside["y"]:.2f})')
 
+    # 병실 외 단일 지점. hall/inside 구분이 없어서 한 점씩만 받는다
+    print('\n' + '=' * 50)
+    print(' STEP 2/2 — charging station, standby desk')
+    print('=' * 50)
+
+    def capture_single(label, prompt):
+        point = capture(prompt, allow_skip=True)
+        # capture()는 Ctrl+C 등으로 rclpy가 내려가면 None을 돌려준다
+        if point is None or point in ('q', 's'):
+            print(f'  - {label} skipped')
+            return None
+        print(f'  ✔ {label} saved — ({point["x"]:.2f},{point["y"]:.2f})')
+        return point
+
+    dock = capture_single(
+        'dock',
+        'move robot to CHARGING STATION, press Enter (s=skip, q=skip): ')
+    standby = capture_single(
+        'standby',
+        'move robot to STANDBY DESK, press Enter (s=skip, q=skip): ')
+
+    # 기존 파일을 먼저 읽어서 병합한다. 통째로 dump하면 이번에 입력하지 않은 항목이
+    # 지워져서, 한 지점만 다시 찍으려다 나머지를 전부 날리게 된다
+    data = {}
+    if os.path.exists(DEFAULT_ROOMS):
+        try:
+            with open(DEFAULT_ROOMS) as f:
+                data = yaml.safe_load(f) or {}
+        except (OSError, yaml.YAMLError) as e:  # noqa: BLE001
+            print(f'Warning: could not read existing file ({e}). Starting fresh.')
+            data = {}
+
     if rooms:
+        data.setdefault('rooms', {}).update(rooms)
+    if dock:
+        data['dock'] = dock
+    if standby:
+        data['standby'] = standby
+
+    if data:
+        # dock → standby → rooms 순으로 정렬해 저장 (읽기 좋게)
+        ordered = {k: data[k] for k in ('dock', 'standby', 'rooms') if k in data}
+        ordered.update({k: v for k, v in data.items() if k not in ordered})
+
         os.makedirs(os.path.dirname(DEFAULT_ROOMS), exist_ok=True)
         with open(DEFAULT_ROOMS, 'w') as f:
-            yaml.dump({'rooms': rooms}, f, allow_unicode=True, sort_keys=False)
-        print(f'\nSuccessfully saved {len(rooms)} wards → {DEFAULT_ROOMS}')
+            yaml.dump(ordered, f, allow_unicode=True, sort_keys=False)
+
+        saved = list(ordered.get('rooms', {}).keys())
+        print(f'\nSaved → {DEFAULT_ROOMS}')
+        print(f'  wards   : {saved if saved else "none"}')
+        print(f'  dock    : {"yes" if "dock" in ordered else "no"}')
+        print(f'  standby : {"yes" if "standby" in ordered else "no"}')
     else:
-        print('\nNo saved rooms')
+        print('\nNothing saved')
 
     rclpy.shutdown()
 

@@ -19,9 +19,10 @@ from std_msgs.msg import Int32MultiArray, Bool, Float32, String
 from std_srvs.srv import SetBool
 import yaml
 
-# waypoint_saver가 저장하는 것과 같은 경로
+# waypoint_saver가 저장하는 것과 같은 경로.
+
 DEFAULT_ROOMS = os.path.expanduser(
-    '~/turtlebot3_ws/src/my_patrol/config/rooms.yaml')
+    '~/turtlebot3_ws/ros2-patrol-fall-detection/src/my_patrol/config/rooms.yaml')
 
 
 class MarkerListener(Node):
