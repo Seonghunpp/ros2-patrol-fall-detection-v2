@@ -866,6 +866,7 @@
                     <tr>
                         <th>발생 시각</th>
                         <th>병실</th>
+                        <th>환자</th>
                     </tr>
                 </thead>
                 <tbody id="falls-tbody"><!-- JS(renderFalls)로 채움 --></tbody>
@@ -3935,7 +3936,8 @@ async function renderFalls() {
         tb.innerHTML = "";
         rows.forEach(f => {
             const tr = document.createElement("tr");
-            tr.innerHTML = `<td>${f.detected_at}</td><td>병실 ${f.room_number}</td>`;
+            const who = f.patient_name ? f.patient_name : '<span class="ev-unknown">환자 미확인</span>';
+            tr.innerHTML = `<td>${f.detected_at}</td><td>병실 ${f.room_number}</td><td>${who}</td>`;
             tb.appendChild(tr);
         });
     }
