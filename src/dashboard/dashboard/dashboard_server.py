@@ -146,6 +146,10 @@ state = {
     "fall_alert_id": 0,
     # 이동을 일시정지한 상태인지. 화면에서 버튼 표시를 바꾸는 데 쓴다
     "robot_paused": False,
+    # Robot Control에서 병실로 수동 이동 명령을 보낸 직후, 실제 도착(room_marker) 시
+    # 순찰 기록을 남기기 위해 어느 병실을 향하고 있는지 기억해둔다. 병실이 아닌
+    # 목적지(충전소/대기장소)면 None
+    "manual_goto_room": None,
     "events": []
 }
 
@@ -482,6 +486,14 @@ class DashboardBridge(Node):
 
         if old_room != new_room:
             add_event(f"로봇이 병실 {new_room}에 입장했습니다.")
+
+        # Robot Control로 이 병실에 수동으로 보낸 이동이 실제 도착했다면,
+        # 자동 순찰(/patrol_complete)과 별개로 순찰 기록을 남긴다 (중복 방지를 위해
+        # 방금 보낸 목적지와 일치할 때만 기록하고, 기록 후 바로 지운다)
+        if state.get("manual_goto_room") == new_room:
+            log_patrol_complete(new_room)
+            add_event(f"병실 {new_room} 순찰을 완료했습니다. (수동 이동)")
+            state["manual_goto_room"] = None
 
     def patrol_complete_callback(self, msg):
         # my_patrol의 patrol_node가 한 병실 관찰(scan_for_fall)을 끝내고
@@ -1175,13 +1187,25 @@ def api_patients_get():
     conn = get_db()
     cursor = conn.cursor(dictionary=True)
     cursor.execute(
-        "SELECT id, name, room_number, age, sex, disease, risk_level FROM patients ORDER BY room_number, id"
+        """
+        SELECT p.id, p.name, p.room_number, p.age, p.sex, p.disease, p.risk_level,
+               f.last_fall
+        FROM patients p
+        LEFT JOIN (
+            SELECT patient_id, MAX(detected_at) AS last_fall
+            FROM fall_log
+            WHERE patient_id IS NOT NULL
+            GROUP BY patient_id
+        ) f ON f.patient_id = p.id
+        ORDER BY p.room_number, p.id
+        """
     )
     patients = cursor.fetchall()
     cursor.close()
     conn.close()
     for p in patients:
         p["name"] = decrypt_field(p["name"])
+        p["last_fall"] = p["last_fall"].strftime("%Y-%m-%d") if p["last_fall"] else None
     return jsonify({"ok": True, "patients": patients})
 
 
@@ -1755,6 +1779,8 @@ def api_robot_goto(place):
     if ok:
         add_event(f"{label} 이동 명령")
         state["robot_paused"] = False   # 새 목적지로 출발했으니 일시정지 해제
+        # 병실(room1~4)로 보낸 경우에만 채워지고, 충전소/대기장소면 None으로 비워진다
+        state["manual_goto_room"] = PATROL_ROOM_NAME_TO_NUMBER.get(place)
 
     # 이미 이동 중이라 거절된 건 서버 장애가 아니라 "지금 상태에선 불가"라서 409
     return jsonify({"ok": ok, "message": message, "label": label}), (200 if ok else 409)

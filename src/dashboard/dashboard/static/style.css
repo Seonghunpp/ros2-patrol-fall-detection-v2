@@ -3905,6 +3905,11 @@ html.reveal-on .rm-svc-grid .rm-svc-card:nth-child(8) { transition-delay: 0.49s;
 .mini-danger { color: var(--danger); border-color: #f3c8cd; }
 .mini-danger:hover { background: #fff5f6; }
 
+/* 병실 모니터링 · 이벤트 로그: 로봇 상태 / 낙상 현황 탭 전환 */
+.mon-log-tabs { display: flex; gap: 6px; margin: 8px 0 10px; }
+.mon-log-tab.active { background: #2563eb; border-color: #2563eb; color: #ffffff; }
+.mon-log-tab.active:hover { background: #1d4ed8; }
+
 /* 제어 버튼: 라운드 + 소프트 섀도우 */
 .ctrl-btn {
     border-radius: 12px;
