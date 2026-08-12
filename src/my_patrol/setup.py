@@ -24,8 +24,8 @@ setup(
     entry_points={
         'console_scripts': [
             'waypoint_saver = my_patrol.waypoint_saver:main',
-            'patrol = my_patrol.patrol_node:main',
-            'aruco_id = my_patrol.aruco_id_node:main',
+            'patrol = my_patrol.patrol_node_v2:main',
+            'aruco_id = my_patrol.aruco_id_node_v2:main',
             'fall_detection = my_patrol.fall_detection_node:main',
         ],
     },
