@@ -13,6 +13,8 @@ setup(
             ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
         (os.path.join('share', package_name, 'config'), glob('config/*.yaml')),
+        (os.path.join('share', package_name, 'model'), glob('model/*.pt')),
+        (os.path.join('share', package_name, 'docs'), glob('docs/*.md')),
     ],
     install_requires=['setuptools'],
     zip_safe=True,
@@ -24,9 +26,9 @@ setup(
     entry_points={
         'console_scripts': [
             'waypoint_saver = my_patrol.waypoint_saver:main',
-            'patrol = my_patrol.patrol_node_v2:main',
+            'patrol = my_patrol.patrol_node:main',
             'aruco_id = my_patrol.aruco_id_node_v2:main',
-            'fall_detection = my_patrol.fall_detection_node:main',
+            'fall_detection = my_patrol.fall_detection_node_v2:main',
             'charging_return = my_patrol.charging_return:main',
         ],
     },

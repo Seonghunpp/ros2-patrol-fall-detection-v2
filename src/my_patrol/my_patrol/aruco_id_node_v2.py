@@ -8,15 +8,17 @@
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
-from sensor_msgs.msg import CompressedImage
+from sensor_msgs.msg import CameraInfo, CompressedImage
 from std_msgs.msg import Int32MultiArray, Float32
 from std_srvs.srv import SetBool
 from cv_bridge import CvBridge
 import cv2
+import numpy as np
 
 
 ARUCO_DICT = cv2.aruco.DICT_5X5_250
 CHARGER_MARKER_ID = 249
+DEFAULT_MARKER_SIZE = 0.08
 
 
 class ArucoIdNode(Node):
@@ -24,6 +26,12 @@ class ArucoIdNode(Node):
         super().__init__('aruco_id')
         self.bridge = CvBridge()
         self.enabled = True   # /aruco_enable로 끌 수 있음 (기본 ON: 단독 테스트용)
+        # ID 249 마커 전체 한 변의 실제 길이(m).
+        # 필요하면 --ros-args -p marker_size:=0.08로 변경한다.
+        self.declare_parameter('marker_size', DEFAULT_MARKER_SIZE)
+        self.marker_size = float(self.get_parameter('marker_size').value)
+        self.camera_matrix = None
+        self.distortion = None
 
         self.aruco_dict = cv2.aruco.getPredefinedDictionary(ARUCO_DICT)
         # OpenCV 4.7+ (신 API: ArucoDetector) / 4.6 이하 (구 API) 모두 지원
@@ -42,6 +50,13 @@ class ArucoIdNode(Node):
             self.image_cb,
             qos_profile_sensor_data,
         )
+        # v4l2_camera가 camera_info.yaml 기준으로 발행하는 보정값
+        self.create_subscription(
+            CameraInfo,
+            '/camera_info',
+            self.camera_info_cb,
+            qos_profile_sensor_data,
+        )
         # 외부에서 인식 on/off 제어 (SetBool 서비스)
         self.create_service(SetBool, 'aruco_enable', self.enable_srv)
         # 검출된 ID 발행 (바뀔 때만)
@@ -55,8 +70,18 @@ class ArucoIdNode(Node):
             Float32, '/charger_offset', 10)
         self.charger_size_pub = self.create_publisher(
             Float32, '/charger_size', 10)
+        # 카메라에서 충전소 마커까지의 전방 거리(m)
+        self.charger_distance_pub = self.create_publisher(
+            Float32, '/charger_distance', 10)
 
-        self.get_logger().info('aruco_id Start')
+        self.get_logger().info(
+            f'aruco_id Start (charger marker size: {self.marker_size:.3f} m)'
+        )
+
+    def camera_info_cb(self, msg):
+        """camera_info.yaml에서 발행된 카메라 보정값을 저장한다."""
+        self.camera_matrix = np.asarray(msg.k, dtype=np.float64).reshape(3, 3)
+        self.distortion = np.asarray(msg.d, dtype=np.float64)
 
     def enable_srv(self, request, response):
         self.enabled = request.data
@@ -126,7 +151,7 @@ class ArucoIdNode(Node):
         self.publish_room_ids(room_ids)
 
     def publish_charger_marker(self, detections, image_width):
-        """충전소 마커의 감지 여부, 좌우 오차 및 크기를 발행한다."""
+        """충전소 마커의 좌우 오차, 크기, 보정 거리를 발행한다."""
         if not detections:
             self.charger_id_pub.publish(Int32MultiArray(data=[]))
             return
@@ -139,6 +164,25 @@ class ArucoIdNode(Node):
             Int32MultiArray(data=[CHARGER_MARKER_ID]))
         self.charger_offset_pub.publish(Float32(data=offset))
         self.charger_size_pub.publish(Float32(data=size))
+
+        # 카메라 보정값이 없으면 임의의 거리를 발행하지 않는다.
+        if self.camera_matrix is None:
+            self.get_logger().warn(
+                '/camera_info를 기다리는 중입니다.',
+                throttle_duration_sec=5.0,
+            )
+            return
+
+        # 마커 모서리, 실제 크기, 카메라 보정값으로 pose를 구한다.
+        # tvec의 z가 카메라 기준 마커까지의 전방 거리다.
+        _, tvecs, _ = cv2.aruco.estimatePoseSingleMarkers(
+            [corner],
+            self.marker_size,
+            self.camera_matrix,
+            self.distortion,
+        )
+        distance = float(tvecs[0][0][2])
+        self.charger_distance_pub.publish(Float32(data=distance))
 
     def image_cb(self, msg):
         # 꺼져 있으면 압축해제·검출 자체를 안 함 → CPU 절약

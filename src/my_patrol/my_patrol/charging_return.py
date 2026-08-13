@@ -37,6 +37,13 @@ class NavigationService(Node):
     CHARGER_TURN_ANGLE = math.pi
     CHARGER_SEARCH_TIMEOUT = 45.0
     CHARGER_TURN_TIMEOUT = 20.0
+    CHARGER_APPROACH_TIMEOUT = 20.0
+    CHARGER_BACKUP_TIMEOUT = 10.0
+    CHARGER_DISTANCE_TOL = 0.02
+    CHARGER_APPROACH_MIN_SPEED = 0.03
+    CHARGER_APPROACH_MAX_SPEED = 0.08
+    CHARGER_APPROACH_K = 0.5
+    CHARGER_BACKUP_SPEED = 0.05
 
     def __init__(self):
         super().__init__("navigation_service")
@@ -50,8 +57,19 @@ class NavigationService(Node):
         self.create_subscription(
             Float32, "/charger_offset", self.charger_offset_callback, 10
         )
+        self.create_subscription(
+            Float32, "/charger_distance", self.charger_distance_callback, 10
+        )
         self.create_subscription(Odometry, "/odom", self.odom_callback, 10)
         self.aruco_client = self.create_client(SetBool, "/aruco_enable")
+        self.declare_parameter("charger_target_distance", 0.20)
+        self.declare_parameter("charger_backup_distance", 0.15)
+        self.charger_target_distance = float(
+            self.get_parameter("charger_target_distance").value
+        )
+        self.charger_backup_distance = float(
+            self.get_parameter("charger_backup_distance").value
+        )
         # 현재 위치를 모를 때만 참고할 TF (map -> base_footprint)
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
@@ -101,7 +119,13 @@ class NavigationService(Node):
         self.charger_visible = False
         self.latest_charger_offset = 0.0
         self.charger_offset_time = None
+        self.latest_charger_distance = None
+        self.charger_distance_time = None
         self.yaw = None
+        self.odom_x = None
+        self.odom_y = None
+        self.backup_start_x = None
+        self.backup_start_y = None
         self.previous_yaw = None
         self.charger_rotated = 0.0
         self.charger_state = None
@@ -493,7 +517,13 @@ class NavigationService(Node):
         self.latest_charger_offset = msg.data
         self.charger_offset_time = time.monotonic()
 
+    def charger_distance_callback(self, msg):
+        self.latest_charger_distance = msg.data
+        self.charger_distance_time = time.monotonic()
+
     def odom_callback(self, msg):
+        self.odom_x = msg.pose.pose.position.x
+        self.odom_y = msg.pose.pose.position.y
         q = msg.pose.pose.orientation
         siny = 2.0 * (q.w * q.z + q.x * q.y)
         cosy = 1.0 - 2.0 * (q.y * q.y + q.z * q.z)
@@ -504,6 +534,14 @@ class NavigationService(Node):
             self.charger_visible
             and self.charger_offset_time is not None
             and time.monotonic() - self.charger_offset_time < self.CHARGER_SEEN_TIMEOUT
+        )
+
+    def charger_distance_available(self):
+        return (
+            self.latest_charger_distance is not None
+            and self.charger_distance_time is not None
+            and time.monotonic() - self.charger_distance_time
+            < self.CHARGER_SEEN_TIMEOUT
         )
 
     def set_aruco_enabled(self, enabled):
@@ -519,6 +557,8 @@ class NavigationService(Node):
         self.stop_robot()
         self.charger_visible = False
         self.charger_offset_time = None
+        self.latest_charger_distance = None
+        self.charger_distance_time = None
         self.previous_yaw = self.yaw
         self.charger_rotated = 0.0
         self.charger_state = "search"
@@ -583,12 +623,14 @@ class NavigationService(Node):
 
             if abs(offset) <= self.CHARGER_CENTER_TOL:
                 self.stop_robot()
-                self.charger_state = "turn"
-                self.charger_rotated = 0.0
-                self.previous_yaw = self.yaw
-                self.charger_deadline = time.monotonic() + self.CHARGER_TURN_TIMEOUT
-
-                self.get_logger().info("중앙 정렬 완료, 180도 회전 시작")
+                self.charger_state = "approach"
+                self.charger_deadline = (
+                    time.monotonic() + self.CHARGER_APPROACH_TIMEOUT
+                )
+                self.get_logger().info(
+                    "중앙 정렬 완료, "
+                    f"{self.charger_target_distance:.2f} m까지 접근 시작"
+                )
                 return
 
             angular = -self.CHARGER_ALIGN_K * offset
@@ -597,12 +639,83 @@ class NavigationService(Node):
             )
             twist.angular.z = magnitude if angular > 0.0 else -magnitude
 
+        elif self.charger_state == "approach":
+            if not self.charger_marker_visible() or not self.charger_distance_available():
+                self.stop_robot()
+                self.charger_state = "search"
+                self.charger_rotated = 0.0
+                self.previous_yaw = self.yaw
+                self.charger_deadline = (
+                    time.monotonic() + self.CHARGER_SEARCH_TIMEOUT
+                )
+                self.get_logger().warn("마커 거리 유실, 탐색 재개")
+                return
+
+            offset = self.latest_charger_offset
+            if abs(offset) > self.CHARGER_CENTER_TOL:
+                self.stop_robot()
+                self.charger_state = "align"
+                self.get_logger().info("접근 중 중앙 재정렬")
+                return
+
+            distance_error = (
+                self.latest_charger_distance - self.charger_target_distance
+            )
+            if distance_error <= self.CHARGER_DISTANCE_TOL:
+                self.stop_robot()
+                self.charger_state = "turn"
+                self.charger_rotated = 0.0
+                self.previous_yaw = self.yaw
+                self.charger_deadline = time.monotonic() + self.CHARGER_TURN_TIMEOUT
+                self.get_logger().info(
+                    f"목표 거리 도착 ({self.latest_charger_distance:.2f} m), "
+                    "180도 회전 시작"
+                )
+                return
+
+            twist.linear.x = min(
+                self.CHARGER_APPROACH_MAX_SPEED,
+                max(
+                    self.CHARGER_APPROACH_MIN_SPEED,
+                    self.CHARGER_APPROACH_K * distance_error,
+                ),
+            )
+            twist.angular.z = -self.CHARGER_ALIGN_K * offset
+
         elif self.charger_state == "turn":
             if self.charger_rotated >= self.CHARGER_TURN_ANGLE:
-                self.finish_charger_alignment(True, "충전중 ...")
+                self.stop_robot()
+                self.charger_state = "backup"
+                self.backup_start_x = self.odom_x
+                self.backup_start_y = self.odom_y
+                self.charger_deadline = time.monotonic() + self.CHARGER_BACKUP_TIMEOUT
+                self.get_logger().info(
+                    "180도 회전 완료, "
+                    f"{self.charger_backup_distance:.2f} m 후진 시작"
+                )
                 return
 
             twist.angular.z = self.CHARGER_TURN_SPEED
+
+        elif self.charger_state == "backup":
+            if (
+                self.odom_x is None
+                or self.odom_y is None
+                or self.backup_start_x is None
+                or self.backup_start_y is None
+            ):
+                self.finish_charger_alignment(False, "odom으로 후진 거리를 측정할 수 없습니다.")
+                return
+
+            backed_up = math.hypot(
+                self.odom_x - self.backup_start_x,
+                self.odom_y - self.backup_start_y,
+            )
+            if backed_up >= self.charger_backup_distance:
+                self.finish_charger_alignment(True, "충전중 ...")
+                return
+
+            twist.linear.x = -self.CHARGER_BACKUP_SPEED
         self.cmd_vel_pub.publish(twist)
 
     def finish_charger_alignment(self, success, message):

@@ -11,6 +11,7 @@ __pycache__/
 
 # ===== 모델 가중치 (공식 모델은 자동 다운로드 / 커스텀 모델은 별도 공유) =====
 *.pt
+!src/my_patrol/model/*.pt
 
 # ===== 에디터/OS =====
 .vscode/
@@ -24,3 +25,5 @@ claude.md
 
 # ===== 문서/발표 산출물 =====
 docs/
+!src/my_patrol/docs/
+!src/my_patrol/docs/*.md
