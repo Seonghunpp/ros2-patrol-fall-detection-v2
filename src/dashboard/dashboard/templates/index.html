@@ -837,7 +837,8 @@
                 </section>
             </aside>
 
-            <!-- ── 중앙: 실시간 영상 ── -->
+            <!-- ── 중앙: 실시간 영상 + 위험도 ── -->
+            <div class="mon-center">
             <section class="mon-stage">
                 <div class="mon-stage-bar">
                     <span class="mon-live"><i></i>LIVE</span>
@@ -858,6 +859,29 @@
                     <span id="mon-clock">--:--:--</span>
                 </div>
             </section>
+
+            <!-- 병실별 낙상 위험도. 막대 하나가 한 병실이고, 길이가 곧 점수다.
+                 병실은 서로 다른 '계열'이 아니라 크기를 비교할 대상이라 색은 하나만 쓴다
+                 (위험도별로 색을 나누면 막대 길이가 이미 보여주는 걸 색으로 또 칠하는 셈) -->
+            <section class="mon-block mon-risk">
+                <h3 class="mon-title mon-title-row">
+                    병실별 낙상 위험도
+                    <span class="mon-note">순찰 우선순위 순 · 최대 <strong id="mon-risk-max">105</strong>점</span>
+                </h3>
+                <!-- 열 이름. 막대와 같은 그리드를 써야 세로줄이 맞는다 -->
+                <div class="riskbars-head" aria-hidden="true">
+                    <span>호실</span>
+                    <span></span>
+                    <span>점수</span>
+                </div>
+                <div id="mon-risk-chart" class="riskbars" role="list"></div>
+                <div id="mon-risk-tip" class="riskbar-tip" role="tooltip" hidden></div>
+                <p class="mon-risk-foot">
+                    병실 점수는 그 병실 환자 중 <b>가장 높은 개인 점수</b>입니다.
+                    개인 점수 = 낙상 위험도 + 연령 + 질환. 막대에 마우스를 올리면 근거가 나옵니다.
+                </p>
+            </section>
+            </div>
 
             <!-- ── 우측: 로그 ── -->
             <aside class="mon-side">
@@ -1651,7 +1675,7 @@ function showTab(name) {
     // 관리자 탭들은 로그인 시점 캐시가 오래됐을 수 있어 탭을 열 때마다 다시 불러온다
     if (name === "events") renderEvents();
     if (name === "patients") { renderPatients(); renderWardGrid(); }
-    if (name === "monitoring") renderWardGrid();
+    if (name === "monitoring") { renderWardGrid(); renderRoomRisk(); }
     if (name === "astats") { renderCharts(); renderFalls(); }
     if (name === "ahome") { renderCharts(); renderFalls(); }
     if (name === "accounts") { renderPending(); renderGuardians(); }
@@ -3592,9 +3616,154 @@ async function updateStatus() {
 setInterval(updateStatus, 1000);
 updateStatus();
 
+// ===== 병실 낙상 위험도 =====
+// 점수 체계는 my_patrol/priority_patrol.py 와 같은 값이다. 순찰 노드가 이 점수로
+// 순찰 순서를 정하므로, 두 곳이 어긋나면 화면과 로봇 행동이 달라진다.
+// ※ 환자 원본은 갈라져 있다 — 순찰 노드는 patients.yaml, 이 화면은 DB(/api/patients).
+const FALL_RISK_SCORES = { "매우 높음": 50, "높음": 35, "보통": 20, "낮음": 5 };
+const AGE_SCORE_BANDS  = [[80, 30], [70, 25], [60, 20], [50, 10]];
+const DISEASE_SCORES   = [["치매", 25], ["뇌경색", 25], ["파킨슨", 25],
+                          ["대퇴골", 20], ["골절", 20], ["심부전", 15]];
+const BASE_SCORE = 5;   // 어느 구간에도 안 걸리는 나이·질환의 기본점
+
+// 한 사람이 받을 수 있는 최대 점수 = 막대의 100% 기준선.
+// 축을 관측 최댓값이 아니라 이 값에 고정해야 병실끼리·시점끼리 길이가 비교된다
+const MAX_PATIENT_SCORE = Math.max(...Object.values(FALL_RISK_SCORES))
+                        + AGE_SCORE_BANDS[0][1]
+                        + Math.max(...DISEASE_SCORES.map(d => d[1]));
+
+function patientRiskScore(p) {
+    const fall = FALL_RISK_SCORES[p.risk_level] || 0;
+    const band = AGE_SCORE_BANDS.find(([floor]) => p.age != null && p.age >= floor);
+    const hit  = DISEASE_SCORES.find(([key]) => String(p.disease || "").includes(key));
+    const ageScore = band ? band[1] : BASE_SCORE;
+    const disScore = hit ? hit[1] : BASE_SCORE;
+    return { fallScore: fall, ageScore, disScore, total: fall + ageScore + disScore };
+}
+
+async function renderRoomRisk() {
+    const box = document.getElementById("mon-risk-chart");
+    if (!box) { return; }
+
+    const maxEl = document.getElementById("mon-risk-max");
+    if (maxEl) { maxEl.innerText = MAX_PATIENT_SCORE; }
+
+    let patients;
+    try {
+        const res = await fetch("/api/patients");
+        const data = await res.json();
+        if (!data.ok) { throw new Error(data.error || "실패"); }
+        patients = data.patients;
+    } catch (e) {
+        box.innerHTML = '<p class="riskbars-empty">위험도를 불러오지 못했습니다.</p>';
+        return;
+    }
+
+    // 병실 점수 = 그 병실 환자 중 개인 점수 '최댓값'.
+    // 합계가 아닌 이유: 순찰 우선순위는 가장 위험한 환자 한 명이 정한다.
+    // 저위험 환자가 여럿이라고 우선순위가 올라가면 안 된다.
+    const byRoom = {};
+    patients.forEach(p => {
+        if (!p.room_number) { return; }
+        (byRoom[p.room_number] = byRoom[p.room_number] || [])
+            .push(Object.assign({}, p, patientRiskScore(p)));
+    });
+
+    // 환자가 없는 병실도 0점으로 남긴다 (막대가 사라지면 병실 간 비교가 깨진다)
+    const rooms = ROOM_NUMBERS.map(room => {
+        const members = byRoom[room] || [];
+        const top = members.reduce((a, b) => (!a || b.total > a.total ? b : a), null);
+        return { room, count: members.length, top, score: top ? top.total : 0 };
+    }).sort((a, b) => b.score - a.score || a.room.localeCompare(b.room));
+
+    // 환자 이름·병명은 관리자가 입력한 값이라 innerHTML로 붙이지 않는다.
+    // 전부 textContent로만 넣는다
+    box.textContent = "";
+    rooms.forEach(r => {
+        const pct = r.score ? Math.max(2, (r.score / MAX_PATIENT_SCORE) * 100) : 0;
+
+        const row = document.createElement("div");
+        row.className = "riskbar";
+        row.setAttribute("role", "listitem");
+        row.tabIndex = 0;                     // 마우스 없이도 상세를 볼 수 있게
+        row.riskData = r;
+
+        const label = document.createElement("span");
+        label.className = "riskbar-room";
+        label.textContent = r.room;
+
+        const track = document.createElement("span");
+        track.className = "riskbar-track";
+        const fill = document.createElement("span");
+        fill.className = "riskbar-fill";
+        fill.style.width = pct + "%";
+        track.appendChild(fill);
+
+        const value = document.createElement("span");
+        value.className = "riskbar-value";
+        value.textContent = r.score;
+
+        row.append(label, track, value);
+        row.addEventListener("pointerenter", () => showRiskTip(row));
+        row.addEventListener("focus", () => showRiskTip(row));
+        row.addEventListener("pointerleave", hideRiskTip);
+        row.addEventListener("blur", hideRiskTip);
+        box.appendChild(row);
+    });
+}
+
+// 막대 상세. 값이 먼저 크게, 이름은 그 다음 — 읽는 사람은 병실을 이미 알고 숫자를 원한다
+function showRiskTip(row) {
+    const tip = document.getElementById("mon-risk-tip");
+    const r = row.riskData;
+    if (!tip || !r) { return; }
+
+    tip.textContent = "";
+
+    const head = document.createElement("div");
+    head.className = "riskbar-tip-head";
+    const strong = document.createElement("strong");
+    strong.textContent = r.score + "점";
+    const sub = document.createElement("span");
+    sub.textContent = `${r.room}호 · 재원 ${r.count}명`;
+    head.append(strong, sub);
+    tip.appendChild(head);
+
+    if (r.top) {
+        const who = document.createElement("p");
+        who.className = "riskbar-tip-line";
+        who.textContent = `${r.top.name} · ${r.top.age}세 · ${r.top.disease}`;
+
+        const parts = document.createElement("p");
+        parts.className = "riskbar-tip-parts";
+        parts.textContent =
+            `낙상 ${r.top.fallScore} · 연령 ${r.top.ageScore} · 질환 ${r.top.disScore}`;
+
+        tip.append(who, parts);
+    } else {
+        const empty = document.createElement("p");
+        empty.className = "riskbar-tip-line";
+        empty.textContent = "등록된 환자가 없습니다";
+        tip.appendChild(empty);
+    }
+
+    tip.hidden = false;
+    // 해당 막대 바로 위에 띄우되 패널 위로 넘치지 않게 한다
+    tip.style.top = Math.max(0, row.offsetTop - tip.offsetHeight - 8) + "px";
+}
+
+function hideRiskTip() {
+    const tip = document.getElementById("mon-risk-tip");
+    if (tip) { tip.hidden = true; }
+}
+
 // 순찰·낙상 집계는 DB 조회라 1초마다 돌릴 필요가 없다 (순찰 1회에 수십 초 단위)
 setInterval(renderRoomTally, 30000);
 renderRoomTally();
+
+// 위험도는 관리자가 환자 정보를 고칠 때만 바뀌므로 폴링하지 않는다
+// (모니터링 탭을 열 때 showTab이 다시 부른다)
+renderRoomRisk();
 
 // 보호자 환자 상태(확정 낙상 → 10분 후 주의)는 분 단위로 바뀌므로 20초마다 갱신
 setInterval(refreshGuardianFallState, 20000);

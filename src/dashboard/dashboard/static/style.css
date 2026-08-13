@@ -2620,6 +2620,141 @@ html.reveal-on .rm-svc-grid .rm-svc-card:nth-child(8) { transition-delay: 0.49s;
     border-radius: 14px;
 }
 
+/* 중앙 열: 영상과 위험도를 세로로 쌓는다.
+   grid 셀 안이라 min-width:0 이 없으면 긴 내용이 열을 밀어낸다 */
+.mon-center { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+
+/* ----- 병실별 낙상 위험도 (수평 막대) -----
+   시리즈가 하나라 범례를 두지 않는다 — 제목이 무엇을 그렸는지 말한다.
+   막대 길이가 점수를 나타내므로 병실마다 색을 바꾸지 않는다. */
+.mon-risk { position: relative; }        /* 툴팁의 기준 상자 */
+
+/* 열 이름. 데이터가 아니라 안내라서 눈에 덜 띄게 둔다 */
+.riskbars-head {
+    display: grid;
+    grid-template-columns: 42px minmax(0, 1fr) 34px;
+    gap: 10px;
+    padding: 0 4px 6px;
+    margin: 10px -4px 6px;
+    border-bottom: 1px solid var(--border);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    color: var(--text-muted);
+}
+
+.riskbars-head span:last-child { text-align: right; }
+
+.riskbars { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
+
+/* 행 전체가 hover·focus 대상이다 — 칠해진 픽셀만 노리게 하지 않는다 */
+.riskbar {
+    display: grid;
+    grid-template-columns: 42px minmax(0, 1fr) 34px;
+    align-items: center;
+    gap: 10px;
+    padding: 3px 4px;
+    margin: 0 -4px;
+    border-radius: 4px;
+    cursor: default;
+}
+
+.riskbar:hover,
+.riskbar:focus-visible { background: var(--surface); }
+.riskbar:focus-visible { outline: 2px solid var(--accent); outline-offset: 0; }
+
+/* 가리킨 막대가 반응하는 게 보이도록 살짝 밝힌다 */
+.riskbar:hover .riskbar-fill,
+.riskbar:focus-visible .riskbar-fill { filter: brightness(1.12); }
+
+/* ----- 막대 상세 툴팁 ----- */
+.riskbar-tip {
+    position: absolute;
+    left: 18px;
+    right: 18px;
+    z-index: 5;
+    padding: 10px 12px;
+    border-radius: 8px;
+    border: 1px solid var(--surface-border);
+    background: var(--card);
+    box-shadow: 0 12px 28px -12px rgba(15, 23, 42, 0.45);
+    pointer-events: none;            /* 툴팁이 hover를 가로채지 않게 */
+}
+
+.riskbar-tip[hidden] { display: none; }
+
+.riskbar-tip-head {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    margin-bottom: 6px;
+}
+
+/* 값이 주인공 */
+.riskbar-tip-head strong {
+    font-size: 18px;
+    font-weight: 800;
+    color: var(--text);
+    letter-spacing: -0.01em;
+}
+
+.riskbar-tip-head span { font-size: 12px; color: var(--text-muted); }
+
+.riskbar-tip-line {
+    margin: 0;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+}
+
+.riskbar-tip-parts {
+    margin: 3px 0 0;
+    font-size: 12px;
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+}
+
+/* 라벨·값은 데이터 색이 아니라 텍스트 토큰을 쓴다. 색은 막대만 갖는다 */
+.riskbar-room {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text);
+    font-variant-numeric: tabular-nums;
+}
+
+.riskbar-track {
+    height: 18px;                    /* 마크 두께 상한(24px) 이내 */
+    border-radius: 2px;
+    background: var(--surface-hover);
+}
+
+.riskbar-fill {
+    display: block;
+    height: 100%;
+    background: var(--accent);
+    border-radius: 0 4px 4px 0;      /* 데이터 끝만 둥글게, 기준선 쪽은 각지게 */
+    transition: width 0.3s ease;
+}
+
+.riskbar-value {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text);
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+.riskbars-empty { margin: 6px 0; font-size: 13px; color: var(--text-muted); }
+
+.mon-risk-foot {
+    margin: 12px 0 0;
+    font-size: 12px;
+    line-height: 1.6;
+    color: var(--text-muted);
+}
+
+.mon-risk-foot b { color: var(--text); font-weight: 700; }
+
 .mon-title {
     margin: 0 0 14px;
     font-size: 12px;
