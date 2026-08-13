@@ -158,7 +158,7 @@ bridge_node = None
 def add_event(text):
     now = time.strftime("%H:%M:%S")
     state["events"].insert(0, {"time": now, "text": text})
-    state["events"] = state["events"][:10]
+    state["events"] = state["events"][:20]
 
 
 def log_patrol_complete(room):
@@ -1110,7 +1110,7 @@ def api_patrol_log():
             SELECT pl.room_number, pl.patrolled_at
             FROM patrol_log pl
             JOIN patients p ON p.room_number = pl.room_number
-            WHERE p.user_id = %s
+            WHERE p.user_id = %s AND DATE(pl.patrolled_at) = CURDATE()
             ORDER BY pl.patrolled_at DESC
             LIMIT 20
             """,
@@ -1187,25 +1187,13 @@ def api_patients_get():
     conn = get_db()
     cursor = conn.cursor(dictionary=True)
     cursor.execute(
-        """
-        SELECT p.id, p.name, p.room_number, p.age, p.sex, p.disease, p.risk_level,
-               f.last_fall
-        FROM patients p
-        LEFT JOIN (
-            SELECT patient_id, MAX(detected_at) AS last_fall
-            FROM fall_log
-            WHERE patient_id IS NOT NULL
-            GROUP BY patient_id
-        ) f ON f.patient_id = p.id
-        ORDER BY p.room_number, p.id
-        """
+        "SELECT id, name, room_number, age, sex, disease, risk_level FROM patients ORDER BY room_number, id"
     )
     patients = cursor.fetchall()
     cursor.close()
     conn.close()
     for p in patients:
         p["name"] = decrypt_field(p["name"])
-        p["last_fall"] = p["last_fall"].strftime("%Y-%m-%d") if p["last_fall"] else None
     return jsonify({"ok": True, "patients": patients})
 
 
