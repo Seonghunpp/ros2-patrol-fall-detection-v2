@@ -2291,6 +2291,9 @@ html.reveal-on .rm-svc-grid .rm-svc-card:nth-child(8) { transition-delay: 0.49s;
 
 /* 타임라인 */
 .timeline { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+
+/* Home 탭 "최근 이벤트"/"최근 낙상": 최대 20건까지 쌓이므로 다 안 넘치게 스크롤 */
+#ahome-events, #ahome-falls { max-height: 150px; overflow-y: auto; }
 .timeline li { display: flex; gap: 12px; align-items: center; font-size: 14px; }
 .tl-time { min-width: 54px; color: var(--text-muted); font-weight: 700; font-family: 'Courier New', monospace; font-size: 13px; }
 
@@ -2960,7 +2963,7 @@ html.reveal-on .rm-svc-grid .rm-svc-card:nth-child(8) { transition-delay: 0.49s;
 .mon-logbox .event-item:last-child { border-bottom: none; }
 .mon-logbox .event-item span {
     flex: none;
-    min-width: 52px;
+    min-width: 80px;
     font-size: 12px;
     font-weight: 700;
     color: var(--text-muted);

@@ -822,15 +822,12 @@
                     <p class="mon-loc" id="current-room-text">-</p>
                     <div class="mon-rooms">
                         <!-- 병상 유형은 ROOM_INFO가 원본. syncRoomLabels()가 아래 span을 덮어쓴다.
-                             room-tally(낙상·순찰 수치)와 낙상 위험 배경색은 renderRoomTally()가 채운다 -->
-                        <div class="room" id="room-101"><strong>101</strong><span>1인실</span>
-                            <em class="room-tally" id="tally-101">-</em></div>
-                        <div class="room" id="room-102"><strong>102</strong><span>2인실</span>
-                            <em class="room-tally" id="tally-102">-</em></div>
-                        <div class="room" id="room-103"><strong>103</strong><span>2인실</span>
-                            <em class="room-tally" id="tally-103">-</em></div>
-                        <div class="room" id="room-104"><strong>104</strong><span>4인실</span>
-                            <em class="room-tally" id="tally-104">-</em></div>
+                             낙상 위험 배경색은 renderRoomTally()가 채운다 (순찰·낙상 수치는
+                             중앙 "병실별 낙상 위험도/오늘 순찰" 토글 쪽으로 옮겨서 여기선 뺐다) -->
+                        <div class="room" id="room-101"><strong>101</strong><span>1인실</span></div>
+                        <div class="room" id="room-102"><strong>102</strong><span>2인실</span></div>
+                        <div class="room" id="room-103"><strong>103</strong><span>2인실</span></div>
+                        <div class="room" id="room-104"><strong>104</strong><span>4인실</span></div>
                         <div class="robot-marker" id="robot-marker" style="display:none;">🤖</div>
                     </div>
                     <p class="mon-note">로봇이 있는 병실이 파랗게, 낙상이 잦은 병실이 붉게 표시됩니다.</p>
@@ -865,18 +862,22 @@
                  (위험도별로 색을 나누면 막대 길이가 이미 보여주는 걸 색으로 또 칠하는 셈) -->
             <section class="mon-block mon-risk">
                 <h3 class="mon-title mon-title-row">
-                    병실별 낙상 위험도
-                    <span class="mon-note">순찰 우선순위 순 · 최대 <strong id="mon-risk-max">105</strong>점</span>
+                    <span id="mon-risk-title">병실별 낙상 위험도</span>
+                    <span class="mon-note" id="mon-risk-note">순찰 우선순위 순 · 최대 <strong id="mon-risk-max">105</strong>점</span>
                 </h3>
+                <div class="mon-log-tabs">
+                    <button class="mini-btn mon-log-tab active" data-risk-mode="risk" onclick="setMonRiskMode('risk')">위험도</button>
+                    <button class="mini-btn mon-log-tab" data-risk-mode="patrol" onclick="setMonRiskMode('patrol')">오늘 순찰</button>
+                </div>
                 <!-- 열 이름. 막대와 같은 그리드를 써야 세로줄이 맞는다 -->
                 <div class="riskbars-head" aria-hidden="true">
                     <span>호실</span>
                     <span></span>
-                    <span>점수</span>
+                    <span id="mon-risk-col-label">점수</span>
                 </div>
                 <div id="mon-risk-chart" class="riskbars" role="list"></div>
                 <div id="mon-risk-tip" class="riskbar-tip" role="tooltip" hidden></div>
-                <p class="mon-risk-foot">
+                <p class="mon-risk-foot" id="mon-risk-foot">
                     병실 점수는 그 병실 환자 중 <b>가장 높은 개인 점수</b>입니다.
                     개인 점수 = 낙상 위험도 + 연령 + 질환. 막대에 마우스를 올리면 근거가 나옵니다.
                 </p>
@@ -1675,7 +1676,11 @@ function showTab(name) {
     // 관리자 탭들은 로그인 시점 캐시가 오래됐을 수 있어 탭을 열 때마다 다시 불러온다
     if (name === "events") renderEvents();
     if (name === "patients") { renderPatients(); renderWardGrid(); }
-    if (name === "monitoring") { renderWardGrid(); renderRoomRisk(); }
+    if (name === "monitoring") {
+        renderWardGrid();
+        renderRoomRiskPanel();
+        if (monLogTab === "fall") { loadFallLogTab(); }
+    }
     if (name === "astats") { renderCharts(); renderFalls(); }
     if (name === "ahome") { renderCharts(); renderFalls(); }
     if (name === "accounts") { renderPending(); renderGuardians(); }
@@ -3351,6 +3356,7 @@ let lastYoloSignal = false;
 let lastSeenAlertId = null;  // * 팝업 부분 수정 *
 let lastLogHtml = "";        // 이벤트 로그: 바뀐 경우에만 다시 그리기 위한 비교용
 let lastEventsData = [];     // 이벤트 로그 탭 전환 시 폴링을 안 기다리고 바로 다시 그리기 위한 캐시
+let lastFallLogData = [];    // "낙상 현황" 탭 전용 — fall_log(DB)에서 가져온 값, 서버 재시작해도 안 사라짐
 let monLogTab = "robot";     // "robot"(로봇 상태) / "fall"(낙상 현황)
 
 function setMonLogTab(tab) {
@@ -3359,21 +3365,40 @@ function setMonLogTab(tab) {
         b.classList.toggle("active", b.dataset.logTab === tab);
     });
     lastLogHtml = "";   // 탭이 바뀌면 내용이 같아 보여도 무조건 다시 그린다
+    if (tab === "fall") { loadFallLogTab(); } else { renderEventLog(); }
+}
+
+// "낙상 현황" 탭 데이터는 메모리(state.events)가 아니라 DB(fall_log)에서 매번 새로 받아온다
+async function loadFallLogTab() {
+    try {
+        const res = await fetch("/api/fall-log");
+        const data = await res.json();
+        lastFallLogData = data.ok ? data.logs : [];
+    } catch (e) {
+        lastFallLogData = [];
+    }
     renderEventLog();
 }
 
 function renderEventLog() {
     const log = document.getElementById("event-log");
     if (!log) return;
-    const filtered = lastEventsData.filter(e => {
-        const isFall = e.text.includes("낙상 환자 발견");
-        return monLogTab === "fall" ? isFall : !isFall;
-    });
-    const html = filtered.map(e => {
-        const isFall = e.text.includes("낙상 환자 발견");
-        return `<div class="event-item${isFall ? " fall" : ""}">` +
-               `<span>${e.time}</span><p>${e.text}</p></div>`;
-    }).join("") || '<div class="event-empty">기록된 이벤트가 없습니다.</div>';
+
+    let html, count;
+    if (monLogTab === "fall") {
+        count = lastFallLogData.length;
+        html = lastFallLogData.map(f => {
+            const time = String(f.detected_at).slice(5, 16);   // "MM-DD HH:MM"
+            const who = f.patient_name ? ` · ${f.patient_name} 님` : "";
+            return `<div class="event-item fall"><span>${time}</span><p>병실 ${f.room_number} 낙상 감지${who}</p></div>`;
+        }).join("") || '<div class="event-empty">기록된 낙상이 없습니다.</div>';
+    } else {
+        const filtered = lastEventsData.filter(e => !e.text.includes("낙상 환자 발견"));
+        count = filtered.length;
+        html = filtered.map(e =>
+            `<div class="event-item"><span>${e.time}</span><p>${e.text}</p></div>`
+        ).join("") || '<div class="event-empty">기록된 이벤트가 없습니다.</div>';
+    }
 
     if (html !== lastLogHtml) {
         const keep = log.scrollTop;
@@ -3383,7 +3408,7 @@ function renderEventLog() {
     }
 
     const logCount = document.getElementById("mon-log-count");
-    if (logCount) logCount.innerText = filtered.length;
+    if (logCount) logCount.innerText = count;
 }
 
 function showFallAlert(room) {  // * 팝업 부분 수정 *
@@ -3458,12 +3483,6 @@ async function renderRoomTally() {
         const maxFalls = Math.max(0, ...data.rooms.map(r => r.falls));
 
         data.rooms.forEach(r => {
-            const tally = document.getElementById("tally-" + r.room);
-            if (tally) {
-                tally.innerText = `순찰 ${r.patrols}회 · 낙상 ${r.falls}건`;
-                tally.title = `오늘 순찰 ${r.patrols_today}회`;
-            }
-
             const cell = document.getElementById("room-" + r.room);
             if (!cell) { return; }
 
@@ -3599,10 +3618,10 @@ async function updateStatus() {
         lastEventsData = data.events;
         renderEventLog();
 
-        // Home 탭 "최근 이벤트" — 같은 이벤트 로그를 재사용 (최근 3건만)
+        // Home 탭 "최근 이벤트" — 같은 이벤트 로그를 재사용 (최근 20건, 스크롤)
         const ahomeEvents = document.getElementById("ahome-events");
         if (ahomeEvents) {
-            ahomeEvents.innerHTML = data.events.slice(0, 3).map(e => {
+            ahomeEvents.innerHTML = data.events.slice(0, 20).map(e => {
                 const isFall = e.text.includes("낙상 환자 발견");
                 const tag = isFall ? '<span class="risk-chip risk-high">낙상</span> ' : "";
                 return `<li><span class="tl-time">${e.time}</span><span>${tag}${e.text}</span></li>`;
@@ -3712,6 +3731,95 @@ async function renderRoomRisk() {
     });
 }
 
+// ===== "병실별 낙상 위험도" ↔ "오늘 순찰 횟수" 토글 =====
+let monRiskMode = "risk";   // "risk" | "patrol"
+
+function renderRoomRiskPanel() {
+    if (monRiskMode === "patrol") { renderRoomPatrolToday(); }
+    else { renderRoomRisk(); }
+}
+
+function setMonRiskMode(mode) {
+    if (mode === monRiskMode) { return; }
+    monRiskMode = mode;
+
+    document.querySelectorAll('.mon-risk [data-risk-mode]').forEach(b => {
+        b.classList.toggle("active", b.dataset.riskMode === mode);
+    });
+
+    const title = document.getElementById("mon-risk-title");
+    const note = document.getElementById("mon-risk-note");
+    const colLabel = document.getElementById("mon-risk-col-label");
+    const foot = document.getElementById("mon-risk-foot");
+    hideRiskTip();
+
+    if (mode === "patrol") {
+        if (title) title.innerText = "병실별 오늘 순찰 횟수";
+        if (note) note.innerHTML = "";
+        if (colLabel) colLabel.innerText = "횟수";
+        if (foot) foot.style.display = "none";
+    } else {
+        if (title) title.innerText = "병실별 낙상 위험도";
+        if (note) note.innerHTML = `순찰 우선순위 순 · 최대 <strong id="mon-risk-max">${MAX_PATIENT_SCORE}</strong>점`;
+        if (colLabel) colLabel.innerText = "점수";
+        if (foot) foot.style.display = "";
+    }
+
+    renderRoomRiskPanel();
+}
+
+// 병실별 "오늘" 순찰 횟수. 위험도 막대와 같은 모양(riskbar)을 그대로 재사용한다
+async function renderRoomPatrolToday() {
+    const box = document.getElementById("mon-risk-chart");
+    if (!box) { return; }
+
+    let rooms;
+    try {
+        const res = await fetch("/api/rooms/summary");
+        const data = await res.json();
+        if (!data.ok) { throw new Error(data.error || "실패"); }
+        rooms = data.rooms;
+    } catch (e) {
+        box.innerHTML = '<p class="riskbars-empty">순찰 횟수를 불러오지 못했습니다.</p>';
+        return;
+    }
+
+    const maxToday = Math.max(0, ...rooms.map(r => r.patrols_today || 0));
+    const maxEl = document.getElementById("mon-risk-max");
+    if (maxEl) { maxEl.innerText = maxToday; }
+
+    const sorted = [...rooms].sort((a, b) =>
+        (b.patrols_today || 0) - (a.patrols_today || 0) || a.room.localeCompare(b.room));
+
+    box.textContent = "";
+    sorted.forEach(r => {
+        const count = r.patrols_today || 0;
+        const pct = count && maxToday ? Math.max(2, (count / maxToday) * 100) : 0;
+
+        const row = document.createElement("div");
+        row.className = "riskbar";
+        row.setAttribute("role", "listitem");
+
+        const label = document.createElement("span");
+        label.className = "riskbar-room";
+        label.textContent = r.room;
+
+        const track = document.createElement("span");
+        track.className = "riskbar-track";
+        const fill = document.createElement("span");
+        fill.className = "riskbar-fill";
+        fill.style.width = pct + "%";
+        track.appendChild(fill);
+
+        const value = document.createElement("span");
+        value.className = "riskbar-value";
+        value.textContent = count;
+
+        row.append(label, track, value);
+        box.appendChild(row);
+    });
+}
+
 // 막대 상세. 값이 먼저 크게, 이름은 그 다음 — 읽는 사람은 병실을 이미 알고 숫자를 원한다
 function showRiskTip(row) {
     const tip = document.getElementById("mon-risk-tip");
@@ -3758,12 +3866,17 @@ function hideRiskTip() {
 }
 
 // 순찰·낙상 집계는 DB 조회라 1초마다 돌릴 필요가 없다 (순찰 1회에 수십 초 단위)
-setInterval(renderRoomTally, 30000);
+// "오늘 순찰" 모드일 때만 이 주기로 같이 갱신한다 — 위험도는 아래 주석대로 폴링 대상이 아니다
+setInterval(() => {
+    renderRoomTally();
+    if (monRiskMode === "patrol") { renderRoomPatrolToday(); }
+    if (monLogTab === "fall") { loadFallLogTab(); }
+}, 30000);
 renderRoomTally();
 
 // 위험도는 관리자가 환자 정보를 고칠 때만 바뀌므로 폴링하지 않는다
 // (모니터링 탭을 열 때 showTab이 다시 부른다)
-renderRoomRisk();
+renderRoomRiskPanel();
 
 // 보호자 환자 상태(확정 낙상 → 10분 후 주의)는 분 단위로 바뀌므로 20초마다 갱신
 setInterval(refreshGuardianFallState, 20000);
@@ -4309,10 +4422,10 @@ async function renderFalls() {
         });
     }
 
-    // Home 탭 "최근 낙상" (최근 3건만, 날짜만 짧게)
+    // Home 탭 "최근 낙상" (최근 20건, 날짜만 짧게, 스크롤)
     const ahomeFalls = document.getElementById("ahome-falls");
     if (ahomeFalls) {
-        ahomeFalls.innerHTML = rows.slice(0, 3).map(f =>
+        ahomeFalls.innerHTML = rows.slice(0, 20).map(f =>
             `<li><span class="tl-time">${f.detected_at.slice(5, 10)}</span><span>병실 ${f.room_number}</span></li>`
         ).join("") || '<li class="g-log-empty">낙상 기록이 없습니다.</li>';
     }
