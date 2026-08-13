@@ -2826,7 +2826,6 @@ html.reveal-on .rm-svc-grid .rm-svc-card:nth-child(8) { transition-delay: 0.49s;
 .mon-logbox .event-item span {
     flex: none;
     min-width: 52px;
-    font-family: 'Courier New', monospace;
     font-size: 12px;
     font-weight: 700;
     color: var(--text-muted);
@@ -2920,7 +2919,8 @@ html.reveal-on .rm-svc-grid .rm-svc-card:nth-child(8) { transition-delay: 0.49s;
     height: auto;
 }
 
-/* 바닥(=복도)은 살짝 어둡게, 병실은 밝게 얹어 구분한다 */
+#g-live-map { max-width: 60%; margin-left: auto; margin-right: auto; }
+
 .rc-floor { fill: var(--surface-hover); }
 .rc-room  { fill: var(--card); stroke: none; transition: fill 0.15s; }
 
@@ -2955,6 +2955,10 @@ html.reveal-on .rm-svc-grid .rm-svc-card:nth-child(8) { transition-delay: 0.49s;
 .rc-spot { cursor: pointer; }
 .rc-spot:focus { outline: none; }
 
+/* 보호자용 지도는 열람 전용이라 클릭 가능한 것처럼 보이면 안 된다 */
+#g-live-map .rc-spot { cursor: default; }
+#g-live-map .rc-spot:hover .rc-room { fill: var(--card); }
+
 .rc-spot:hover .rc-room { fill: var(--accent-soft); }
 .rc-spot.target .rc-room,
 .rc-spot:focus-visible .rc-room {
@@ -2973,6 +2977,8 @@ html.reveal-on .rm-svc-grid .rm-svc-card:nth-child(8) { transition-delay: 0.49s;
 
 .rc-spot:hover .rc-dock,
 .rc-spot:hover .rc-desk { filter: brightness(1.07); }
+#g-live-map .rc-spot:hover .rc-dock,
+#g-live-map .rc-spot:hover .rc-desk { filter: none; }
 
 .rc-spot.target .rc-dock,
 .rc-spot.target .rc-desk,

@@ -547,13 +547,71 @@
             </div>
         </div>
 
-        <!-- 병실 구조도 (자리만 확보 · 도면은 추후 작업) -->
+        <!-- 병실 구조도 · 로봇 실시간 위치 (관리자 Robot Control 지도를 열람 전용으로 재사용) -->
         <div class="panel" style="margin-top:18px;">
             <div class="panel-head">병실 구조도 · 로봇 실시간 위치</div>
-            <div class="gmap-slot" id="gmap-slot">
-                <span class="gmap-slot-ico">🗺️</span>
-                <strong>병실 구조도 영역</strong>
-                <p>병실 도면과 순찰 로봇의 실시간 위치가 이 자리에 표시됩니다.</p>
+            <div class="rc-map" id="g-live-map">
+                <svg class="rc-map-svg" viewBox="0 0 762 493" role="img" aria-label="병동 실시간 위치 지도">
+                    <defs>
+                        <filter id="gLiveShadow" x="-15%" y="-15%" width="130%" height="130%">
+                            <feDropShadow dx="0" dy="7" stdDeviation="11"
+                                          flood-color="#0f172a" flood-opacity="0.18"/>
+                        </filter>
+                    </defs>
+
+                    <g transform="translate(21 21)">
+                        <rect class="rc-floor" x="0" y="0" width="720" height="451" rx="7"
+                              filter="url(#gLiveShadow)"/>
+
+                        <g class="rc-spot" data-place="room1" data-x="90.3" data-y="125.8">
+                            <rect class="rc-room" x="7" y="7" width="161" height="250" rx="3"/>
+                            <text class="rc-num" x="87" y="124">101</text>
+                            <text class="rc-sub" x="87" y="150">1인실</text>
+                        </g>
+                        <g class="rc-spot" data-place="room2" data-x="258.5" data-y="124.6">
+                            <rect class="rc-room" x="180" y="7" width="168" height="250" rx="3"/>
+                            <text class="rc-num" x="264" y="124">102</text>
+                            <text class="rc-sub" x="264" y="150">2인실</text>
+                        </g>
+                        <g class="rc-spot" data-place="room3" data-x="448.5" data-y="109.3">
+                            <rect class="rc-room" x="360" y="7" width="174" height="250" rx="3"/>
+                            <text class="rc-num" x="447" y="124">103</text>
+                            <text class="rc-sub" x="447" y="150">2인실</text>
+                        </g>
+                        <g class="rc-spot" data-place="room4" data-x="630.5" data-y="125.8">
+                            <rect class="rc-room" x="546" y="7" width="167" height="250" rx="3"/>
+                            <text class="rc-num" x="629" y="124">104</text>
+                            <text class="rc-sub" x="629" y="150">4인실</text>
+                        </g>
+
+                        <g class="rc-spot" data-place="dock" data-x="80.4" data-y="416.1">
+                            <rect class="rc-dock" x="7" y="388" width="147" height="56" rx="5"/>
+                            <text class="rc-num rc-num-sm rc-on-fill" x="80" y="411">충전</text>
+                            <text class="rc-sub rc-on-fill" x="80" y="432">도킹</text>
+                        </g>
+
+                        <g class="rc-spot" data-place="standby" data-x="353.2" data-y="403.1">
+                            <rect class="rc-desk" x="268" y="366" width="170" height="78" rx="5"/>
+                            <text class="rc-num rc-num-sm rc-on-fill" x="353" y="400">대기</text>
+                            <text class="rc-sub rc-on-fill" x="353" y="421">데스크</text>
+                        </g>
+
+                        <rect class="rc-wall" x="0" y="0" width="720" height="451" rx="7"/>
+                        <path class="rc-wall rc-wall-in" d="M174 0 V257 M354 0 V257 M540 0 V257"/>
+                        <path class="rc-wall rc-wall-door"
+                              d="M7 257 H43    M139 257 H168
+                                 M180 257 H212 M308 257 H348
+                                 M360 257 H394 M490 257 H534
+                                 M546 257 H586 M682 257 H713"/>
+
+                        <polyline class="rc-path" id="g-live-path" points=""/>
+
+                        <g id="g-live-robot" class="rc-robot" style="transform: translate(200px, 264px);">
+                            <circle class="rc-robot-halo" r="18"/>
+                            <circle class="rc-robot-dot" r="8.5"/>
+                        </g>
+                    </g>
+                </svg>
             </div>
         </div>
     </div>
@@ -3096,6 +3154,15 @@ function syncGuardianLive(data) {
         fall.classList.toggle("g-ok", !detected);
         fall.classList.toggle("g-danger", detected);
     }
+
+    // 병실 구조도 · 로봇 실시간 위치 (열람 전용)
+    if (typeof data.robot_x === "number" && typeof data.robot_y === "number") {
+        gLivePlaceRobot(data.robot_x, data.robot_y);
+        gLiveSetMapLive(true);
+    } else {
+        gLiveSetMapLive(false);
+    }
+    gLiveDrawPath(data.path);
 }
 
 // ===== 보호자 환자 상태 (관리자가 확정한 낙상 기준: 낙상 10분 → 주의 → 다음날 정상) =====
@@ -4322,6 +4389,35 @@ function rcDrawPath(pts) {
         return;
     }
 
+    const plan = [];
+    for (const [mx, my] of pts) {
+        const p = rcMapToPlan(mx, my);
+        if (p) { plan.push(p[0].toFixed(1) + "," + p[1].toFixed(1)); }
+    }
+    el.setAttribute("points", plan.join(" "));
+}
+
+// ===== 보호자용 지도(g-live-map) — 열람 전용, 로봇 위치만 실시간으로 따라 그린다 =====
+// 좌표 변환(rcMapToPlan/MAP_TF)은 관리자 지도와 공용으로 쓰고, 아이콘/경로만 별도 id로 그린다
+function gLiveSetMapLive(on) {
+    const map = document.getElementById("g-live-map");
+    if (map) { map.classList.toggle("rc-map-stale", !on); }
+}
+
+function gLivePlaceRobot(mx, my) {
+    const robot = document.getElementById("g-live-robot");
+    if (!robot) return;
+    const p = rcMapToPlan(mx, my);
+    if (p) { robot.style.transform = `translate(${p[0]}px, ${p[1]}px)`; }
+}
+
+function gLiveDrawPath(pts) {
+    const el = document.getElementById("g-live-path");
+    if (!el) return;
+    if (!MAP_TF || !Array.isArray(pts) || pts.length < 2) {
+        el.setAttribute("points", "");
+        return;
+    }
     const plan = [];
     for (const [mx, my] of pts) {
         const p = rcMapToPlan(mx, my);
