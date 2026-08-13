@@ -848,7 +848,6 @@
                 <div class="mon-screen">
                     <img id="video-img" src="/video_feed" alt="순찰 로봇 실시간 영상"
                          onerror="this.style.visibility='hidden'; this.parentElement.classList.add('no-signal');">
-                    <div class="detect-line"></div>
                     <div class="mon-nosignal">영상 신호 없음 · 로봇 연결을 확인해 주세요</div>
                 </div>
                 <div class="mon-stage-foot">
@@ -923,7 +922,7 @@
 
         <div class="page-head" style="display:none;">
             <h2>통계</h2>
-            <p>낙상 발생과 순찰 통계입니다. (※ 더미 데이터 — 실제 값은 통계 API 연동)</p>
+            <p>낙상 발생과 순찰 통계입니다.</p>
         </div>
 
         <!-- 차트 -->
@@ -935,11 +934,6 @@
             <div class="panel">
                 <div class="panel-head">병실별 낙상 발생 · 위험도</div>
                 <div class="lc" id="bc-astats-room"><!-- renderCharts()로 그림 --></div>
-                <div class="a-risk-list">
-                    <div><span class="risk-chip risk-high">고위험</span><strong>101호</strong><span>순찰 우선순위 1</span></div>
-                    <div><span class="risk-chip risk-mid">중위험</span><strong>103호</strong><span>순찰 우선순위 2</span></div>
-                    <div><span class="risk-chip risk-low">일반</span><strong>102 · 104호</strong><span>정기 순찰</span></div>
-                </div>
             </div>
             <div class="panel">
                 <div class="panel-head">시간대별 낙상</div>
@@ -1148,7 +1142,7 @@
                         <p>배터리가 아래 값 이하로 떨어지면 자동으로 충전 스테이션에 복귀합니다.</p>
                     </div>
                     <select class="form-input rc-select" id="rc-charge-th" onchange="rcToast('충전 복귀 기준을 ' + this.value + '로 저장했습니다')">
-                        <option>20%</option><option>30%</option><option>15%</option>
+                        <option>30%</option>
                     </select>
                 </div>
                 <div class="rc-setting">
@@ -1675,9 +1669,8 @@ function showTab(name) {
     if (name === "schedule") loadSchedule();
     // 관리자 탭들은 로그인 시점 캐시가 오래됐을 수 있어 탭을 열 때마다 다시 불러온다
     if (name === "events") renderEvents();
-    if (name === "patients") { renderPatients(); renderWardGrid(); }
+    if (name === "patients") { renderPatients(); }
     if (name === "monitoring") {
-        renderWardGrid();
         renderRoomRiskPanel();
         if (monLogTab === "fall") { loadFallLogTab(); }
     }
@@ -2495,7 +2488,7 @@ const DB = {
     }
 };
 
-// 재원 환자 목록 (환자관리 탭 · 병실 모니터링 그리드가 함께 사용)
+// 재원 환자 목록 (환자관리 탭 · 이벤트 환자 지정이 함께 사용)
 let WARDS = [];
 
 function toWard(p) {
@@ -2519,50 +2512,6 @@ async function fetchWards() {
     } catch (e) {
         return [];
     }
-}
-
-async function renderWardGrid() {
-    const grid = document.getElementById("ward-grid");
-    if (!grid) return;
-    WARDS = await fetchWards();
-    grid.innerHTML = "";
-
-    // 한 병실에 여러 명이 있으므로 병실 단위로 묶는다 (카드 = 병실 1개)
-    const rooms = [...new Set(WARDS.map(w => w.room))].sort();
-    const rank = { "매우 높음": 4, "높음": 3, "보통": 2, "낮음": 1 };
-
-    rooms.forEach(room => {
-        const list = WARDS.filter(w => w.room === room);
-        // 병실 태그는 그 방에서 가장 높은 위험도로 표시한다
-        const risk = list.reduce((a, w) => (rank[w.risk] > rank[a] ? w.risk : a), "낮음");
-        const names = list.map(w => w.name).join(", ");
-
-        const cell = document.createElement("button");
-        cell.type = "button";
-        cell.className = "ward-cell" + (room === "101" ? " selected" : "");
-        cell.dataset.room = room;
-        cell.onclick = () => selectWard(room);
-        cell.innerHTML =
-            `<div class="ward-video">
-                 <img src="/video_feed" alt="병실 ${room} 실시간 영상" onerror="this.style.visibility='hidden'">
-                 <span class="live-badge">LIVE</span>
-             </div>
-             <div class="ward-meta">
-                 <strong>병실 ${room}</strong>
-                 <span class="risk-chip risk-${RISK_CLASS[risk] || "idle"}">${risk}</span>
-             </div>
-             <span class="ward-patient">${names || "재실 환자 없음"} · ${list.length}명</span>`;
-        grid.appendChild(cell);
-    });
-}
-
-function selectWard(room) {
-    document.querySelectorAll(".ward-cell").forEach(c => {
-        c.classList.toggle("selected", c.dataset.room === room);
-    });
-    const label = document.getElementById("mon-sel-room");
-    if (label) label.innerText = "병실 " + room;
-    rcToast("병실 " + room + " 화면으로 전환했습니다");
 }
 
 // ----- 이벤트: 캡처 확인 · 대응 완료 -----
@@ -3290,7 +3239,6 @@ async function doLogin() {
         renderGuardians();
         renderNurses();
         renderPatients();
-        renderWardGrid();
         renderEvents();
         renderFalls();
     }
@@ -3431,20 +3379,17 @@ function switchVideo(mode) {
     const img = document.getElementById("video-img");
     const btnRaw = document.getElementById("btn-raw");
     const btnYolo = document.getElementById("btn-yolo");
-    const detectLine = document.querySelector(".detect-line");
 
     if (mode === "yolo") {
         img.src = "/video_feed_yolo";
         img.style.visibility = lastYoloSignal ? "visible" : "hidden";
         btnYolo.classList.add("active");
         btnRaw.classList.remove("active");
-        if (detectLine) detectLine.style.display = "block";  // 분석 영상에만 중앙선 표시
     } else {
         img.style.visibility = "visible";
         img.src = "/video_feed";
         btnRaw.classList.add("active");
         btnYolo.classList.remove("active");
-        if (detectLine) detectLine.style.display = "none";   // 원본 영상은 깨끗하게
     }
 }
 
@@ -4361,7 +4306,6 @@ async function addPatient() {
 
     ["pt-room", "pt-name", "pt-age", "pt-diag"].forEach(id => { document.getElementById(id).value = ""; });
     err.innerText = "";
-    renderWardGrid();
     renderPatients();
     renderCharts();   // Home 요약 카드(전체/위험 병실)·통계 차트도 위험도 변경을 바로 반영
     rcToast(name + " 님을 " + room + "호에 등록했습니다");
@@ -4394,7 +4338,6 @@ async function dischargePatient(i) {
                 rcToast("서버와 통신할 수 없습니다");
                 return;
             }
-            renderWardGrid();
             renderPatients();
             renderCharts();   // 전체/위험 병실 수 변동 반영
             rcToast(w.name + " 님을 퇴원 처리했습니다");
@@ -4921,7 +4864,6 @@ renderCharts();
 renderFalls();
 renderEvents();
 renderSettingsTheme();
-renderWardGrid();
 renderRoomOptions();   // 환자 등록 병실 선택지 (101~104호)
 syncRoomLabels();      // 화면의 "n인실" 라벨을 ROOM_INFO에 맞춤
 renderPending();

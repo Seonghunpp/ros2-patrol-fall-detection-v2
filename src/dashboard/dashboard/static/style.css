@@ -186,19 +186,6 @@ body {
     overflow: hidden;
 }
 
-.detect-line {
-    display: none;             /* 기본 숨김. 분석(YOLO) 영상일 때만 JS로 표시 */
-    position: absolute;
-    left: 0;
-    right: 0;
-    top: 67%;                 /* fall_detection_node 의 detect_line_ratio(0.67)와 맞춤: 아래 1/3만 감지 */
-    height: 2px;
-    background: #3b82f6;       /* 파란색 감지 기준선 */
-    transform: translateY(-50%);
-    pointer-events: none;      /* 클릭 통과 */
-    z-index: 5;
-}
-
 /* 영상 위에 얹히는 LIVE 표시. 같은 어법(틴트+테두리)으로 맞추되,
    배경이 영상이라 유리판을 깔아 글자가 묻히지 않게 한다 */
 .live-badge {
@@ -1092,7 +1079,6 @@ body {
     --shadow: none;
     /* 랜딩 전용 토큰 */
     --lp-parchment: #f5f5f7;
-    --lp-dark: #1d1d1f;
     --lp-ink: #1d1d1f;
     --lp-muted: #6e6e73;
     --lp-hairline: #e0e0e0;
@@ -1208,12 +1194,6 @@ body {
 .lp-btn:focus-visible {
     outline: 2px solid #ffffff;
     outline-offset: 2px;
-}
-
-@keyframes heroPulse {
-    0% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.45); }
-    70% { box-shadow: 0 0 0 10px rgba(34, 197, 94, 0); }
-    100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }
 }
 
 /* ===== 기능 카드 캐러셀 =====
@@ -1508,16 +1488,6 @@ body {
         gap: 14px;
     }
 
-    .header-left,
-    .header-right {
-        width: 100%;
-        flex-wrap: wrap;
-    }
-
-    .tab-nav {
-        position: static;
-    }
-
     .lp-tile {
         padding: 64px 0;
     }
@@ -1536,20 +1506,6 @@ body {
     .lp-stats {
         grid-template-columns: repeat(2, 1fr);
         gap: 34px 16px;
-    }
-
-    .mon-head {
-        padding: 78px 22px 0;
-    }
-
-    .mon-grid {
-        grid-template-columns: 1fr;
-        grid-template-rows: none;
-        padding: 14px 22px 28px;
-    }
-
-    .mon-grid .card {
-        min-height: 320px;
     }
 }
 
@@ -1692,10 +1648,7 @@ body {
 /* 탭 콘텐츠 반응형 */
 @media (max-width: 960px) {
     .page { padding: 80px 22px 40px; }
-    .rooms-layout { grid-template-columns: 1fr; }
-    .patient-detail { position: static; }
     .stat-row { grid-template-columns: repeat(2, 1fr); }
-    .patrol-grid { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 560px) {
@@ -2071,17 +2024,6 @@ body {
 /* 따뜻한 배경에 맞춰 카드 테두리도 중립 톤으로 */
 #tab-rooms .rm-svc-card { border-color: rgba(45, 35, 25, 0.09); }
 
-.rm-svc-grid.n5 { grid-template-columns: repeat(5, 1fr); }
-.rm-svc-grid.n8 { grid-template-columns: repeat(4, 1fr); }
-
-/* 중간 폭: 5개는 3 + 가운데 2, 8개는 2+2+2+2 */
-@media (max-width: 1080px) {
-    .rm-svc-grid.n5 { grid-template-columns: repeat(6, 1fr); }
-    .rm-svc-grid.n5 .rm-svc-card { grid-column: span 2; }
-    .rm-svc-grid.n5 .rm-svc-card:nth-child(4) { grid-column: 2 / span 2; }
-    .rm-svc-grid.n5 .rm-svc-card:nth-child(5) { grid-column: 4 / span 2; }
-    .rm-svc-grid.n8 { grid-template-columns: repeat(2, 1fr); }
-}
 
 .rm-svc-card {
     background: #ffffff;
@@ -2137,12 +2079,6 @@ body {
 @media (max-width: 760px) {
     .rm-hero { min-height: 58vh; }
     .rm-svc-grid { gap: 12px; }
-    .rm-svc-grid.n5,
-    .rm-svc-grid.n8 { grid-template-columns: repeat(4, 1fr); }
-    .rm-svc-grid.n5 .rm-svc-card,
-    .rm-svc-grid.n8 .rm-svc-card { grid-column: span 2; }
-    .rm-svc-grid.n5 .rm-svc-card:nth-child(4) { grid-column: auto / span 2; }
-    .rm-svc-grid.n5 .rm-svc-card:nth-child(5) { grid-column: 2 / span 2; }
     .rm-svc-card { padding: 22px 14px 20px; }
     .rm-svc-card p { font-size: 13px; }
     .rm-tab { padding: 9px 16px; font-size: 14px; }
@@ -2302,9 +2238,6 @@ html.reveal-on .rm-svc-grid .rm-svc-card:nth-child(8) { transition-delay: 0.49s;
 #ahome-events, #ahome-falls { max-height: 150px; overflow-y: auto; }
 .timeline li { display: flex; gap: 12px; align-items: center; font-size: 14px; }
 .tl-time { min-width: 54px; color: var(--text-muted); font-weight: 700; font-family: 'Courier New', monospace; font-size: 13px; }
-
-/* 통계 카드 2열 · 6열 / 홈 그리드 */
-.stat-row-2 { grid-template-columns: repeat(2, 1fr); }
 .stat-row-6 { grid-template-columns: repeat(6, 1fr); }
 .ahome-grid { display: grid; grid-template-columns: 1.1fr 1fr 1fr; gap: 18px; margin-top: 18px; }
 
@@ -2856,22 +2789,11 @@ html.reveal-on .rm-svc-grid .rm-svc-card:nth-child(8) { transition-delay: 0.49s;
 .mon-rooms .room strong { font-size: 14px; font-weight: 700; }
 .mon-rooms .room span { font-size: 11px; color: var(--text-muted); }
 
-/* 병실별 낙상 건수 · 순찰 횟수 */
-.mon-rooms .room .room-tally {
-    font-size: 11px;
-    font-style: normal;
-    color: var(--text-muted);
-    margin-top: 3px;
-}
-
 /* 낙상이 잦을수록 붉게. 그 병실에서 가장 많은 곳을 기준으로 3단계.
    rgba로 덮어서 라이트/다크 배경 어디에도 얹힌다 */
 .mon-rooms .room.fall-low  { background: rgba(234, 179, 8, 0.10);  border-color: rgba(234, 179, 8, 0.45); }
 .mon-rooms .room.fall-mid  { background: rgba(249, 115, 22, 0.14); border-color: rgba(249, 115, 22, 0.55); }
 .mon-rooms .room.fall-high { background: rgba(239, 68, 68, 0.18);  border-color: rgba(239, 68, 68, 0.65); }
-
-.mon-rooms .room.fall-high .room-tally,
-.mon-rooms .room.fall-mid .room-tally { color: var(--text); font-weight: 600; }
 
 /* 로봇 위치와 낙상 빈도는 서로 다른 채널로 표시해서 둘 다 보이게 한다.
    배경 = 낙상 빈도, 테두리+링 = 로봇 위치.
@@ -3000,36 +2922,6 @@ html.reveal-on .rm-svc-grid .rm-svc-card:nth-child(8) { transition-delay: 0.49s;
     .mon-side { flex-direction: row; flex-wrap: wrap; }
     .mon-side > * { flex: 1 1 260px; }
 }
-
-/* 전체 병실 그리드 뷰 */
-.ward-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
-
-.ward-cell {
-    padding: 10px;
-    border: 2px solid var(--border);
-    border-radius: 6px;
-    background: var(--card);
-    font-family: inherit;
-    text-align: left;
-    cursor: pointer;
-    transition: border-color 0.2s, transform 0.2s, box-shadow 0.2s;
-}
-
-.ward-cell:hover { transform: translateY(-2px); box-shadow: 0 16px 30px -22px rgba(15, 23, 42, 0.5); }
-.ward-cell.selected { border-color: #0284c7; box-shadow: 0 0 0 4px rgba(2, 132, 199, 0.12); }
-
-.ward-video {
-    position: relative;
-    aspect-ratio: 16 / 10;
-    border-radius: 4px;
-    overflow: hidden;
-    background: #0b1220;
-}
-
-.ward-video img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.ward-meta { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 10px; }
-.ward-meta strong { font-size: 14px; }
-.ward-patient { font-size: 12px; color: var(--text-muted); }
 
 /* ============================================================
    Robot Control — 지도에서 목적지 클릭
@@ -3311,10 +3203,6 @@ html.reveal-on .rm-svc-grid .rm-svc-card:nth-child(8) { transition-delay: 0.49s;
 }
 .form-input-sm { padding: 6px 10px !important; font-size: 13px !important; }
 
-.a-risk-list { display: flex; flex-direction: column; gap: 10px; margin-top: 16px; }
-.a-risk-list div { display: flex; align-items: center; gap: 10px; font-size: 13px; }
-.a-risk-list span:last-child { margin-left: auto; color: var(--text-muted); font-size: 12px; }
-
 .a-memo { font-size: 12px; color: var(--text-muted); cursor: help; }
 
 /* 권한 고정 표기 (변경 불가) */
@@ -3326,7 +3214,6 @@ html.reveal-on .rm-svc-grid .rm-svc-card:nth-child(8) { transition-delay: 0.49s;
     font-weight: 800;
     letter-spacing: 0.04em;
 }
-.role-admin { background: #e8effc; color: #1e40af; }
 .role-user  { background: #eef2f7; color: #475569; }
 
 /* 낙상 환자 지정 */
@@ -3455,10 +3342,6 @@ html.reveal-on .rm-svc-grid .rm-svc-card:nth-child(8) { transition-delay: 0.49s;
 .login-secure strong { display: block; font-size: 14px; }
 .login-secure p { margin: 3px 0 0; font-size: 12px; color: rgba(255, 255, 255, 0.7); }
 
-@media (max-width: 1080px) {
-    .ward-grid { grid-template-columns: repeat(2, 1fr); }
-}
-
 /* ============================================================
    보호자(guardian) 화면 — 랜딩 페이지와 같은 톤
    (큰 제목 · 둥근 카드 · 탭 진입 시 순차 등장)
@@ -3585,11 +3468,6 @@ html.reveal-on .rm-svc-grid .rm-svc-card:nth-child(8) { transition-delay: 0.49s;
 .g-chip-warn { background: #fdf1f1; border-color: #f3d6d7; color: #b4353a; }
 .g-chip-live { background: #fdecec; border-color: #f5d2d2; color: #d70015; }
 
-@keyframes gPulse {
-    0%, 100% { opacity: 1; transform: scale(1); }
-    50%      { opacity: 0.35; transform: scale(0.8); }
-}
-
 /* ----- 카드 · 타일 (랜딩과 같은 라운드/그림자) ----- */
 .g-scope .panel,
 .g-scope .card {
@@ -3715,25 +3593,6 @@ html.reveal-on .rm-svc-grid .rm-svc-card:nth-child(8) { transition-delay: 0.49s;
 .g-state.state-warning .g-state-dot { background: #e08c1a; }
 
 .g-chip-sm { padding: 5px 11px; font-size: 11px; }
-
-/* 병실 구조도 자리 (도면은 추후 작업) */
-.gmap-slot {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
-    min-height: 300px;
-    padding: 30px;
-    border: 2px dashed #d6e0f2;
-    border-radius: 6px;
-    background: repeating-linear-gradient(45deg, #fbfcff, #fbfcff 14px, #f5f8ff 14px, #f5f8ff 28px);
-    text-align: center;
-}
-
-.gmap-slot-ico { font-size: 34px; opacity: 0.65; }
-.gmap-slot strong { font-size: 15px; color: var(--text); }
-.gmap-slot p { margin: 0; font-size: 13px; color: var(--text-muted); }
 
 /* 통계: 카드 3개를 균등하게 */
 .g-stat-3 { grid-template-columns: repeat(3, 1fr) !important; }
@@ -4016,7 +3875,6 @@ html.reveal-on .rm-svc-grid .rm-svc-card:nth-child(8) { transition-delay: 0.49s;
     .stat-row-6 { grid-template-columns: repeat(3, 1fr); }
     .ahome-grid { grid-template-columns: 1fr; }
     .chart-grid { grid-template-columns: 1fr; }
-    .robot-layout { grid-template-columns: 1fr; }
 }
 @media (max-width: 560px) {
     .stat-row-6 { grid-template-columns: repeat(2, 1fr); }

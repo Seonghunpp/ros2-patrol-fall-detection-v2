@@ -925,13 +925,6 @@ def api_redeem():
     return jsonify({"ok": True, "patient": patient_display})
 
 
-@app.route("/api/session")
-def api_session():
-    if session.get("user"):
-        return jsonify({"authenticated": True, "username": session["user"], "role": session.get("role")})
-    return jsonify({"authenticated": False})
-
-
 @app.route("/api/status")
 @login_required
 def api_status():
@@ -1445,68 +1438,6 @@ def api_events_delete():
     conn = get_db()
     cursor = conn.cursor()
     cursor.execute("DELETE FROM calendar_events WHERE id = %s", (event_id,))
-    conn.commit()
-    cursor.close()
-    conn.close()
-    return jsonify({"ok": True})
-
-
-# ===== 체크리스트: DB(checklist)에 저장 (여러 브라우저 공유) =====
-
-@app.route("/api/notes", methods=["GET"])
-@login_required
-def api_notes_get():
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute("SELECT id, text, done FROM checklist ORDER BY id")
-    checklist = [{"id": r[0], "text": r[1], "done": bool(r[2])} for r in cursor.fetchall()]
-    cursor.close()
-    conn.close()
-    return jsonify({"checklist": checklist})
-
-
-@app.route("/api/checklist/add", methods=["POST"])
-@login_required
-def api_checklist_add():
-    body = request.get_json(silent=True) or {}
-    text = str(body.get("text", "")).strip()
-    if not text:
-        return jsonify({"ok": False, "error": "text가 필요합니다"}), 400
-
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute("INSERT INTO checklist (text, done) VALUES (%s, FALSE)", (text,))
-    conn.commit()
-    item = {"id": cursor.lastrowid, "text": text, "done": False}
-    cursor.close()
-    conn.close()
-    return jsonify({"ok": True, "item": item})
-
-
-@app.route("/api/checklist/toggle", methods=["POST"])
-@login_required
-def api_checklist_toggle():
-    body = request.get_json(silent=True) or {}
-    item_id = body.get("id")
-
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute("UPDATE checklist SET done = NOT done WHERE id = %s", (item_id,))
-    conn.commit()
-    cursor.close()
-    conn.close()
-    return jsonify({"ok": True})
-
-
-@app.route("/api/checklist/delete", methods=["POST"])
-@login_required
-def api_checklist_delete():
-    body = request.get_json(silent=True) or {}
-    item_id = body.get("id")
-
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute("DELETE FROM checklist WHERE id = %s", (item_id,))
     conn.commit()
     cursor.close()
     conn.close()
