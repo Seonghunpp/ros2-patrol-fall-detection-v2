@@ -2135,12 +2135,18 @@ body {
     overflow-x: auto;
 }
 
-.navlink {
+/* 상단바 버튼 3종 공통 리셋 */
+.navlink,
+.nav-login,
+.nav-signup {
     border: none;
-    background: none;
     cursor: pointer;
     font-family: inherit;
     font-size: 14px;
+}
+
+.navlink {
+    background: none;
     font-weight: 600;
     color: rgba(255, 255, 255, 0.85);
     padding: 8px 12px;
@@ -2162,11 +2168,7 @@ body {
 }
 
 .nav-login {
-    border: none;
     background: none;
-    cursor: pointer;
-    font-family: inherit;
-    font-size: 14px;
     font-weight: 600;
     color: #ffffff;
     padding: 8px 10px;
@@ -2174,10 +2176,6 @@ body {
 .topbar.solid .nav-login { color: var(--text); }
 
 .nav-signup {
-    border: none;
-    cursor: pointer;
-    font-family: inherit;
-    font-size: 14px;
     font-weight: 700;
     padding: 9px 18px;
     border-radius: 4px;
@@ -2509,25 +2507,32 @@ html.reveal-on .rm-svc-grid .rm-svc-card:nth-child(8) { transition-delay: 0.49s;
    반투명 틴트 + 같은 색 1px 테두리 + 컬러 글자. 점과 깜빡임은 뺀다.
    상태를 color / border-color 로만 표현하는 건 규칙이다 — JS가 이 두 속성을
    인라인으로 덮어써서 상태를 바꾸는 칩이 있다(applyGuardianFallState). */
-.a-chip {
+/* 관리자(.a-chip)와 보호자(.g-chip)는 뼈대가 같고 색만 다르다.
+   뼈대는 여기 한 곳에만 두고, 색은 각 섹션에서 덮는다 (.g-chip 은 보호자 섹션) */
+.a-chip,
+.g-chip {
     display: inline-flex;
     align-items: center;
     gap: 8px;
     flex: none;
     padding: 7px 14px;
     border-radius: 4px;
-    border: 1px solid rgba(255, 255, 255, 0.3);
-    background: rgba(255, 255, 255, 0.1);
-    color: #ffffff;
     font-size: 12px;
     font-weight: 700;
     letter-spacing: 0.02em;
     white-space: nowrap;
 }
 
+.a-chip {
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    background: rgba(255, 255, 255, 0.1);
+    color: #ffffff;
+}
+
 /* 점은 마크업에 그대로 두고 감추기만 한다.
    JS가 <i>를 포함해 innerHTML을 다시 그리는 곳이 있어 태그를 지우지 않는다 */
-.a-chip i { display: none; }
+.a-chip i,
+.g-chip i { display: none; }
 
 .a-chip-ok   { background: rgba(74, 222, 128, 0.16);  border-color: rgba(74, 222, 128, 0.5);  color: #86efac; }
 .a-chip-warn { background: rgba(251, 191, 36, 0.16);  border-color: rgba(251, 191, 36, 0.5);  color: #fcd34d; }
@@ -3446,23 +3451,9 @@ html.reveal-on .rm-svc-grid .rm-svc-card:nth-child(8) { transition-delay: 0.49s;
 .g-hero--photo .g-chip-warn { color: #ff9aa0; border-color: rgba(255, 154, 160, 0.55); }
 .g-hero--photo .g-chip-live { color: #ff8a8f; border-color: rgba(255, 138, 143, 0.55); }
 
-/* 상태 칩 */
-/* ----- 상태 배지 (보호자) — 관리자 쪽과 같은 어법, 밝은 면 위 버전 ----- */
-.g-chip {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    flex: none;
-    padding: 7px 14px;
-    border-radius: 4px;
-    border: 1px solid transparent;
-    font-size: 12px;
-    font-weight: 700;
-    letter-spacing: 0.02em;
-    white-space: nowrap;
-}
-
-.g-chip i { display: none; }
+/* ----- 상태 배지 (보호자) — 뼈대는 .a-chip 과 함께 위에서 정의한다.
+   여기서는 밝은 면 위 버전의 색만 지정한다 ----- */
+.g-chip { border: 1px solid transparent; }
 
 .g-chip-ok { background: #eaf7ee; border-color: #cfe9d8; color: #1a7f3c; }
 .g-chip-warn { background: #fdf1f1; border-color: #f3d6d7; color: #b4353a; }
@@ -3833,41 +3824,26 @@ html.reveal-on .rm-svc-grid .rm-svc-card:nth-child(8) { transition-delay: 0.49s;
 .ctrl-btn:hover { filter: brightness(1.06); }
 .ctrl-go { width: 100%; margin-top: 10px; background: var(--accent); }
 
-.rc-toast {
-    position: absolute;
-    left: 50%;
-    bottom: 18px;
-    transform: translateX(-50%) translateY(10px);
-    background: rgba(15, 23, 42, 0.92);
-    color: #fff;
-    padding: 10px 18px;
-    border-radius: 4px;
-    font-size: 13px;
-    font-weight: 600;
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity 0.2s, transform 0.2s;
-    z-index: 5;
-}
-.rc-toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
-
-/* 화면 하단 공용 토스트 */
+/* 토스트 두 종류. 지도 안에 뜨는 것(rc)과 화면 하단 공용(app)이 생김새는 같고
+   자리·크기만 다르다 — 공통 생김새를 위에 두고 다른 값만 아래에서 덮는다 */
+.rc-toast,
 .app-toast {
-    position: fixed;
     left: 50%;
-    bottom: 32px;
     transform: translateX(-50%) translateY(10px);
     background: rgba(15, 23, 42, 0.92);
     color: #fff;
-    padding: 11px 20px;
     border-radius: 4px;
     font-size: 13px;
     font-weight: 600;
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.2s, transform 0.2s;
-    z-index: 3000;
 }
+
+.rc-toast  { position: absolute; bottom: 18px; padding: 10px 18px; z-index: 5; }
+.app-toast { position: fixed;    bottom: 32px; padding: 11px 20px; z-index: 3000; }
+
+.rc-toast.show,
 .app-toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
 /* 역할 페이지 반응형 */
@@ -4040,13 +4016,16 @@ html.reveal-on .rm-svc-grid .rm-svc-card:nth-child(8) { transition-delay: 0.49s;
     gap: 22px;
 }
 
-.ab-problem {
-    padding: 32px 30px;
+/* 시스템 소개의 카드 면 — 문제 카드와 계층 카드가 같은 표면을 쓴다 */
+.ab-problem,
+.ab-tier {
     background: #ffffff;
     border: 1px solid #e8eefc;
     border-radius: 6px;
     box-shadow: 0 14px 34px -22px rgba(23, 48, 94, 0.3);
 }
+
+.ab-problem { padding: 32px 30px; }
 
 .ab-problem h3 {
     margin: 0 0 10px;
@@ -4096,7 +4075,9 @@ html.reveal-on .rm-svc-grid .rm-svc-card:nth-child(8) { transition-delay: 0.49s;
 .ab-solution b { color: #ffffff; font-weight: 700; }
 
 /* 시스템 구성도 — 3계층을 실제로 쌓고 사이를 선으로 잇는다 */
-.ab-tiers {
+/* 세로로 쌓이는 목록 두 곳(시스템 소개 계층 · 주요 기능 목록)이 같은 형태다 */
+.ab-tiers,
+.fx-list {
     list-style: none;
     margin: 0;
     padding: 0;
@@ -4112,10 +4093,6 @@ html.reveal-on .rm-svc-grid .rm-svc-card:nth-child(8) { transition-delay: 0.49s;
     gap: 22px;
     align-items: start;
     padding: 28px 30px;
-    background: #ffffff;
-    border: 1px solid #e8eefc;
-    border-radius: 6px;
-    box-shadow: 0 14px 34px -22px rgba(23, 48, 94, 0.3);
 }
 
 .ab-tier + .ab-tier::before {
@@ -4321,14 +4298,7 @@ html.reveal-on .ab-tiers .ab-tier:nth-child(3) { transition-delay: 0.16s; }
     color: var(--lp-muted);
 }
 
-.fx-list {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
-}
+/* .fx-list 의 형태는 .ab-tiers 와 함께 위에서 정의한다 */
 
 .fx-list li {
     padding-left: 16px;

@@ -4,6 +4,7 @@ import re
 import secrets
 import threading
 import time
+from contextlib import contextmanager
 from functools import wraps
 
 import mysql.connector
@@ -41,6 +42,19 @@ DB_CONFIG = {
 
 def get_db():
     return mysql.connector.connect(**DB_CONFIG)
+
+
+# 조회 전용 헬퍼. conn/cursor를 열고 블록을 벗어날 때 반드시 닫는다.
+# 쓰기(INSERT/UPDATE/DELETE)는 commit/rollback을 라우트마다 다르게 다뤄야 해서 여기 쓰지 않는다.
+@contextmanager
+def db_cursor(dictionary=False):
+    conn = get_db()
+    cursor = conn.cursor(dictionary=dictionary)
+    try:
+        yield cursor
+    finally:
+        cursor.close()
+        conn.close()
 
 
 # ===== 개인정보 필드 암호화 (이름/전화번호/보호자명) =====
@@ -631,12 +645,9 @@ def api_login():
     remember = bool(body.get("remember"))
     login_role = str(body.get("role", ""))
 
-    conn = get_db()
-    cursor = conn.cursor(dictionary=True)
-    cursor.execute("SELECT * FROM users WHERE username = %s", (username,))
-    user = cursor.fetchone()
-    cursor.close()
-    conn.close()
+    with db_cursor(dictionary=True) as cursor:
+        cursor.execute("SELECT * FROM users WHERE username = %s", (username,))
+        user = cursor.fetchone()
 
     if user is None or not check_password_hash(user["password_hash"], password):
         return jsonify({"ok": False, "error": "아이디 또는 비밀번호가 올바르지 않습니다."}), 401
@@ -753,15 +764,12 @@ def api_apply():
 @app.route("/api/applications")
 @login_required
 def api_applications():
-    conn = get_db()
-    cursor = conn.cursor(dictionary=True)
-    cursor.execute(
-        "SELECT id, applicant_name, phone, patient_name, room_number, status, mapping_code, applied_at "
-        "FROM guardian_applications WHERE status IN ('pending', 'approved') ORDER BY id DESC"
-    )
-    rows = cursor.fetchall()
-    cursor.close()
-    conn.close()
+    with db_cursor(dictionary=True) as cursor:
+        cursor.execute(
+            "SELECT id, applicant_name, phone, patient_name, room_number, status, mapping_code, applied_at "
+            "FROM guardian_applications WHERE status IN ('pending', 'approved') ORDER BY id DESC"
+        )
+        rows = cursor.fetchall()
 
     applications = [{
         "id": r["id"],
@@ -829,15 +837,12 @@ def api_verify_code():
     if not code:
         return jsonify({"ok": False, "error": "매핑 코드를 입력해 주세요."}), 400
 
-    conn = get_db()
-    cursor = conn.cursor(dictionary=True)
-    cursor.execute(
-        "SELECT applicant_name, patient_name, room_number, status FROM guardian_applications WHERE mapping_code = %s",
-        (code,),
-    )
-    app_row = cursor.fetchone()
-    cursor.close()
-    conn.close()
+    with db_cursor(dictionary=True) as cursor:
+        cursor.execute(
+            "SELECT applicant_name, patient_name, room_number, status FROM guardian_applications WHERE mapping_code = %s",
+            (code,),
+        )
+        app_row = cursor.fetchone()
 
     if not app_row or app_row["status"] == "rejected":
         return jsonify({"ok": False, "error": "승인된 코드를 찾을 수 없습니다. 문자로 받은 코드를 확인해 주세요."}), 404
@@ -936,19 +941,16 @@ def api_status():
 @app.route("/api/guardian-accounts")
 @login_required
 def api_guardian_accounts():
-    conn = get_db()
-    cursor = conn.cursor(dictionary=True)
-    cursor.execute("""
-        SELECT u.id, u.username, p.name, p.room_number, p.guardian, ga.mapping_code AS code
-        FROM users u
-        LEFT JOIN patients p ON p.user_id = u.id
-        LEFT JOIN guardian_applications ga ON ga.user_id = u.id
-        WHERE u.role != 'admin'
-        ORDER BY u.id
-    """)
-    accounts = cursor.fetchall()
-    cursor.close()
-    conn.close()
+    with db_cursor(dictionary=True) as cursor:
+        cursor.execute("""
+            SELECT u.id, u.username, p.name, p.room_number, p.guardian, ga.mapping_code AS code
+            FROM users u
+            LEFT JOIN patients p ON p.user_id = u.id
+            LEFT JOIN guardian_applications ga ON ga.user_id = u.id
+            WHERE u.role != 'admin'
+            ORDER BY u.id
+        """)
+        accounts = cursor.fetchall()
     for a in accounts:
         a["name"] = decrypt_field(a["name"])
         a["guardian"] = decrypt_field(a["guardian"])
@@ -992,14 +994,11 @@ VALID_ROOMS = ("all", "101", "102", "103", "104")
 def api_nurses_list():
     if not _is_admin():
         return jsonify({"ok": False, "error": "권한이 없습니다."}), 403
-    conn = get_db()
-    cursor = conn.cursor(dictionary=True)
-    cursor.execute(
-        "SELECT id, name, employee_no, phone, assigned_room FROM nurses ORDER BY id"
-    )
-    nurses = cursor.fetchall()
-    cursor.close()
-    conn.close()
+    with db_cursor(dictionary=True) as cursor:
+        cursor.execute(
+            "SELECT id, name, employee_no, phone, assigned_room FROM nurses ORDER BY id"
+        )
+        nurses = cursor.fetchall()
     for n in nurses:
         n["name"] = decrypt_field(n["name"])
         n["phone"] = decrypt_field(n["phone"])
@@ -1091,27 +1090,24 @@ def api_nurses_delete(nurse_id):
 @app.route("/api/patrol-log")
 @login_required
 def api_patrol_log():
-    conn = get_db()
-    cursor = conn.cursor(dictionary=True)
-    if session.get("role") == "admin":
-        cursor.execute(
-            "SELECT room_number, patrolled_at FROM patrol_log ORDER BY patrolled_at DESC LIMIT 50"
-        )
-    else:
-        cursor.execute(
-            """
-            SELECT pl.room_number, pl.patrolled_at
-            FROM patrol_log pl
-            JOIN patients p ON p.room_number = pl.room_number
-            WHERE p.user_id = %s AND DATE(pl.patrolled_at) = CURDATE()
-            ORDER BY pl.patrolled_at DESC
-            LIMIT 20
-            """,
-            (session.get("user_id"),),
-        )
-    logs = cursor.fetchall()
-    cursor.close()
-    conn.close()
+    with db_cursor(dictionary=True) as cursor:
+        if session.get("role") == "admin":
+            cursor.execute(
+                "SELECT room_number, patrolled_at FROM patrol_log ORDER BY patrolled_at DESC LIMIT 50"
+            )
+        else:
+            cursor.execute(
+                """
+                SELECT pl.room_number, pl.patrolled_at
+                FROM patrol_log pl
+                JOIN patients p ON p.room_number = pl.room_number
+                WHERE p.user_id = %s AND DATE(pl.patrolled_at) = CURDATE()
+                ORDER BY pl.patrolled_at DESC
+                LIMIT 20
+                """,
+                (session.get("user_id"),),
+            )
+        logs = cursor.fetchall()
     # datetime을 그대로 jsonify하면 "Fri, 07 Aug 2026 ..." 영어 형식이 되므로
     # 프론트가 다루기 쉬운 "YYYY-MM-DD HH:MM:SS" 문자열로 통일해서 내보낸다.
     for log in logs:
@@ -1124,37 +1120,34 @@ def api_patrol_log():
 @app.route("/api/my-patient")
 @login_required
 def api_my_patient():
-    conn = get_db()
-    cursor = conn.cursor(dictionary=True)
-    cursor.execute(
-        "SELECT name, room_number, age, sex, disease, risk_level, phone, guardian FROM patients WHERE user_id = %s",
-        (session.get("user_id"),),
-    )
-    patient = cursor.fetchone()
-    nurses = []
-    if patient:
-        patient["name"] = decrypt_field(patient["name"])
-        patient["phone"] = decrypt_field(patient["phone"])
-        patient["guardian"] = decrypt_field(patient["guardian"])
-        # 담당 간호사: 이 환자의 병실을 담당(assigned_room=병실번호)하거나 전체 담당('all')인 간호사
+    with db_cursor(dictionary=True) as cursor:
         cursor.execute(
-            "SELECT name, employee_no, phone FROM nurses "
-            "WHERE assigned_room = %s OR assigned_room = 'all' ORDER BY id",
-            (patient["room_number"],),
-        )
-        nurses = cursor.fetchall()
-        for n in nurses:
-            n["name"] = decrypt_field(n["name"])    # 이름·전화번호는 암호화 저장이므로 복호화
-            n["phone"] = decrypt_field(n["phone"])
-        # 이 보호자의 매핑 코드 (가입 시 guardian_applications에 user_id로 남아 있음)
-        cursor.execute(
-            "SELECT mapping_code FROM guardian_applications WHERE user_id = %s",
+            "SELECT name, room_number, age, sex, disease, risk_level, phone, guardian FROM patients WHERE user_id = %s",
             (session.get("user_id"),),
         )
-        mc = cursor.fetchone()
-        patient["mapping_code"] = mc["mapping_code"] if mc else None
-    cursor.close()
-    conn.close()
+        patient = cursor.fetchone()
+        nurses = []
+        if patient:
+            patient["name"] = decrypt_field(patient["name"])
+            patient["phone"] = decrypt_field(patient["phone"])
+            patient["guardian"] = decrypt_field(patient["guardian"])
+            # 담당 간호사: 이 환자의 병실을 담당(assigned_room=병실번호)하거나 전체 담당('all')인 간호사
+            cursor.execute(
+                "SELECT name, employee_no, phone FROM nurses "
+                "WHERE assigned_room = %s OR assigned_room = 'all' ORDER BY id",
+                (patient["room_number"],),
+            )
+            nurses = cursor.fetchall()
+            for n in nurses:
+                n["name"] = decrypt_field(n["name"])    # 이름·전화번호는 암호화 저장이므로 복호화
+                n["phone"] = decrypt_field(n["phone"])
+            # 이 보호자의 매핑 코드 (가입 시 guardian_applications에 user_id로 남아 있음)
+            cursor.execute(
+                "SELECT mapping_code FROM guardian_applications WHERE user_id = %s",
+                (session.get("user_id"),),
+            )
+            mc = cursor.fetchone()
+            patient["mapping_code"] = mc["mapping_code"] if mc else None
     if patient:
         patient["nurses"] = nurses
     return jsonify({"ok": True, "patient": patient})
@@ -1177,25 +1170,22 @@ def find_patient_id_by_name_room(conn, name, room):
 @app.route("/api/patients", methods=["GET"])
 @login_required
 def api_patients_get():
-    conn = get_db()
-    cursor = conn.cursor(dictionary=True)
-    cursor.execute(
-        """
-        SELECT p.id, p.name, p.room_number, p.age, p.sex, p.disease, p.risk_level,
-               f.last_fall
-        FROM patients p
-        LEFT JOIN (
-            SELECT patient_id, MAX(detected_at) AS last_fall
-            FROM fall_log
-            WHERE patient_id IS NOT NULL
-            GROUP BY patient_id
-        ) f ON f.patient_id = p.id
-        ORDER BY p.room_number, p.id
-        """
-    )
-    patients = cursor.fetchall()
-    cursor.close()
-    conn.close()
+    with db_cursor(dictionary=True) as cursor:
+        cursor.execute(
+            """
+            SELECT p.id, p.name, p.room_number, p.age, p.sex, p.disease, p.risk_level,
+                   f.last_fall
+            FROM patients p
+            LEFT JOIN (
+                SELECT patient_id, MAX(detected_at) AS last_fall
+                FROM fall_log
+                WHERE patient_id IS NOT NULL
+                GROUP BY patient_id
+            ) f ON f.patient_id = p.id
+            ORDER BY p.room_number, p.id
+            """
+        )
+        patients = cursor.fetchall()
     for p in patients:
         p["name"] = decrypt_field(p["name"])
         p["last_fall"] = p["last_fall"].strftime("%Y-%m-%d") if p["last_fall"] else None
@@ -1278,35 +1268,32 @@ def api_patient_delete(patient_id):
 @app.route("/api/fall-log")
 @login_required
 def api_fall_log_get():
-    conn = get_db()
-    cursor = conn.cursor(dictionary=True)
-    if session.get("role") == "admin":
-        cursor.execute("""
-            SELECT f.id, f.room_number, f.detected_at, f.patient_id, f.memo, f.done,
-                   p.name AS patient_name
-            FROM fall_log f
-            LEFT JOIN patients p ON p.id = f.patient_id
-            ORDER BY f.detected_at DESC
-            LIMIT 100
-        """)
-        rows = cursor.fetchall()
-    else:
-        cursor.execute("SELECT id FROM patients WHERE user_id = %s", (session.get("user_id"),))
-        prow = cursor.fetchone()
-        rows = []
-        if prow:
+    with db_cursor(dictionary=True) as cursor:
+        if session.get("role") == "admin":
             cursor.execute("""
                 SELECT f.id, f.room_number, f.detected_at, f.patient_id, f.memo, f.done,
                        p.name AS patient_name
                 FROM fall_log f
                 LEFT JOIN patients p ON p.id = f.patient_id
-                WHERE f.patient_id = %s AND f.done = TRUE
                 ORDER BY f.detected_at DESC
-                LIMIT 50
-            """, (prow["id"],))
+                LIMIT 100
+            """)
             rows = cursor.fetchall()
-    cursor.close()
-    conn.close()
+        else:
+            cursor.execute("SELECT id FROM patients WHERE user_id = %s", (session.get("user_id"),))
+            prow = cursor.fetchone()
+            rows = []
+            if prow:
+                cursor.execute("""
+                    SELECT f.id, f.room_number, f.detected_at, f.patient_id, f.memo, f.done,
+                           p.name AS patient_name
+                    FROM fall_log f
+                    LEFT JOIN patients p ON p.id = f.patient_id
+                    WHERE f.patient_id = %s AND f.done = TRUE
+                    ORDER BY f.detected_at DESC
+                    LIMIT 50
+                """, (prow["id"],))
+                rows = cursor.fetchall()
 
     for r in rows:
         if r.get("patient_name"):
@@ -1319,12 +1306,9 @@ def api_fall_log_get():
 @app.route("/api/fall-log/<int:log_id>/capture")
 @login_required
 def api_fall_log_capture(log_id):
-    conn = get_db()
-    cursor = conn.cursor(dictionary=True)
-    cursor.execute("SELECT capture_path FROM fall_log WHERE id = %s", (log_id,))
-    row = cursor.fetchone()
-    cursor.close()
-    conn.close()
+    with db_cursor(dictionary=True) as cursor:
+        cursor.execute("SELECT capture_path FROM fall_log WHERE id = %s", (log_id,))
+        row = cursor.fetchone()
     if not row or not row["capture_path"]:
         return jsonify({"ok": False, "error": "저장된 캡처 이미지가 없습니다."}), 404
     return send_from_directory(CAPTURE_DIR, row["capture_path"])
@@ -1361,49 +1345,46 @@ def api_my_fall_state():
     #   fall    : 확정(처리) 후 10분 이내 (빨강)
     #   warning : 확정 10분 경과 ~ 그날 자정까지 (노랑, '낙상 있었음')
     # 다음 날이 되면 오늘 기록이 아니므로 자동으로 normal로 돌아간다.
-    conn = get_db()
-    cursor = conn.cursor(dictionary=True)
-    cursor.execute("SELECT id, room_number FROM patients WHERE user_id = %s", (session.get("user_id"),))
-    prow = cursor.fetchone()
-    state = "normal"
-    last_detected_at = None
-    if prow:
-        # "최근 감지"는 병실 상세 정보 카드에 있는 값이라 내 담당 환자 한 명이 아니라
-        # 그 병실에서 확정된(done=TRUE) 낙상 중 가장 최근 것을 본다 (누구 환자든 상관없음)
-        cursor.execute(
-            "SELECT detected_at FROM fall_log "
-            "WHERE room_number = %s AND done = TRUE "
-            "ORDER BY detected_at DESC LIMIT 1",
-            (prow["room_number"],),
-        )
-        last_row = cursor.fetchone()
-        if last_row and last_row["detected_at"]:
-            last_detected_at = last_row["detected_at"].strftime("%Y-%m-%d %H:%M")
+    with db_cursor(dictionary=True) as cursor:
+        cursor.execute("SELECT id, room_number FROM patients WHERE user_id = %s", (session.get("user_id"),))
+        prow = cursor.fetchone()
+        state = "normal"
+        last_detected_at = None
+        if prow:
+            # "최근 감지"는 병실 상세 정보 카드에 있는 값이라 내 담당 환자 한 명이 아니라
+            # 그 병실에서 확정된(done=TRUE) 낙상 중 가장 최근 것을 본다 (누구 환자든 상관없음)
+            cursor.execute(
+                "SELECT detected_at FROM fall_log "
+                "WHERE room_number = %s AND done = TRUE "
+                "ORDER BY detected_at DESC LIMIT 1",
+                (prow["room_number"],),
+            )
+            last_row = cursor.fetchone()
+            if last_row and last_row["detected_at"]:
+                last_detected_at = last_row["detected_at"].strftime("%Y-%m-%d %H:%M")
 
-        cursor.execute(
-            "SELECT confirmed_at FROM fall_log "
-            "WHERE patient_id = %s AND done = TRUE AND confirmed_at IS NOT NULL "
-            "AND DATE(confirmed_at) = CURDATE() "
-            "ORDER BY confirmed_at DESC LIMIT 1",
-            (prow["id"],),
-        )
-        row = cursor.fetchone()
-        if row and row["confirmed_at"]:
-            elapsed = (datetime.datetime.now() - row["confirmed_at"]).total_seconds()
-            # state = "fall" if elapsed < 600 else "warning"   # 600초 = 10분
+            cursor.execute(
+                "SELECT confirmed_at FROM fall_log "
+                "WHERE patient_id = %s AND done = TRUE AND confirmed_at IS NOT NULL "
+                "AND DATE(confirmed_at) = CURDATE() "
+                "ORDER BY confirmed_at DESC LIMIT 1",
+                (prow["id"],),
+            )
+            row = cursor.fetchone()
+            if row and row["confirmed_at"]:
+                elapsed = (datetime.datetime.now() - row["confirmed_at"]).total_seconds()
+                # state = "fall" if elapsed < 600 else "warning"   # 600초 = 10분
 
-            # --- 테스트용 (원래: 낙상 600초, 주의 그날 종일) ---
-            if elapsed < 30:
-                state = "fall"          # 0~30초: 빨강
-            elif elapsed < 50:         # 30~50초 (30 + 20): 노랑
-                state = "warning"
-            else:
-                state = "normal"       # 50초 이후: 다시 초록
-
+                # --- 테스트용 (원래: 낙상 600초, 주의 그날 종일) ---
+                if elapsed < 30:
+                    state = "fall"          # 0~30초: 빨강
+                elif elapsed < 50:         # 30~50초 (30 + 20): 노랑
+                    state = "warning"
+                else:
+                    state = "normal"       # 50초 이후: 다시 초록
 
 
-    cursor.close()
-    conn.close()
+
     return jsonify({"ok": True, "state": state, "last_detected_at": last_detected_at})
 
 
@@ -1412,17 +1393,14 @@ def api_my_fall_state():
 @app.route("/api/events", methods=["GET"])
 @login_required
 def api_events_get():
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute("""
-        SELECT ce.id, ce.event_date, ce.text, u.username
-        FROM calendar_events ce
-        LEFT JOIN users u ON u.id = ce.created_by
-        ORDER BY ce.event_date, ce.id
-    """)
-    rows = cursor.fetchall()
-    cursor.close()
-    conn.close()
+    with db_cursor() as cursor:
+        cursor.execute("""
+            SELECT ce.id, ce.event_date, ce.text, u.username
+            FROM calendar_events ce
+            LEFT JOIN users u ON u.id = ce.created_by
+            ORDER BY ce.event_date, ce.id
+        """)
+        rows = cursor.fetchall()
 
     events = {}
     for event_id, event_date, text, created_by in rows:
@@ -1476,6 +1454,27 @@ STATS_RISK_RANK = {"매우 높음": 4, "높음": 3, "보통": 2, "낮음": 1}
 STATS_RISK_CLASS = {"매우 높음": "critical", "높음": "high", "보통": "mid", "낮음": "low"}
 
 
+def recent_months(today, count=6):
+    """이번 달까지 최근 count개월을 (연, 월) 오름차순으로 돌려준다."""
+    months = []
+    y, m = today.year, today.month
+    for _ in range(count):
+        months.append((y, m))
+        m -= 1
+        if m == 0:
+            m = 12
+            y -= 1
+    months.reverse()
+    return months
+
+
+def monthly_fall_series(months, rows):
+    """(연, 월, 건수) 행을 months 순서대로 [["N월", 건수], ...] 로 채운다.
+    기록이 없는 달도 0으로 남겨야 그래프에서 달이 빠지지 않는다."""
+    counts = {(y, m): c for y, m, c in rows}
+    return [[f"{m}월", counts.get((y, m), 0)] for y, m in months]
+
+
 @app.route("/api/rooms/summary")
 @login_required
 def api_rooms_summary():
@@ -1484,30 +1483,27 @@ def api_rooms_summary():
     통계 탭의 /api/stats/admin은 차트 6종을 한꺼번에 만드느라 무거워서,
     병실 카드에 필요한 두 숫자만 따로 뽑는다.
     """
-    conn = get_db()
-    cursor = conn.cursor()
+    with db_cursor() as cursor:
 
-    cursor.execute(
-        "SELECT room_number, COUNT(*) FROM fall_log "
-        "WHERE room_number IS NOT NULL GROUP BY room_number"
-    )
-    falls = dict(cursor.fetchall())
+        cursor.execute(
+            "SELECT room_number, COUNT(*) FROM fall_log "
+            "WHERE room_number IS NOT NULL GROUP BY room_number"
+        )
+        falls = dict(cursor.fetchall())
 
-    cursor.execute(
-        "SELECT room_number, COUNT(*) FROM patrol_log "
-        "WHERE room_number IS NOT NULL GROUP BY room_number"
-    )
-    patrols = dict(cursor.fetchall())
+        cursor.execute(
+            "SELECT room_number, COUNT(*) FROM patrol_log "
+            "WHERE room_number IS NOT NULL GROUP BY room_number"
+        )
+        patrols = dict(cursor.fetchall())
 
-    cursor.execute(
-        "SELECT room_number, COUNT(*) FROM patrol_log "
-        "WHERE room_number IS NOT NULL AND DATE(patrolled_at) = CURDATE() "
-        "GROUP BY room_number"
-    )
-    patrols_today = dict(cursor.fetchall())
+        cursor.execute(
+            "SELECT room_number, COUNT(*) FROM patrol_log "
+            "WHERE room_number IS NOT NULL AND DATE(patrolled_at) = CURDATE() "
+            "GROUP BY room_number"
+        )
+        patrols_today = dict(cursor.fetchall())
 
-    cursor.close()
-    conn.close()
 
     # 등록된 병실은 기록이 하나도 없어도 0으로 항상 내려준다 (카드가 사라지면 안 됨).
     # 반대로 로그에만 있는 병실도 빠뜨리지 않는다
@@ -1531,74 +1527,62 @@ def api_rooms_summary():
 @login_required
 def api_stats_admin():
     today = datetime.date.today()
-    conn = get_db()
-    cursor = conn.cursor()
+    with db_cursor() as cursor:
 
-    # 월별 낙상 발생 (최근 6개월)
-    months = []
-    y, m = today.year, today.month
-    for _ in range(6):
-        months.append((y, m))
-        m -= 1
-        if m == 0:
-            m = 12
-            y -= 1
-    months.reverse()
-    cursor.execute(
-        "SELECT YEAR(detected_at), MONTH(detected_at), COUNT(*) FROM fall_log "
-        "WHERE detected_at >= %s GROUP BY YEAR(detected_at), MONTH(detected_at)",
-        (datetime.date(months[0][0], months[0][1], 1),),
-    )
-    monthly_counts = {(y, m): c for y, m, c in cursor.fetchall()}
-    monthly_falls = [[f"{m}월", monthly_counts.get((y, m), 0)] for y, m in months]
+        # 월별 낙상 발생 (최근 6개월)
+        months = recent_months(today)
+        cursor.execute(
+            "SELECT YEAR(detected_at), MONTH(detected_at), COUNT(*) FROM fall_log "
+            "WHERE detected_at >= %s GROUP BY YEAR(detected_at), MONTH(detected_at)",
+            (datetime.date(months[0][0], months[0][1], 1),),
+        )
+        monthly_falls = monthly_fall_series(months, cursor.fetchall())
 
-    # 병실별 낙상 발생 · 위험도(그 병실에서 가장 높은 위험도로 막대 색을 정한다)
-    # 등록된 병실은 낙상이 한 건도 없어도 0건 막대로 항상 표시한다 (그래야 그래프 모양이 유지됨)
-    cursor.execute("SELECT room_number, COUNT(*) FROM fall_log GROUP BY room_number")
-    fall_count_by_room = dict(cursor.fetchall())
-    cursor.execute("SELECT room_number, risk_level FROM patients WHERE room_number IS NOT NULL")
-    room_risk = {}
-    all_rooms = set(fall_count_by_room.keys())   # 낙상이 실제 기록된 병실은 환자 등록 여부와 무관하게 포함
-    for room, risk in cursor.fetchall():
-        all_rooms.add(room)
-        if not risk:
-            continue
-        best = room_risk.get(room)
-        if best is None or STATS_RISK_RANK.get(risk, 0) > STATS_RISK_RANK.get(best, 0):
-            room_risk[room] = risk
-    room_falls = [
-        [f"{room}호", fall_count_by_room.get(room, 0), STATS_RISK_CLASS.get(room_risk.get(room), "low")]
-        for room in sorted(all_rooms)
-    ]
+        # 병실별 낙상 발생 · 위험도(그 병실에서 가장 높은 위험도로 막대 색을 정한다)
+        # 등록된 병실은 낙상이 한 건도 없어도 0건 막대로 항상 표시한다 (그래야 그래프 모양이 유지됨)
+        cursor.execute("SELECT room_number, COUNT(*) FROM fall_log GROUP BY room_number")
+        fall_count_by_room = dict(cursor.fetchall())
+        cursor.execute("SELECT room_number, risk_level FROM patients WHERE room_number IS NOT NULL")
+        room_risk = {}
+        all_rooms = set(fall_count_by_room.keys())   # 낙상이 실제 기록된 병실은 환자 등록 여부와 무관하게 포함
+        for room, risk in cursor.fetchall():
+            all_rooms.add(room)
+            if not risk:
+                continue
+            best = room_risk.get(room)
+            if best is None or STATS_RISK_RANK.get(risk, 0) > STATS_RISK_RANK.get(best, 0):
+                room_risk[room] = risk
+        room_falls = [
+            [f"{room}호", fall_count_by_room.get(room, 0), STATS_RISK_CLASS.get(room_risk.get(room), "low")]
+            for room in sorted(all_rooms)
+        ]
 
-    # 시간대별 낙상
-    cursor.execute("SELECT HOUR(detected_at), COUNT(*) FROM fall_log GROUP BY HOUR(detected_at)")
-    hour_counts = dict(cursor.fetchall())
-    hour_buckets = [("새벽", range(0, 6)), ("오전", range(6, 12)), ("오후", range(12, 18)), ("야간", range(18, 24))]
-    hourly_falls = [[label, sum(hour_counts.get(h, 0) for h in hours)] for label, hours in hour_buckets]
+        # 시간대별 낙상
+        cursor.execute("SELECT HOUR(detected_at), COUNT(*) FROM fall_log GROUP BY HOUR(detected_at)")
+        hour_counts = dict(cursor.fetchall())
+        hour_buckets = [("새벽", range(0, 6)), ("오전", range(6, 12)), ("오후", range(12, 18)), ("야간", range(18, 24))]
+        hourly_falls = [[label, sum(hour_counts.get(h, 0) for h in hours)] for label, hours in hour_buckets]
 
-    # 일별 순찰 횟수 (최근 7일)
-    start = today - datetime.timedelta(days=6)
-    cursor.execute(
-        "SELECT DATE(patrolled_at), COUNT(*) FROM patrol_log WHERE patrolled_at >= %s GROUP BY DATE(patrolled_at)",
-        (start,),
-    )
-    patrol_counts = {d.isoformat(): c for d, c in cursor.fetchall()}
-    daily_patrols = []
-    for i in range(7):
-        d = start + datetime.timedelta(days=i)
-        daily_patrols.append([KOREAN_WEEKDAYS[d.weekday()], patrol_counts.get(d.isoformat(), 0)])
+        # 일별 순찰 횟수 (최근 7일)
+        start = today - datetime.timedelta(days=6)
+        cursor.execute(
+            "SELECT DATE(patrolled_at), COUNT(*) FROM patrol_log WHERE patrolled_at >= %s GROUP BY DATE(patrolled_at)",
+            (start,),
+        )
+        patrol_counts = {d.isoformat(): c for d, c in cursor.fetchall()}
+        daily_patrols = []
+        for i in range(7):
+            d = start + datetime.timedelta(days=i)
+            daily_patrols.append([KOREAN_WEEKDAYS[d.weekday()], patrol_counts.get(d.isoformat(), 0)])
 
-    # Home 탭 요약 카드: 전체 병실 · 위험 병실 · 오늘 낙상 · 이번 달 낙상
-    cursor.execute("SELECT COUNT(DISTINCT room_number) FROM patients WHERE room_number IS NOT NULL")
-    total_rooms = cursor.fetchone()[0]
-    risk_rooms = sum(1 for r in room_risk.values() if r in ("높음", "매우 높음"))
-    cursor.execute("SELECT COUNT(*) FROM fall_log WHERE DATE(detected_at) = CURDATE()")
-    today_falls = cursor.fetchone()[0]
-    month_falls = monthly_falls[-1][1]   # months 마지막 = 이번 달
+        # Home 탭 요약 카드: 전체 병실 · 위험 병실 · 오늘 낙상 · 이번 달 낙상
+        cursor.execute("SELECT COUNT(DISTINCT room_number) FROM patients WHERE room_number IS NOT NULL")
+        total_rooms = cursor.fetchone()[0]
+        risk_rooms = sum(1 for r in room_risk.values() if r in ("높음", "매우 높음"))
+        cursor.execute("SELECT COUNT(*) FROM fall_log WHERE DATE(detected_at) = CURDATE()")
+        today_falls = cursor.fetchone()[0]
+        month_falls = monthly_falls[-1][1]   # months 마지막 = 이번 달
 
-    cursor.close()
-    conn.close()
     return jsonify({
         "ok": True,
         "monthly_falls": monthly_falls,
@@ -1615,69 +1599,55 @@ def api_stats_admin():
 @app.route("/api/stats/guardian")
 @login_required
 def api_stats_guardian():
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute("SELECT id, room_number FROM patients WHERE user_id = %s", (session.get("user_id"),))
-    prow = cursor.fetchone()
-    if not prow:
-        cursor.close()
-        conn.close()
-        return jsonify({"ok": True, "monthly_falls": [], "hourly_patrols": [], "daily_patrols": []})
-    patient_id, room_number = prow
-    today = datetime.date.today()
+    with db_cursor() as cursor:
+        cursor.execute("SELECT id, room_number FROM patients WHERE user_id = %s", (session.get("user_id"),))
+        prow = cursor.fetchone()
+        if not prow:
+            return jsonify({"ok": True, "monthly_falls": [], "hourly_patrols": [], "daily_patrols": []})
+        patient_id, room_number = prow
+        today = datetime.date.today()
 
-    # 월별 낙상 발생 이력 (최근 6개월, 확정된 것만)
-    months = []
-    y, m = today.year, today.month
-    for _ in range(6):
-        months.append((y, m))
-        m -= 1
-        if m == 0:
-            m = 12
-            y -= 1
-    months.reverse()
-    cursor.execute(
-        "SELECT YEAR(detected_at), MONTH(detected_at), COUNT(*) FROM fall_log "
-        "WHERE patient_id = %s AND done = TRUE AND detected_at >= %s "
-        "GROUP BY YEAR(detected_at), MONTH(detected_at)",
-        (patient_id, datetime.date(months[0][0], months[0][1], 1)),
-    )
-    monthly_counts = {(y, m): c for y, m, c in cursor.fetchall()}
-    monthly_falls = [[f"{m}월", monthly_counts.get((y, m), 0)] for y, m in months]
+        # 월별 낙상 발생 이력 (최근 6개월, 확정된 것만)
+        months = recent_months(today)
+        cursor.execute(
+            "SELECT YEAR(detected_at), MONTH(detected_at), COUNT(*) FROM fall_log "
+            "WHERE patient_id = %s AND done = TRUE AND detected_at >= %s "
+            "GROUP BY YEAR(detected_at), MONTH(detected_at)",
+            (patient_id, datetime.date(months[0][0], months[0][1], 1)),
+        )
+        monthly_falls = monthly_fall_series(months, cursor.fetchall())
 
-    # 시간대별 안심 순찰 완료 횟수 (내 병실, 전체 기간)
-    cursor.execute(
-        "SELECT HOUR(patrolled_at), COUNT(*) FROM patrol_log WHERE room_number = %s GROUP BY HOUR(patrolled_at)",
-        (room_number,),
-    )
-    hour_counts = dict(cursor.fetchall())
-    hour_buckets = [("새벽", range(0, 6)), ("오전", range(6, 12)), ("오후", range(12, 18)), ("야간", range(18, 24))]
-    hourly_patrols = [[label, sum(hour_counts.get(h, 0) for h in hours)] for label, hours in hour_buckets]
+        # 시간대별 안심 순찰 완료 횟수 (내 병실, 전체 기간)
+        cursor.execute(
+            "SELECT HOUR(patrolled_at), COUNT(*) FROM patrol_log WHERE room_number = %s GROUP BY HOUR(patrolled_at)",
+            (room_number,),
+        )
+        hour_counts = dict(cursor.fetchall())
+        hour_buckets = [("새벽", range(0, 6)), ("오전", range(6, 12)), ("오후", range(12, 18)), ("야간", range(18, 24))]
+        hourly_patrols = [[label, sum(hour_counts.get(h, 0) for h in hours)] for label, hours in hour_buckets]
 
-    # 최근 7일 순찰 완료 횟수 (내 병실)
-    start = today - datetime.timedelta(days=6)
-    cursor.execute(
-        "SELECT DATE(patrolled_at), COUNT(*) FROM patrol_log WHERE room_number = %s AND patrolled_at >= %s "
-        "GROUP BY DATE(patrolled_at)",
-        (room_number, start),
-    )
-    patrol_counts = {d.isoformat(): c for d, c in cursor.fetchall()}
-    daily_patrols = []
-    for i in range(7):
-        d = start + datetime.timedelta(days=i)
-        daily_patrols.append([KOREAN_WEEKDAYS[d.weekday()], patrol_counts.get(d.isoformat(), 0)])
-    patrol_today = daily_patrols[-1][1]   # start+6일 = 오늘
+        # 최근 7일 순찰 완료 횟수 (내 병실)
+        start = today - datetime.timedelta(days=6)
+        cursor.execute(
+            "SELECT DATE(patrolled_at), COUNT(*) FROM patrol_log WHERE room_number = %s AND patrolled_at >= %s "
+            "GROUP BY DATE(patrolled_at)",
+            (room_number, start),
+        )
+        patrol_counts = {d.isoformat(): c for d, c in cursor.fetchall()}
+        daily_patrols = []
+        for i in range(7):
+            d = start + datetime.timedelta(days=i)
+            daily_patrols.append([KOREAN_WEEKDAYS[d.weekday()], patrol_counts.get(d.isoformat(), 0)])
+        patrol_today = daily_patrols[-1][1]   # start+6일 = 오늘
 
-    # 최근 30일 순찰 완료 횟수 (내 병실)
-    start_30 = today - datetime.timedelta(days=29)
-    cursor.execute(
-        "SELECT COUNT(*) FROM patrol_log WHERE room_number = %s AND patrolled_at >= %s",
-        (room_number, start_30),
-    )
-    patrol_30d = cursor.fetchone()[0]
+        # 최근 30일 순찰 완료 횟수 (내 병실)
+        start_30 = today - datetime.timedelta(days=29)
+        cursor.execute(
+            "SELECT COUNT(*) FROM patrol_log WHERE room_number = %s AND patrolled_at >= %s",
+            (room_number, start_30),
+        )
+        patrol_30d = cursor.fetchone()[0]
 
-    cursor.close()
-    conn.close()
     return jsonify({
         "ok": True,
         "monthly_falls": monthly_falls,

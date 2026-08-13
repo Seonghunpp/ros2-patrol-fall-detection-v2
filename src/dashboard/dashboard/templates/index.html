@@ -3135,12 +3135,12 @@ function syncGuardianLive(data) {
 
     // 병실 구조도 · 로봇 실시간 위치 (열람 전용)
     if (typeof data.robot_x === "number" && typeof data.robot_y === "number") {
-        gLivePlaceRobot(data.robot_x, data.robot_y);
+        placeRobotIconByMap("g-live-robot", data.robot_x, data.robot_y);
         gLiveSetMapLive(true);
     } else {
         gLiveSetMapLive(false);
     }
-    gLiveDrawPath(data.path);
+    drawMapPath("g-live-path", data.path);
 }
 
 // ===== 보호자 환자 상태 (관리자가 확정한 낙상 기준: 낙상 10분 → 주의 → 다음날 정상) =====
@@ -3471,7 +3471,7 @@ async function updateStatus() {
 
         // 로봇 제어 지도의 실시간 위치. 폴링 간격(1초)에 맞춰 CSS가 사이를 이어 그린다
         if (typeof data.robot_x === "number" && typeof data.robot_y === "number") {
-            rcPlaceRobotByMap(data.robot_x, data.robot_y);
+            placeRobotIconByMap("rm-robot", data.robot_x, data.robot_y);
             rcSetMapLive(true);
             // 현재 위치는 마커가 아니라 실제 좌표가 어느 구역에 드는지로 정한다
             const zoneKey = rcZoneKeyByMap(data.robot_x, data.robot_y);
@@ -3481,7 +3481,7 @@ async function updateStatus() {
             rcSetCurrent("위치 확인 중");
         }
 
-        rcDrawPath(data.path);                      // Nav2 경로
+        drawMapPath("rc-path", data.path);          // Nav2 경로
         rcSyncPauseButton(!!data.robot_paused);     // 새로고침해도 버튼 라벨이 맞도록
         // 일시정지 중에는 로봇이 안 움직여 "대기 중"으로 잡히므로 구분해서 보여준다
         rcSetState(data.robot_paused ? "일시정지" : data.robot_status);
@@ -3606,6 +3606,33 @@ function patientRiskScore(p) {
     return { fallScore: fall, ageScore, disScore, total: fall + ageScore + disScore };
 }
 
+// 막대 한 줄(호실 · 막대 · 숫자)을 만들어 돌려준다.
+// 위험도 차트와 오늘 순찰 차트가 같은 생김새라 조립을 한 곳에 모았다.
+// 값은 관리자가 입력한 내용이 섞일 수 있어 전부 textContent로만 넣는다.
+function buildRiskBarRow(roomLabel, value, pct) {
+    const row = document.createElement("div");
+    row.className = "riskbar";
+    row.setAttribute("role", "listitem");
+
+    const label = document.createElement("span");
+    label.className = "riskbar-room";
+    label.textContent = roomLabel;
+
+    const track = document.createElement("span");
+    track.className = "riskbar-track";
+    const fill = document.createElement("span");
+    fill.className = "riskbar-fill";
+    fill.style.width = pct + "%";
+    track.appendChild(fill);
+
+    const valueEl = document.createElement("span");
+    valueEl.className = "riskbar-value";
+    valueEl.textContent = value;
+
+    row.append(label, track, valueEl);
+    return row;
+}
+
 async function renderRoomRisk() {
     const box = document.getElementById("mon-risk-chart");
     if (!box) { return; }
@@ -3641,34 +3668,14 @@ async function renderRoomRisk() {
         return { room, count: members.length, top, score: top ? top.total : 0 };
     }).sort((a, b) => b.score - a.score || a.room.localeCompare(b.room));
 
-    // 환자 이름·병명은 관리자가 입력한 값이라 innerHTML로 붙이지 않는다.
-    // 전부 textContent로만 넣는다
     box.textContent = "";
     rooms.forEach(r => {
         const pct = r.score ? Math.max(2, (r.score / MAX_PATIENT_SCORE) * 100) : 0;
 
-        const row = document.createElement("div");
-        row.className = "riskbar";
-        row.setAttribute("role", "listitem");
+        const row = buildRiskBarRow(r.room, r.score, pct);
         row.tabIndex = 0;                     // 마우스 없이도 상세를 볼 수 있게
         row.riskData = r;
 
-        const label = document.createElement("span");
-        label.className = "riskbar-room";
-        label.textContent = r.room;
-
-        const track = document.createElement("span");
-        track.className = "riskbar-track";
-        const fill = document.createElement("span");
-        fill.className = "riskbar-fill";
-        fill.style.width = pct + "%";
-        track.appendChild(fill);
-
-        const value = document.createElement("span");
-        value.className = "riskbar-value";
-        value.textContent = r.score;
-
-        row.append(label, track, value);
         row.addEventListener("pointerenter", () => showRiskTip(row));
         row.addEventListener("focus", () => showRiskTip(row));
         row.addEventListener("pointerleave", hideRiskTip);
@@ -3741,28 +3748,7 @@ async function renderRoomPatrolToday() {
     sorted.forEach(r => {
         const count = r.patrols_today || 0;
         const pct = count && maxToday ? Math.max(2, (count / maxToday) * 100) : 0;
-
-        const row = document.createElement("div");
-        row.className = "riskbar";
-        row.setAttribute("role", "listitem");
-
-        const label = document.createElement("span");
-        label.className = "riskbar-room";
-        label.textContent = r.room;
-
-        const track = document.createElement("span");
-        track.className = "riskbar-track";
-        const fill = document.createElement("span");
-        fill.className = "riskbar-fill";
-        fill.style.width = pct + "%";
-        track.appendChild(fill);
-
-        const value = document.createElement("span");
-        value.className = "riskbar-value";
-        value.textContent = count;
-
-        row.append(label, track, value);
-        box.appendChild(row);
+        box.appendChild(buildRiskBarRow(r.room, count, pct));
     });
 }
 
@@ -4054,6 +4040,27 @@ function yAxisHtml(max, toY) {
         .join("");
 }
 
+// 선 차트와 막대 차트가 같은 그림판(LC)·같은 눈금 규칙을 쓴다.
+// 값→y좌표 변환(val)과 격자선(grid)까지 여기서 한 번에 만든다.
+function chartScale(rows) {
+    const { w, h, padL, padR, padTop, padBottom } = LC;
+    const plotW = w - padL - padR;
+    const plotH = h - padTop - padBottom;
+    const max = Math.max(...rows.map(r => r[1]), 1);
+    const val = v => padTop + plotH * (1 - v / max);
+    const grid = chartTicks(max)
+        .map(v => `<line x1="${padL}" y1="${val(v)}" x2="${w - padR}" y2="${val(v)}"/>`)
+        .join("");
+    return { w, h, padL, padTop, plotW, plotH, baseY: padTop + plotH, max, val, grid };
+}
+
+// x축 라벨. 막대는 칸 가운데, 선은 점 위치라 자리 계산(at)만 각자 넘긴다
+function chartXLabels(rows, at) {
+    const { w } = LC;
+    return rows.map((r, i) =>
+        `<span class="lc-x" style="left:${(at(i) / w) * 100}%">${r[0]}</span>`).join("");
+}
+
 function renderLineChart(el) {
     const chart = LINE_CHARTS[el.id];
     if (!chart) return;
@@ -4066,26 +4073,17 @@ function renderLineChart(el) {
         return;
     }
 
-    const { w, h, padL, padR, padTop, padBottom } = LC;
+    const { w, h, padL, padTop, plotW, baseY, max, val, grid } = chartScale(rows);
     const n = rows.length;
-    const max = Math.max(...rows.map(r => r[1]), 1);
-    const plotW = w - padL - padR;
-    const plotH = h - padTop - padBottom;
-    const baseY = padTop + plotH;
     const stepX = n > 1 ? plotW / (n - 1) : 0;
     const at = i => padL + i * stepX;
-    const val = v => padTop + plotH * (1 - v / max);
 
     const pts = rows.map((r, i) => [at(i), val(r[1])]);
     const line = pts.map(p => `${p[0]} ${p[1]}`).join(" L ");
     const area = `M ${pts[0][0]} ${baseY} L ${line} L ${pts[n - 1][0]} ${baseY} Z`;
 
-    const grid = chartTicks(max)
-        .map(v => `<line x1="${padL}" y1="${val(v)}" x2="${w - padR}" y2="${val(v)}"/>`)
-        .join("");
     const dots = pts.map(p => `<circle cx="${p[0]}" cy="${p[1]}" r="4"/>`).join("");
-    const labels = rows.map((r, i) =>
-        `<span class="lc-x" style="left:${(at(i) / w) * 100}%">${r[0]}</span>`).join("");
+    const labels = chartXLabels(rows, at);
 
     el.innerHTML =
         `<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true">
@@ -4136,26 +4134,17 @@ function renderBarChart(el) {
     const chart = BAR_CHARTS[el.id];
     if (!chart) return;
 
-    const { w, h, padL, padR, padTop, padBottom } = LC;
     const rows = chart.data;
+    const { w, h, padL, padTop, plotW, baseY, max, val, grid } = chartScale(rows);
     const n = rows.length;
-    const max = Math.max(...rows.map(r => r[1]), 1);
-    const plotW = w - padL - padR;
-    const plotH = h - padTop - padBottom;
-    const baseY = padTop + plotH;
     const slot = plotW / n;
     const barW = Math.min(slot * 0.5, 26);
     const at = i => padL + slot * (i + 0.5);
-    const val = v => padTop + plotH * (1 - v / max);
 
-    const grid = chartTicks(max)
-        .map(v => `<line x1="${padL}" y1="${val(v)}" x2="${w - padR}" y2="${val(v)}"/>`)
-        .join("");
     const bars = rows.map((r, i) =>
         `<rect class="bc-bar bc-${r[2]}" x="${at(i) - barW / 2}" y="${val(r[1])}" ` +
         `width="${barW}" height="${Math.max(baseY - val(r[1]), 1)}"/>`).join("");
-    const labels = rows.map((r, i) =>
-        `<span class="lc-x" style="left:${(at(i) / w) * 100}%">${r[0]}</span>`).join("");
+    const labels = chartXLabels(rows, at);
 
     el.innerHTML =
         `<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true">
@@ -4485,8 +4474,9 @@ function rcRenderWaypoints(places) {
 rcLoadPlaces();
 
 // 로봇 아이콘을 도면 위 한 지점으로 옮긴다. 단위는 건물 좌표계(SVG user unit).
-function rcPlaceRobot(x, y) {
-    const robot = document.getElementById("rm-robot");
+// 관리자 지도(rm-robot)와 보호자 지도(g-live-robot)가 같이 쓴다.
+function placeRobotIcon(elId, x, y) {
+    const robot = document.getElementById(elId);
     if (robot) {
         robot.style.transform = `translate(${x}px, ${y}px)`;
     }
@@ -4506,7 +4496,7 @@ function rcSetMapLive(on) {
 // 목적지 구역의 data-x / data-y 로 옮긴다 (실시간 위치가 없을 때만)
 function rcMoveIcon(el) {
     if (rcMapLive || el.dataset.x === undefined) { return; }
-    rcPlaceRobot(el.dataset.x, el.dataset.y);
+    placeRobotIcon("rm-robot", el.dataset.x, el.dataset.y);
 }
 
 // ===== ROS map 좌표(m) → 도면 좌표(SVG unit) 변환 =====
@@ -4555,10 +4545,10 @@ function rcMapToPlan(mx, my) {
             MAP_TF.B * mx - MAP_TF.A * my + MAP_TF.TY];
 }
 
-// 실시간 위치 표시
-function rcPlaceRobotByMap(mx, my) {
+// 실시간 위치 표시. map 좌표(m)를 받아 도면 좌표로 바꿔서 옮긴다
+function placeRobotIconByMap(elId, mx, my) {
     const p = rcMapToPlan(mx, my);
-    if (p) { rcPlaceRobot(p[0], p[1]); }
+    if (p) { placeRobotIcon(elId, p[0], p[1]); }
 }
 
 // ===== 로봇이 지금 어느 구역에 있나 =====
@@ -4606,8 +4596,9 @@ function robotRoomNumber(data) {
 }
 
 // Nav2가 계획한 경로 그리기. pts 는 [[x, y], ...] (map 좌표계)
-function rcDrawPath(pts) {
-    const el = document.getElementById("rc-path");
+// 관리자 지도(rc-path)와 보호자 지도(g-live-path)가 같이 쓴다.
+function drawMapPath(elId, pts) {
+    const el = document.getElementById(elId);
     if (!el) { return; }
 
     if (!MAP_TF || !Array.isArray(pts) || pts.length < 2) {
@@ -4624,32 +4615,12 @@ function rcDrawPath(pts) {
 }
 
 // ===== 보호자용 지도(g-live-map) — 열람 전용, 로봇 위치만 실시간으로 따라 그린다 =====
-// 좌표 변환(rcMapToPlan/MAP_TF)은 관리자 지도와 공용으로 쓰고, 아이콘/경로만 별도 id로 그린다
+// 아이콘·경로는 위 공용 함수를 쓰고, 여기서는 '실시간 여부' 표시만 따로 둔다.
+// rcSetMapLive 와 합치지 않는 이유: 그쪽은 rcMapLive 플래그로 클릭 이동을 억제하는데,
+// 보호자 폴링이 그 플래그를 건드리면 관리자 지도의 클릭 동작이 바뀐다.
 function gLiveSetMapLive(on) {
     const map = document.getElementById("g-live-map");
     if (map) { map.classList.toggle("rc-map-stale", !on); }
-}
-
-function gLivePlaceRobot(mx, my) {
-    const robot = document.getElementById("g-live-robot");
-    if (!robot) return;
-    const p = rcMapToPlan(mx, my);
-    if (p) { robot.style.transform = `translate(${p[0]}px, ${p[1]}px)`; }
-}
-
-function gLiveDrawPath(pts) {
-    const el = document.getElementById("g-live-path");
-    if (!el) return;
-    if (!MAP_TF || !Array.isArray(pts) || pts.length < 2) {
-        el.setAttribute("points", "");
-        return;
-    }
-    const plan = [];
-    for (const [mx, my] of pts) {
-        const p = rcMapToPlan(mx, my);
-        if (p) { plan.push(p[0].toFixed(1) + "," + p[1].toFixed(1)); }
-    }
-    el.setAttribute("points", plan.join(" "));
 }
 
 // 보정 검산용. 기준점으로 안 쓴 제3의 지점(예: 대기 데스크)의 ROS 좌표를 넣어
