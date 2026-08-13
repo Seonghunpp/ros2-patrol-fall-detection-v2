@@ -1,0 +1,54 @@
+patients:
+  - name: "김영수"
+    age: 81
+    disease: "뇌경색 후유증"
+    fall_risk: "매우 높음"
+    room: "101"
+
+  - name: "이지은"
+    age: 29
+    disease: "급성 충수염 수술 후 회복"
+    fall_risk: "낮음"
+    room: "102"
+
+  - name: "박민호"
+    age: 67
+    disease: "파킨슨병"
+    fall_risk: "높음"
+    room: "102"
+
+  - name: "최은숙"
+    age: 74
+    disease: "대퇴골 골절 수술 후 재활"
+    fall_risk: "매우 높음"
+    room: "103"
+
+  - name: "정우진"
+    age: 46
+    disease: "폐렴 치료"
+    fall_risk: "보통"
+    room: "103"
+
+  - name: "한미영"
+    age: 55
+    disease: "심부전 치료"
+    fall_risk: "보통"
+    room: "104"
+
+  - name: "오현우"
+    age: 36
+    disease: "교통사고 골절 수술 후 회복"
+    fall_risk: "높음"
+    room: "104"
+
+  - name: "윤지연"
+    age: 23
+    disease: "급성 신우신염 치료"
+    fall_risk: "낮음"
+    room: "104"
+
+  - name: "강태식"
+    age: 79
+    disease: "알츠하이머 치매 및 고혈압"
+    fall_risk: "매우 높음"
+    room: "104"
