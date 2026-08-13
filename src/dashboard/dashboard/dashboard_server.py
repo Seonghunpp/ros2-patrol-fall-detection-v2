@@ -1180,13 +1180,25 @@ def api_patients_get():
     conn = get_db()
     cursor = conn.cursor(dictionary=True)
     cursor.execute(
-        "SELECT id, name, room_number, age, sex, disease, risk_level FROM patients ORDER BY room_number, id"
+        """
+        SELECT p.id, p.name, p.room_number, p.age, p.sex, p.disease, p.risk_level,
+               f.last_fall
+        FROM patients p
+        LEFT JOIN (
+            SELECT patient_id, MAX(detected_at) AS last_fall
+            FROM fall_log
+            WHERE patient_id IS NOT NULL
+            GROUP BY patient_id
+        ) f ON f.patient_id = p.id
+        ORDER BY p.room_number, p.id
+        """
     )
     patients = cursor.fetchall()
     cursor.close()
     conn.close()
     for p in patients:
         p["name"] = decrypt_field(p["name"])
+        p["last_fall"] = p["last_fall"].strftime("%Y-%m-%d") if p["last_fall"] else None
     return jsonify({"ok": True, "patients": patients})
 
 
@@ -1351,10 +1363,23 @@ def api_my_fall_state():
     # 다음 날이 되면 오늘 기록이 아니므로 자동으로 normal로 돌아간다.
     conn = get_db()
     cursor = conn.cursor(dictionary=True)
-    cursor.execute("SELECT id FROM patients WHERE user_id = %s", (session.get("user_id"),))
+    cursor.execute("SELECT id, room_number FROM patients WHERE user_id = %s", (session.get("user_id"),))
     prow = cursor.fetchone()
     state = "normal"
+    last_detected_at = None
     if prow:
+        # "최근 감지"는 병실 상세 정보 카드에 있는 값이라 내 담당 환자 한 명이 아니라
+        # 그 병실에서 확정된(done=TRUE) 낙상 중 가장 최근 것을 본다 (누구 환자든 상관없음)
+        cursor.execute(
+            "SELECT detected_at FROM fall_log "
+            "WHERE room_number = %s AND done = TRUE "
+            "ORDER BY detected_at DESC LIMIT 1",
+            (prow["room_number"],),
+        )
+        last_row = cursor.fetchone()
+        if last_row and last_row["detected_at"]:
+            last_detected_at = last_row["detected_at"].strftime("%Y-%m-%d %H:%M")
+
         cursor.execute(
             "SELECT confirmed_at FROM fall_log "
             "WHERE patient_id = %s AND done = TRUE AND confirmed_at IS NOT NULL "
@@ -1379,7 +1404,7 @@ def api_my_fall_state():
 
     cursor.close()
     conn.close()
-    return jsonify({"ok": True, "state": state})
+    return jsonify({"ok": True, "state": state, "last_detected_at": last_detected_at})
 
 
 # ===== 캘린더 일정: DB(calendar_events)에 저장 (여러 브라우저가 같은 일정을 공유) =====
