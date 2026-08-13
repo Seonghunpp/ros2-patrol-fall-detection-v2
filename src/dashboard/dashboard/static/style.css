@@ -180,7 +180,7 @@ body {
 .card {
     background: var(--card);
     border: 1px solid var(--border);
-    border-radius: 8px;
+    border-radius: 4px;
     padding: 18px;
     box-shadow: var(--shadow);
     overflow: hidden;
@@ -199,16 +199,22 @@ body {
     z-index: 5;
 }
 
+/* 영상 위에 얹히는 LIVE 표시. 같은 어법(틴트+테두리)으로 맞추되,
+   배경이 영상이라 유리판을 깔아 글자가 묻히지 않게 한다 */
 .live-badge {
     position: absolute;
     left: 14px;
     top: 14px;
-    padding: 6px 10px;
-    border-radius: 999px;
-    background: var(--danger);
-    color: #ffffff;
-    font-weight: 900;
-    font-size: 12px;
+    padding: 5px 12px;
+    border-radius: 4px;
+    background: rgba(229, 72, 77, 0.24);
+    border: 1px solid rgba(255, 138, 143, 0.55);
+    -webkit-backdrop-filter: blur(6px);
+    backdrop-filter: blur(6px);
+    color: #ffe0e2;
+    font-weight: 800;
+    font-size: 11px;
+    letter-spacing: 0.1em;
 }
 
 .toggle-btn {
@@ -246,7 +252,7 @@ body {
     position: relative;  /* * 로봇 위치 추적 수정 * */
     border: 1px solid var(--surface-border);
     background: var(--surface);
-    border-radius: 6px;
+    border-radius: 4px;
     padding: 16px;
     display: flex;
     flex-direction: column;
@@ -327,7 +333,7 @@ body {
     position: relative;
     background: var(--card);
     border: 1px solid var(--border);
-    border-radius: 20px;
+    border-radius: 6px;
     padding: 38px 40px 32px;
     text-align: center;
     max-width: 380px;
@@ -418,7 +424,7 @@ body {
     color: #e5484d;
     background: rgba(229, 72, 77, 0.1);
     padding: 5px 15px;
-    border-radius: 999px;
+    border-radius: 4px;
     margin-bottom: 14px;
 }
 
@@ -432,7 +438,7 @@ body {
 .fall-alert-confirm {
     width: 100%;
     padding: 13px 28px;
-    border-radius: 12px;
+    border-radius: 4px;
     border: none;
     background: #e5484d;
     color: #ffffff;
@@ -567,7 +573,7 @@ body {
     display: inline-block;
     margin-top: 6px;
     padding: 1px 7px;
-    border-radius: 999px;
+    border-radius: 4px;
     background: var(--accent);
     color: var(--accent-text);
     font-size: 11px;
@@ -793,7 +799,7 @@ body {
 .login-input {
     padding: 15px 16px;
     border: 1px solid #dfe7f5;
-    border-radius: 12px;
+    border-radius: 4px;
     background: #ffffff;
     color: var(--lp-ink);
     font-family: inherit;
@@ -812,7 +818,7 @@ body {
     grid-column: 2;
     grid-row: 1 / span 2;
     border: none;
-    border-radius: 12px;
+    border-radius: 4px;
     background: var(--lp-accent);
     color: #ffffff;
     font-family: inherit;
@@ -855,7 +861,7 @@ body {
     padding: 30px 30px 26px;
     background: #f6f9ff;
     border: 1px solid #e8eefc;
-    border-radius: 18px;
+    border-radius: 6px;
 }
 
 .login-aside h2 {
@@ -951,7 +957,7 @@ body {
     background: #f6f9ff;
     border: 1px solid #e8eefc;
     border-left: 3px solid var(--lp-accent);
-    border-radius: 12px;
+    border-radius: 4px;
 }
 
 .redeem-linked-label {
@@ -1184,7 +1190,7 @@ body {
 .lp-btn {
     padding: 14px 28px;
     border: none;
-    border-radius: 9999px;
+    border-radius: 4px;
     background: #0f172a;
     color: #ffffff;
     font-family: inherit;
@@ -1239,7 +1245,7 @@ body {
     flex-direction: column;
     text-align: left;
     background: #0b1a33;
-    border-radius: 22px;
+    border-radius: 6px;
     box-shadow: 0 28px 60px -26px rgba(9, 26, 56, 0.62);
     overflow: hidden;
     cursor: pointer;
@@ -1371,7 +1377,7 @@ body {
     height: 8px;
     padding: 0;
     border: none;
-    border-radius: 999px;
+    border-radius: 4px;
     background: #c9d6ee;
     cursor: pointer;
     transition: width 0.25s, background 0.25s;
@@ -1433,7 +1439,7 @@ body {
 #tab-home .card {
     box-shadow: none;
     border: 1px solid var(--lp-hairline);
-    border-radius: 8px;
+    border-radius: 4px;
 }
 
 /* 푸터 */
@@ -1631,7 +1637,7 @@ body {
     gap: 8px;
     background: var(--card);
     border: 1px solid var(--border);
-    border-radius: 8px;
+    border-radius: 4px;
     padding: 18px 20px;
 }
 
@@ -1644,7 +1650,7 @@ body {
     overflow-x: auto;
     background: var(--card);
     border: 1px solid var(--border);
-    border-radius: 8px;
+    border-radius: 4px;
 }
 
 .data-table { width: 100%; border-collapse: collapse; font-size: 14px; }
@@ -1671,7 +1677,7 @@ body {
     font-family: inherit;
 }
 .mini-btn:hover { background: var(--surface-hover); }
-.panel { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 20px; }
+.panel { background: var(--card); border: 1px solid var(--border); border-radius: 4px; padding: 20px; }
 .panel-head { font-size: 15px; font-weight: 700; margin-bottom: 14px; }
 .rank {
     width: 22px; height: 22px; flex-shrink: 0;
@@ -1938,7 +1944,7 @@ body {
     display: inline-flex;
     gap: 4px;
     padding: 5px;
-    border-radius: 9999px;
+    border-radius: 4px;
     background: rgba(255, 255, 255, 0.16);
     border: 1px solid rgba(255, 255, 255, 0.32);
     -webkit-backdrop-filter: blur(10px);
@@ -1948,7 +1954,7 @@ body {
 .rm-tab {
     padding: 10px 22px;
     border: none;
-    border-radius: 9999px;
+    border-radius: 4px;
     background: transparent;
     color: rgba(255, 255, 255, 0.86);
     font-family: inherit;
@@ -1974,7 +1980,7 @@ body {
     margin-top: 16px;
     padding: 9px 18px;
     border: 1px solid rgba(255, 255, 255, 0.45);
-    border-radius: 9999px;
+    border-radius: 4px;
     background: rgba(8, 22, 44, 0.28);
     -webkit-backdrop-filter: blur(8px);
     backdrop-filter: blur(8px);
@@ -2015,7 +2021,7 @@ body {
     max-height: calc(100vh - 128px);
     width: auto;
     height: auto;
-    border-radius: 14px;
+    border-radius: 6px;
     box-shadow: 0 40px 90px -40px rgba(0, 0, 0, 0.9);
 }
 
@@ -2080,7 +2086,7 @@ body {
 .rm-svc-card {
     background: #ffffff;
     border: 1px solid #e6edfa;
-    border-radius: 18px;
+    border-radius: 6px;
     padding: 30px 20px 26px;
     box-shadow: 0 18px 40px -28px rgba(23, 48, 94, 0.35);
 }
@@ -2202,7 +2208,7 @@ body {
     font-weight: 600;
     color: rgba(255, 255, 255, 0.85);
     padding: 8px 12px;
-    border-radius: 8px;
+    border-radius: 4px;
     white-space: nowrap;
     transition: color 0.15s;
 }
@@ -2238,7 +2244,7 @@ body {
     font-size: 14px;
     font-weight: 700;
     padding: 9px 18px;
-    border-radius: 9999px;
+    border-radius: 4px;
     background: #ffffff;
     color: #0f172a;
 }
@@ -2317,7 +2323,7 @@ html.reveal-on .rm-svc-grid .rm-svc-card:nth-child(8) { transition-delay: 0.49s;
 .cf-box {
     width: min(440px, 100%);
     border: 1px solid var(--border);
-    border-radius: 6px;
+    border-radius: 4px;
     background: var(--card);
     box-shadow: 0 16px 40px -12px rgba(15, 23, 42, 0.4);
     overflow: hidden;
@@ -2491,7 +2497,7 @@ html.reveal-on .rm-svc-grid .rm-svc-card:nth-child(8) { transition-delay: 0.49s;
     align-items: center;
     gap: 1px;
     padding: 7px 11px;
-    border-radius: 9px;
+    border-radius: 4px;
     background: rgba(15, 23, 42, 0.92);
     color: #ffffff;
     white-space: nowrap;
@@ -2510,7 +2516,7 @@ html.reveal-on .rm-svc-grid .rm-svc-card:nth-child(8) { transition-delay: 0.49s;
 
 /* 폼 요소 */
 .form-label { display: block; font-size: 13px; font-weight: 600; color: var(--text-muted); margin: 6px 0; }
-.form-input { width: 100%; padding: 10px 12px; margin-bottom: 10px; border-radius: 6px; border: 1px solid var(--surface-border); background: var(--surface); color: var(--text); font-size: 14px; font-family: inherit; }
+.form-input { width: 100%; padding: 10px 12px; margin-bottom: 10px; border-radius: 4px; border: 1px solid var(--surface-border); background: var(--surface); color: var(--text); font-size: 14px; font-family: inherit; }
 
 /* ============================================================
    관리자(admin) 화면 — Deep Navy #0f172a + Tech Blue #0284c7
@@ -2536,7 +2542,7 @@ html.reveal-on .rm-svc-grid .rm-svc-card:nth-child(8) { transition-delay: 0.49s;
     flex-wrap: wrap;
     margin-bottom: 22px;
     padding: 28px 32px;
-    border-radius: 20px;
+    border-radius: 6px;
     background: linear-gradient(120deg, #0f172a 0%, #14284a 58%, #0b3a63 100%);
     color: #ffffff;
 }
@@ -2562,35 +2568,44 @@ html.reveal-on .rm-svc-grid .rm-svc-card:nth-child(8) { transition-delay: 0.49s;
 .a-hero-side { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
 .a-hero-clock { font-family: 'Courier New', monospace; font-size: 18px; color: rgba(255, 255, 255, 0.6); }
 
+/* ----- 상태 배지 (관리자) -----
+   비로그인 화면의 .login-secure-badge 와 같은 어법으로 맞췄다:
+   반투명 틴트 + 같은 색 1px 테두리 + 컬러 글자. 점과 깜빡임은 뺀다.
+   상태를 color / border-color 로만 표현하는 건 규칙이다 — JS가 이 두 속성을
+   인라인으로 덮어써서 상태를 바꾸는 칩이 있다(applyGuardianFallState). */
 .a-chip {
     display: inline-flex;
     align-items: center;
     gap: 8px;
     flex: none;
-    padding: 9px 16px;
-    border-radius: 9999px;
-    border: 1px solid rgba(255, 255, 255, 0.28);
-    background: rgba(255, 255, 255, 0.12);
+    padding: 7px 14px;
+    border-radius: 4px;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    background: rgba(255, 255, 255, 0.1);
     color: #ffffff;
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 700;
+    letter-spacing: 0.02em;
     white-space: nowrap;
 }
 
-.a-chip i { width: 8px; height: 8px; border-radius: 50%; background: currentColor; flex: none; }
-.a-chip-ok i { background: #4ade80; }
-.a-chip-warn i { background: #fbbf24; }
-.a-chip-live i { background: #f87171; animation: gPulse 1.4s ease-in-out infinite; }
+/* 점은 마크업에 그대로 두고 감추기만 한다.
+   JS가 <i>를 포함해 innerHTML을 다시 그리는 곳이 있어 태그를 지우지 않는다 */
+.a-chip i { display: none; }
+
+.a-chip-ok   { background: rgba(74, 222, 128, 0.16);  border-color: rgba(74, 222, 128, 0.5);  color: #86efac; }
+.a-chip-warn { background: rgba(251, 191, 36, 0.16);  border-color: rgba(251, 191, 36, 0.5);  color: #fcd34d; }
+.a-chip-live { background: rgba(248, 113, 113, 0.16); border-color: rgba(248, 113, 113, 0.5); color: #fca5a5; }
 
 .a-scope .panel,
 .a-scope .card {
-    border-radius: 18px;
+    border-radius: 6px;
     border: 1px solid #e8eefc;
     box-shadow: 0 18px 40px -30px rgba(15, 23, 42, 0.45);
 }
 
 .a-scope .stat-tile {
-    border-radius: 18px;
+    border-radius: 6px;
     border: 1px solid #e8eefc;
     box-shadow: 0 18px 40px -30px rgba(15, 23, 42, 0.45);
     transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
@@ -2617,7 +2632,7 @@ html.reveal-on .rm-svc-grid .rm-svc-card:nth-child(8) { transition-delay: 0.49s;
     padding: 16px 18px;
     background: var(--card);
     border: 1px solid #e6ecf7;
-    border-radius: 14px;
+    border-radius: 6px;
 }
 
 /* 중앙 열: 영상과 위험도를 세로로 쌓는다.
@@ -2674,7 +2689,7 @@ html.reveal-on .rm-svc-grid .rm-svc-card:nth-child(8) { transition-delay: 0.49s;
     right: 18px;
     z-index: 5;
     padding: 10px 12px;
-    border-radius: 8px;
+    border-radius: 4px;
     border: 1px solid var(--surface-border);
     background: var(--card);
     box-shadow: 0 12px 28px -12px rgba(15, 23, 42, 0.45);
@@ -2773,7 +2788,7 @@ html.reveal-on .rm-svc-grid .rm-svc-card:nth-child(8) { transition-delay: 0.49s;
     gap: 7px;
     margin-bottom: 14px;
     padding: 5px 11px;
-    border-radius: 9999px;
+    border-radius: 4px;
     background: #eaf7ee;
     color: #1a7f3c;
     font-size: 12px;
@@ -2803,8 +2818,8 @@ html.reveal-on .rm-svc-grid .rm-svc-card:nth-child(8) { transition-delay: 0.49s;
 .mon-batt-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; }
 .mon-batt-head span { font-size: 13px; color: var(--text-muted); }
 .mon-batt-head strong { font-size: 15px; font-variant-numeric: tabular-nums; }
-.mon-batt-bar { height: 6px; border-radius: 9999px; background: #e8edf7; overflow: hidden; }
-.mon-batt-bar span { display: block; height: 100%; border-radius: 9999px; background: #1a9d43; transition: width 0.4s ease; }
+.mon-batt-bar { height: 6px; border-radius: 4px; background: #e8edf7; overflow: hidden; }
+.mon-batt-bar span { display: block; height: 100%; border-radius: 4px; background: #1a9d43; transition: width 0.4s ease; }
 .mon-batt-bar span.low { background: #f5a524; }
 .mon-batt-bar span.crit { background: #e5484d; }
 
@@ -2830,7 +2845,7 @@ html.reveal-on .rm-svc-grid .rm-svc-card:nth-child(8) { transition-delay: 0.49s;
     padding: 10px 12px;
     display: flex; flex-direction: column; gap: 1px;
     border: 1px solid var(--border);
-    border-radius: 10px;
+    border-radius: 4px;
     background: var(--surface-hover, #f6f8fd);
     transition: border-color 0.2s, background 0.2s;
 }
@@ -2881,7 +2896,7 @@ html.reveal-on .rm-svc-grid .rm-svc-card:nth-child(8) { transition-delay: 0.49s;
 .mon-stage {
     background: var(--card);
     border: 1px solid #e6ecf7;
-    border-radius: 14px;
+    border-radius: 6px;
     overflow: hidden;
 }
 
@@ -2893,13 +2908,14 @@ html.reveal-on .rm-svc-grid .rm-svc-card:nth-child(8) { transition-delay: 0.49s;
 
 .mon-live {
     display: inline-flex; align-items: center; gap: 6px;
-    padding: 4px 10px;
-    border-radius: 6px;
-    background: #fdecec;
+    padding: 4px 11px;
+    border-radius: 4px;
+    background: rgba(215, 0, 21, 0.10);
+    border: 1px solid rgba(215, 0, 21, 0.3);
     color: #d70015;
     font-size: 11px; font-weight: 800; letter-spacing: 0.08em;
 }
-.mon-live i { width: 6px; height: 6px; border-radius: 50%; background: #d70015; animation: gPulse 1.4s ease-in-out infinite; }
+.mon-live i { display: none; }
 
 .mon-stage-room { font-size: 14px; font-weight: 700; }
 .mon-switch { margin-left: auto; display: flex; gap: 6px; }
@@ -2947,7 +2963,7 @@ html.reveal-on .rm-svc-grid .rm-svc-card:nth-child(8) { transition-delay: 0.49s;
 
 .mon-logbox .event-log::-webkit-scrollbar { width: 8px; }
 .mon-logbox .event-log::-webkit-scrollbar-track { background: transparent; }
-.mon-logbox .event-log::-webkit-scrollbar-thumb { background: #cfd8ea; border-radius: 9999px; }
+.mon-logbox .event-log::-webkit-scrollbar-thumb { background: #cfd8ea; border-radius: 4px; }
 .mon-logbox .event-log::-webkit-scrollbar-thumb:hover { background: #b3c0d8; }
 
 .mon-logbox .event-item {
@@ -2989,7 +3005,7 @@ html.reveal-on .rm-svc-grid .rm-svc-card:nth-child(8) { transition-delay: 0.49s;
 .ward-cell {
     padding: 10px;
     border: 2px solid var(--border);
-    border-radius: 14px;
+    border-radius: 6px;
     background: var(--card);
     font-family: inherit;
     text-align: left;
@@ -3003,7 +3019,7 @@ html.reveal-on .rm-svc-grid .rm-svc-card:nth-child(8) { transition-delay: 0.49s;
 .ward-video {
     position: relative;
     aspect-ratio: 16 / 10;
-    border-radius: 10px;
+    border-radius: 4px;
     overflow: hidden;
     background: #0b1220;
 }
@@ -3027,7 +3043,7 @@ html.reveal-on .rm-svc-grid .rm-svc-card:nth-child(8) { transition-delay: 0.49s;
     position: relative;
     background: var(--card);
     border: 1px solid #e6ecf7;
-    border-radius: 14px;
+    border-radius: 6px;
     overflow: hidden;
 }
 
@@ -3204,7 +3220,7 @@ html.reveal-on .rm-svc-grid .rm-svc-card:nth-child(8) { transition-delay: 0.49s;
 .rc-route-state {
     flex-shrink: 0;
     padding: 6px 14px;
-    border-radius: 999px;
+    border-radius: 4px;
     background: var(--accent-soft);
     color: var(--accent);
     font-size: 13px;
@@ -3227,7 +3243,7 @@ html.reveal-on .rm-svc-grid .rm-svc-card:nth-child(8) { transition-delay: 0.49s;
     width: 100%;
     padding: 12px 16px;
     border: 1px solid var(--border);
-    border-radius: 10px;
+    border-radius: 4px;
     background: var(--card);
     color: var(--text);
     font-family: inherit;
@@ -3272,7 +3288,7 @@ html.reveal-on .rm-svc-grid .rm-svc-card:nth-child(8) { transition-delay: 0.49s;
     gap: 16px;
     padding: 16px 18px;
     border: 1px solid var(--border);
-    border-radius: 12px;
+    border-radius: 4px;
     background: var(--surface-hover, #f7f9fd);
 }
 
@@ -3296,7 +3312,7 @@ html.reveal-on .rm-svc-grid .rm-svc-card:nth-child(8) { transition-delay: 0.49s;
 .role-fixed {
     display: inline-block;
     padding: 4px 12px;
-    border-radius: 9999px;
+    border-radius: 4px;
     font-size: 12px;
     font-weight: 800;
     letter-spacing: 0.04em;
@@ -3308,7 +3324,7 @@ html.reveal-on .rm-svc-grid .rm-svc-card:nth-child(8) { transition-delay: 0.49s;
 .ev-assign {
     margin-top: 18px;
     padding: 16px;
-    border-radius: 12px;
+    border-radius: 4px;
     background: #fff8f8;
     border: 1px solid #f3d6d7;
 }
@@ -3316,7 +3332,7 @@ html.reveal-on .rm-svc-grid .rm-svc-card:nth-child(8) { transition-delay: 0.49s;
 .ev-req {
     margin-left: 6px;
     padding: 2px 8px;
-    border-radius: 9999px;
+    border-radius: 4px;
     background: #d70015;
     color: #fff;
     font-size: 10px;
@@ -3332,7 +3348,7 @@ html.reveal-on .rm-svc-grid .rm-svc-card:nth-child(8) { transition-delay: 0.49s;
     gap: 2px;
     padding: 12px 14px;
     border: 2px solid var(--border);
-    border-radius: 10px;
+    border-radius: 4px;
     background: var(--card);
     cursor: pointer;
     transition: border-color 0.15s, background 0.15s;
@@ -3371,7 +3387,7 @@ html.reveal-on .rm-svc-grid .rm-svc-card:nth-child(8) { transition-delay: 0.49s;
     margin: auto;
     padding: 24px;
     border: 1px solid var(--border);
-    border-radius: 6px;
+    border-radius: 4px;
     background: var(--card);
 }
 
@@ -3394,7 +3410,7 @@ html.reveal-on .rm-svc-grid .rm-svc-card:nth-child(8) { transition-delay: 0.49s;
     left: 12px;
     bottom: 12px;
     padding: 5px 12px;
-    border-radius: 9999px;
+    border-radius: 4px;
     background: rgba(215, 0, 21, 0.9);
     color: #fff;
     font-size: 12px;
@@ -3410,7 +3426,7 @@ html.reveal-on .rm-svc-grid .rm-svc-card:nth-child(8) { transition-delay: 0.49s;
     gap: 14px;
     margin-bottom: 18px;
     padding: 16px 18px;
-    border-radius: 14px;
+    border-radius: 6px;
     background: linear-gradient(120deg, #0f172a, #143055);
     color: #fff;
 }
@@ -3418,7 +3434,7 @@ html.reveal-on .rm-svc-grid .rm-svc-card:nth-child(8) { transition-delay: 0.49s;
 .login-secure-badge {
     flex: none;
     padding: 6px 12px;
-    border-radius: 9999px;
+    border-radius: 4px;
     background: rgba(56, 189, 248, 0.18);
     border: 1px solid rgba(56, 189, 248, 0.5);
     color: #38bdf8;
@@ -3471,7 +3487,7 @@ html.reveal-on .rm-svc-grid .rm-svc-card:nth-child(8) { transition-delay: 0.49s;
     flex-wrap: wrap;
     margin-bottom: 22px;
     padding: 30px 32px;
-    border-radius: 20px;
+    border-radius: 6px;
     background: linear-gradient(135deg, #e9f0fc 0%, #f6f9ff 62%);
     border: 1px solid #e3ebfa;
 }
@@ -3539,24 +3555,26 @@ html.reveal-on .rm-svc-grid .rm-svc-card:nth-child(8) { transition-delay: 0.49s;
 .g-hero--photo .g-chip-live { color: #ff8a8f; border-color: rgba(255, 138, 143, 0.55); }
 
 /* 상태 칩 */
+/* ----- 상태 배지 (보호자) — 관리자 쪽과 같은 어법, 밝은 면 위 버전 ----- */
 .g-chip {
     display: inline-flex;
     align-items: center;
     gap: 8px;
     flex: none;
-    padding: 9px 16px;
-    border-radius: 9999px;
+    padding: 7px 14px;
+    border-radius: 4px;
     border: 1px solid transparent;
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 700;
+    letter-spacing: 0.02em;
     white-space: nowrap;
 }
 
-.g-chip i { width: 8px; height: 8px; border-radius: 50%; background: currentColor; flex: none; }
+.g-chip i { display: none; }
+
 .g-chip-ok { background: #eaf7ee; border-color: #cfe9d8; color: #1a7f3c; }
 .g-chip-warn { background: #fdf1f1; border-color: #f3d6d7; color: #b4353a; }
 .g-chip-live { background: #fdecec; border-color: #f5d2d2; color: #d70015; }
-.g-chip-live i { animation: gPulse 1.4s ease-in-out infinite; }
 
 @keyframes gPulse {
     0%, 100% { opacity: 1; transform: scale(1); }
@@ -3566,7 +3584,7 @@ html.reveal-on .rm-svc-grid .rm-svc-card:nth-child(8) { transition-delay: 0.49s;
 /* ----- 카드 · 타일 (랜딩과 같은 라운드/그림자) ----- */
 .g-scope .panel,
 .g-scope .card {
-    border-radius: 18px;
+    border-radius: 6px;
     border: 1px solid #e8eefc;
     box-shadow: 0 18px 40px -30px rgba(23, 48, 94, 0.4);
     padding: 24px;
@@ -3580,7 +3598,7 @@ html.reveal-on .rm-svc-grid .rm-svc-card:nth-child(8) { transition-delay: 0.49s;
 }
 
 .g-scope .stat-tile {
-    border-radius: 18px;
+    border-radius: 6px;
     border: 1px solid #e8eefc;
     box-shadow: 0 18px 40px -30px rgba(23, 48, 94, 0.4);
     padding: 22px 24px;
@@ -3626,7 +3644,7 @@ html.reveal-on .rm-svc-grid .rm-svc-card:nth-child(8) { transition-delay: 0.49s;
 .g-care-note {
     margin-top: 16px;
     padding: 12px 14px;
-    border-radius: 10px;
+    border-radius: 4px;
     font-size: 13px;
     line-height: 1.6;
 }
@@ -3641,7 +3659,7 @@ html.reveal-on .rm-svc-grid .rm-svc-card:nth-child(8) { transition-delay: 0.49s;
     gap: 18px;
     padding: 20px 22px;
     margin-bottom: 18px;
-    border-radius: 16px;
+    border-radius: 6px;
     background: linear-gradient(135deg, #eaf7ee, #f4fbf6);
     border: 1px solid #cfe9d8;
 }
@@ -3699,7 +3717,7 @@ html.reveal-on .rm-svc-grid .rm-svc-card:nth-child(8) { transition-delay: 0.49s;
     min-height: 300px;
     padding: 30px;
     border: 2px dashed #d6e0f2;
-    border-radius: 16px;
+    border-radius: 6px;
     background: repeating-linear-gradient(45deg, #fbfcff, #fbfcff 14px, #f5f8ff 14px, #f5f8ff 28px);
     text-align: center;
 }
@@ -3729,7 +3747,7 @@ html.reveal-on .rm-svc-grid .rm-svc-card:nth-child(8) { transition-delay: 0.49s;
 .g-log-scroll::-webkit-scrollbar-track { background: transparent; }
 .g-log-scroll::-webkit-scrollbar-thumb {
     background: #cfd8ea;
-    border-radius: 9999px;
+    border-radius: 4px;
 }
 .g-log-scroll::-webkit-scrollbar-thumb:hover { background: #b3c0d8; }
 .g-log-scroll { scrollbar-width: thin; scrollbar-color: #cfd8ea transparent; }
@@ -3756,7 +3774,7 @@ html.reveal-on .rm-svc-grid .rm-svc-card:nth-child(8) { transition-delay: 0.49s;
 .g-readonly {
     margin-left: 8px;
     padding: 2px 8px;
-    border-radius: 9999px;
+    border-radius: 4px;
     background: var(--surface-hover, #eef2fb);
     color: var(--text-muted);
     font-size: 11px;
@@ -3778,13 +3796,13 @@ html.reveal-on .rm-svc-grid .rm-svc-card:nth-child(8) { transition-delay: 0.49s;
     flex-direction: column;
     gap: 10px;
     padding: 16px;
-    border-radius: 14px;
+    border-radius: 6px;
     background: var(--surface-hover, #f4f7fd);
 }
 
 .gmap-hall {
     padding: 10px;
-    border-radius: 10px;
+    border-radius: 4px;
     border: 1px dashed var(--border);
     text-align: center;
     font-size: 12px;
@@ -3811,7 +3829,7 @@ html.reveal-on .rm-svc-grid .rm-svc-card:nth-child(8) { transition-delay: 0.49s;
     align-items: center;
     gap: 16px;
     padding: 20px 22px;
-    border-radius: 14px;
+    border-radius: 6px;
     background: linear-gradient(135deg, #eaf7ee, #f2f9ff);
     border: 1px solid #cfe9d8;
 }
@@ -3826,7 +3844,7 @@ html.reveal-on .rm-svc-grid .rm-svc-card:nth-child(8) { transition-delay: 0.49s;
 .g-verified { color: #1a9d43; font-weight: 700; }
 .g-code {
     padding: 3px 8px;
-    border-radius: 6px;
+    border-radius: 4px;
     background: var(--surface-hover, #eef2fb);
     font-family: 'Courier New', monospace;
     font-size: 13px;
@@ -3854,7 +3872,7 @@ html.reveal-on .rm-svc-grid .rm-svc-card:nth-child(8) { transition-delay: 0.49s;
     display: block;
     width: 52px;
     height: 30px;
-    border-radius: 9999px;
+    border-radius: 6px;
     background: #cfd6e4;
     transition: background 0.25s;
 }
@@ -3866,7 +3884,7 @@ html.reveal-on .rm-svc-grid .rm-svc-card:nth-child(8) { transition-delay: 0.49s;
     left: 3px;
     width: 24px;
     height: 24px;
-    border-radius: 50%;
+    border-radius: 4px;
     background: #ffffff;
     box-shadow: 0 2px 6px rgba(15, 23, 42, 0.28);
     transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
@@ -3935,7 +3953,7 @@ html.reveal-on .rm-svc-grid .rm-svc-card:nth-child(8) { transition-delay: 0.49s;
 .ctrl-btn {
     padding: 13px 14px;
     border: none;
-    border-radius: 8px;
+    border-radius: 4px;
     font-family: inherit;
     font-size: 14px;
     font-weight: 700;
@@ -3955,7 +3973,7 @@ html.reveal-on .rm-svc-grid .rm-svc-card:nth-child(8) { transition-delay: 0.49s;
     background: rgba(15, 23, 42, 0.92);
     color: #fff;
     padding: 10px 18px;
-    border-radius: 9999px;
+    border-radius: 4px;
     font-size: 13px;
     font-weight: 600;
     opacity: 0;
@@ -3974,7 +3992,7 @@ html.reveal-on .rm-svc-grid .rm-svc-card:nth-child(8) { transition-delay: 0.49s;
     background: rgba(15, 23, 42, 0.92);
     color: #fff;
     padding: 11px 20px;
-    border-radius: 9999px;
+    border-radius: 4px;
     font-size: 13px;
     font-weight: 600;
     opacity: 0;
@@ -4002,7 +4020,7 @@ html.reveal-on .rm-svc-grid .rm-svc-card:nth-child(8) { transition-delay: 0.49s;
 
 /* 카드류: 큰 라운드 + 은은한 그림자 + 옅은 블루 보더 */
 .panel,.stat-tile,.table-wrap,.card {
-    border-radius: 16px;
+    border-radius: 6px;
     border: 1px solid #e8eefc;
     box-shadow: 0 16px 36px -22px rgba(23, 48, 94, 0.22);
 }
@@ -4018,7 +4036,7 @@ html.reveal-on .rm-svc-grid .rm-svc-card:nth-child(8) { transition-delay: 0.49s;
 
 /* 입력 */
 .form-input {
-    border-radius: 11px;
+    border-radius: 4px;
     border-color: #e2e8f4;
 }
 .form-input:focus {
@@ -4031,7 +4049,7 @@ html.reveal-on .rm-svc-grid .rm-svc-card:nth-child(8) { transition-delay: 0.49s;
 .mini-btn {
     background: #ffffff;
     border: 1px solid #e2e8f4;
-    border-radius: 9px;
+    border-radius: 4px;
     box-shadow: 0 4px 12px -8px rgba(23, 48, 94, 0.4);
     transition: background 0.14s, box-shadow 0.14s, transform 0.1s;
 }
@@ -4047,7 +4065,7 @@ html.reveal-on .rm-svc-grid .rm-svc-card:nth-child(8) { transition-delay: 0.49s;
 
 /* 제어 버튼: 라운드 + 소프트 섀도우 */
 .ctrl-btn {
-    border-radius: 12px;
+    border-radius: 4px;
     box-shadow: 0 12px 24px -14px rgba(23, 48, 94, 0.5);
 }
 
@@ -4065,7 +4083,7 @@ html.reveal-on .rm-svc-grid .rm-svc-card:nth-child(8) { transition-delay: 0.49s;
     padding: 10px 12px;
     background: #ffffff;
     border: 1px solid #eef2fb;
-    border-radius: 10px;
+    border-radius: 4px;
 }
 
 /* ===== 상단바 글자색: 홈 히어로 위(over-hero)만 화이트, 그 외 어둡게 =====
@@ -4159,7 +4177,7 @@ html.reveal-on .rm-svc-grid .rm-svc-card:nth-child(8) { transition-delay: 0.49s;
     padding: 32px 30px;
     background: #ffffff;
     border: 1px solid #e8eefc;
-    border-radius: 18px;
+    border-radius: 6px;
     box-shadow: 0 14px 34px -22px rgba(23, 48, 94, 0.3);
 }
 
@@ -4188,7 +4206,7 @@ html.reveal-on .rm-svc-grid .rm-svc-card:nth-child(8) { transition-delay: 0.49s;
     margin-top: 22px;
     padding: 30px 34px;
     background: #0b1a33;
-    border-radius: 18px;
+    border-radius: 6px;
     box-shadow: 0 22px 50px -28px rgba(9, 26, 56, 0.6);
 }
 
@@ -4229,7 +4247,7 @@ html.reveal-on .rm-svc-grid .rm-svc-card:nth-child(8) { transition-delay: 0.49s;
     padding: 28px 30px;
     background: #ffffff;
     border: 1px solid #e8eefc;
-    border-radius: 18px;
+    border-radius: 6px;
     box-shadow: 0 14px 34px -22px rgba(23, 48, 94, 0.3);
 }
 
@@ -4311,7 +4329,7 @@ html.reveal-on .rm-svc-grid .rm-svc-card:nth-child(8) { transition-delay: 0.49s;
     justify-content: center;
     gap: 12px;
     background: #0b1a33;
-    border-radius: 20px;
+    border-radius: 6px;
     box-shadow: 0 26px 60px -30px rgba(9, 26, 56, 0.6);
 }
 
@@ -4385,7 +4403,7 @@ html.reveal-on .ab-tiers .ab-tier:nth-child(3) { transition-delay: 0.16s; }
     padding: 16px 18px;
     background: #f6f9ff;
     border: 1px solid #e8eefc;
-    border-radius: 12px;
+    border-radius: 4px;
     font-size: 15px;
     font-weight: 600;
     letter-spacing: -0.01em;
