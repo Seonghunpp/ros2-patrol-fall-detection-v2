@@ -705,7 +705,7 @@
             <div class="stat-tile"><span class="stat-tile-label">전체 병실</span><span class="stat-tile-num" id="a-stat-rooms">0<span class="stat-tile-unit">실</span></span><span class="stat-tile-sub">등록 병실</span></div>
             <div class="stat-tile a-tile-danger"><span class="stat-tile-label">위험 병실</span><span class="stat-tile-num" style="color:#e5484d;" id="a-stat-risk-rooms">0<span class="stat-tile-unit">실</span></span><span class="stat-tile-sub">고위험군 재실</span></div>
             <div class="stat-tile"><span class="stat-tile-label">오늘 낙상</span><span class="stat-tile-num" id="a-stat-today-falls">0<span class="stat-tile-unit">건</span></span><span class="stat-tile-sub">당일 누적</span></div>
-            <div class="stat-tile"><span class="stat-tile-label">Robot 상태</span><span class="stat-tile-num" style="color:#1a9d43;" id="stat-robot-state">순찰 중</span><span class="stat-tile-sub" id="stat-current-room">101호 순찰</span></div>
+            <div class="stat-tile"><span class="stat-tile-label">Robot 상태</span><span class="stat-tile-num" id="stat-robot-state">-</span><span class="stat-tile-sub" id="stat-current-room">-</span></div>
             <div class="stat-tile"><span class="stat-tile-label">배터리</span><span class="stat-tile-num" id="stat-battery">-</span><span class="stat-tile-sub">충전 복귀 30% 이하</span></div>
             <div class="stat-tile"><span class="stat-tile-label">긴급 알림</span><span class="stat-tile-num" style="color:#e5484d;">0<span class="stat-tile-unit">건</span></span><span class="stat-tile-sub">미처리 기준</span></div>
         </div>
@@ -3446,6 +3446,15 @@ async function updateStatus() {
         }  // * 팝업 부분 수정 *
 
         document.getElementById("robot-status").innerText = data.robot_status;
+        // Home 탭 "Robot 상태" 타일: 텍스트뿐 아니라 상태별로 색도 맞춘다
+        const homeRobotState = document.getElementById("stat-robot-state");
+        if (homeRobotState) {
+            const stateText = data.robot_paused ? "일시정지" : data.robot_status;
+            homeRobotState.innerText = stateText;
+            homeRobotState.style.color =
+                data.robot_paused ? "#f59e0b" :
+                data.robot_status === "이동 중" ? "#1a9d43" : "#64748b";
+        }
         document.getElementById("fall-status").innerText = data.fall_status;
         document.getElementById("camera").innerText = data.camera;
         document.getElementById("network").innerText = data.network;
@@ -3488,7 +3497,7 @@ async function updateStatus() {
 
         // 홈 탭 요약 지표 동기화 (기존 status 데이터 재사용)
         const statRoom = document.getElementById("stat-current-room");
-        if (statRoom) statRoom.innerText = room ? "병실 " + data.current_room : "확인 중";
+        if (statRoom) statRoom.innerText = room ? "병실 " + robotRoom : "확인 중";
         const statBattery = document.getElementById("stat-battery");
         if (statBattery) statBattery.innerText = data.battery;
 
