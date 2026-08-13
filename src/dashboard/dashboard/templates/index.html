@@ -3203,7 +3203,7 @@ const FALL_STATE_UI = {
     warning: { color: "#e08c1a", status: "주의", detect: "낙상 있었음",  sub: "오늘 낙상 발생 이력",   chip: "주의 · 낙상 있었음", heroChip: "#ffcf82", heroBorder: "rgba(255, 207, 130, 0.6)" },
 };
 
-function applyGuardianFallState(stateKey) {
+function applyGuardianFallState(stateKey, lastDetectedAt) {
     const ui = FALL_STATE_UI[stateKey] || FALL_STATE_UI.normal;
     guardianFallState = stateKey in FALL_STATE_UI ? stateKey : "normal";
     const setHTML = (id, html) => { const el = document.getElementById(id); if (el) el.innerHTML = html; };
@@ -3221,7 +3221,9 @@ function applyGuardianFallState(stateKey) {
     setHTML("g-status-sub", `<span class="g-dot" style="background:${ui.color};box-shadow:0 0 0 3px ${ui.color}28"></span>${ui.sub}`);
     // 내 병실 · 현재 환자 상태 / 최근 감지
     setHTML("g-pt-status", `<span style="color:${ui.color};font-weight:700;">${ui.status}</span>`);
-    setHTML("g-pt-lastdetect", ui.detect);
+    // "최근 감지"는 상태 문구가 아니라, 그 병실에서 확정된 낙상 중 가장 최근 실제 시각을 보여준다
+    // (내 담당 환자만이 아니라 그 병실 누구든 해당 — "최근 낙상 기록"과는 다른 기준)
+    setHTML("g-pt-lastdetect", lastDetectedAt || "없음");
     // 실시간 병실 · 환자 상태 박스 색(테두리·배경·점) + 서브문구
     const box = document.getElementById("g-state-box");
     if (box) {
@@ -3248,7 +3250,7 @@ async function refreshGuardianFallState() {
     try {
         const res = await fetch("/api/my-fall-state");
         const data = await res.json();
-        if (data.ok) applyGuardianFallState(data.state);
+        if (data.ok) applyGuardianFallState(data.state, data.last_detected_at);
     } catch (e) { /* 네트워크 오류 시 이전 상태 유지 */ }
 }
 
@@ -3618,7 +3620,6 @@ async function updateStatus() {
         lastEventsData = data.events;
         renderEventLog();
 
-        // Home 탭 "최근 이벤트" — 같은 이벤트 로그를 재사용 (최근 20건, 스크롤)
         const ahomeEvents = document.getElementById("ahome-events");
         if (ahomeEvents) {
             ahomeEvents.innerHTML = data.events.slice(0, 20).map(e => {
@@ -4416,7 +4417,7 @@ async function renderFalls() {
         tb.innerHTML = "";
         rows.forEach(f => {
             const tr = document.createElement("tr");
-            const who = f.patient_name ? f.patient_name : '<span class="ev-unknown">환자 미확인</span>';
+            const who = f.patient_name ? f.patient_name : '<span class="ev-unknown">-</span>';
             tr.innerHTML = `<td>${f.detected_at}</td><td>병실 ${f.room_number}</td><td>${who}</td>`;
             tb.appendChild(tr);
         });
@@ -4880,7 +4881,7 @@ function renderEventRows(rows) {
             // 간호사가 확인해 지정한 환자를 함께 보여준다
             const who = e.patient_name
                 ? ` · <b class="ev-who">${e.patient_name} 님</b>`
-                : ' · <span class="ev-unknown">환자 미확인</span>';
+                : ' · <span class="ev-unknown">-</span>';
             tr.innerHTML =
                 `<td>${e.detected_at}</td><td>병실 ${e.room_number}</td><td>낙상 감지${who}</td>` +
                 `<td>${e.done
