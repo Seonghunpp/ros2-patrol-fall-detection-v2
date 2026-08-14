@@ -599,7 +599,10 @@ def index():
     return render_template("index.html")
 
 
+# 병실 영상도 개인정보다. 낙상 캡처 이미지와 같은 기준으로 로그인을 요구한다.
+# <img src="/video_feed">는 같은 출처라 세션 쿠키가 자동으로 실린다.
 @app.route("/video_feed")
+@login_required
 def video_feed():
     def generate():
         while True:
@@ -619,6 +622,7 @@ def video_feed():
 
 
 @app.route("/video_feed_yolo")
+@login_required
 def video_feed_yolo():
     def generate():
         while True:
@@ -1272,7 +1276,7 @@ def api_fall_log_get():
         if session.get("role") == "admin":
             cursor.execute("""
                 SELECT f.id, f.room_number, f.detected_at, f.patient_id, f.memo, f.done,
-                       p.name AS patient_name
+                       f.patient_name AS name_snapshot, p.name AS patient_name
                 FROM fall_log f
                 LEFT JOIN patients p ON p.id = f.patient_id
                 ORDER BY f.detected_at DESC
@@ -1286,7 +1290,7 @@ def api_fall_log_get():
             if prow:
                 cursor.execute("""
                     SELECT f.id, f.room_number, f.detected_at, f.patient_id, f.memo, f.done,
-                           p.name AS patient_name
+                           f.patient_name AS name_snapshot, p.name AS patient_name
                     FROM fall_log f
                     LEFT JOIN patients p ON p.id = f.patient_id
                     WHERE f.patient_id = %s AND f.done = TRUE
@@ -1296,8 +1300,12 @@ def api_fall_log_get():
                 rows = cursor.fetchall()
 
     for r in rows:
-        if r.get("patient_name"):
-            r["patient_name"] = decrypt_field(r["patient_name"])
+        # 재원 중이면 patients의 현재 이름을, 퇴원했으면 확정 당시 남겨둔 이름을 쓴다.
+        # discharged=True면 화면에서 "(퇴원)"을 붙이고 환자 재지정을 막는다.
+        snapshot = r.pop("name_snapshot", None)
+        r["discharged"] = bool(snapshot) and r.get("patient_id") is None
+        name = r.get("patient_name") or snapshot
+        r["patient_name"] = decrypt_field(name) if name else None
         if r.get("detected_at"):
             r["detected_at"] = r["detected_at"].strftime("%Y-%m-%d %H:%M:%S")
     return jsonify({"ok": True, "logs": rows})
@@ -1325,15 +1333,53 @@ def api_fall_log_confirm(log_id):
 
     conn = get_db()
     cursor = conn.cursor()
-    # confirmed_at = 처리(확정) 시각. 보호자 화면이 이 시각 기준으로 낙상(10분)→주의로 바꾼다.
-    cursor.execute(
-        "UPDATE fall_log SET patient_id = %s, confirmed_by = %s, memo = %s, done = TRUE, "
-        "confirmed_at = NOW() WHERE id = %s",
-        (patient_id, session.get("user_id"), memo, log_id),
-    )
-    conn.commit()
-    cursor.close()
-    conn.close()
+    try:
+        cursor.execute(
+            "SELECT room_number, patient_id, patient_name FROM fall_log WHERE id = %s", (log_id,)
+        )
+        log_row = cursor.fetchone()
+        if log_row is None:
+            return jsonify({"ok": False, "error": "낙상 기록을 찾을 수 없습니다."}), 404
+        log_room, cur_patient_id, cur_patient_name = log_row
+
+        # 이미 확정한 뒤 그 환자가 퇴원한 기록은 잠근다.
+        # 퇴원하면 patient_id가 NULL로 끊겨서, 화면에는 '지금 그 병실에 있는 환자'가 후보로 뜬다.
+        # 그대로 두면 나중에 입원한 사람이 과거 낙상의 당사자로 기록되는 사고가 난다.
+        # (아직 그 환자가 재원 중이면 오지정을 바로잡을 수 있게 열어 둔다)
+        if cur_patient_name and cur_patient_id is None:
+            return jsonify({
+                "ok": False,
+                "error": f"이미 {decrypt_field(cur_patient_name)} 님으로 확정된 기록입니다. "
+                         "해당 환자가 퇴원해 변경할 수 없습니다.",
+            }), 409
+
+        # 지정하려는 환자가 실제로 있고, 낙상이 발생한 그 병실의 환자인지 확인한다.
+        # 화면이 후보를 좁혀 주지만, 서버에서 막지 않으면 다른 병실 환자도 그대로 들어간다.
+        cursor.execute("SELECT name, room_number FROM patients WHERE id = %s", (patient_id,))
+        prow = cursor.fetchone()
+        if prow is None:
+            return jsonify({"ok": False, "error": "등록되지 않은 환자입니다."}), 400
+        patient_name_enc, patient_room = prow
+        if patient_room != log_room:
+            return jsonify({
+                "ok": False,
+                "error": f"{log_room}호에서 발생한 낙상입니다. 그 병실의 환자만 지정할 수 있습니다.",
+            }), 400
+
+        # 이름을 함께 남긴다. 퇴원해서 patient_id가 끊겨도 '누구였는지'는 기록에 남는다
+        # confirmed_at = 처리(확정) 시각. 보호자 화면이 이 시각 기준으로 낙상(10분)→주의로 바꾼다.
+        cursor.execute(
+            "UPDATE fall_log SET patient_id = %s, patient_name = %s, confirmed_by = %s, "
+            "memo = %s, done = TRUE, confirmed_at = NOW() WHERE id = %s",
+            (patient_id, patient_name_enc, session.get("user_id"), memo, log_id),
+        )
+        conn.commit()
+    except mysql.connector.Error:
+        conn.rollback()
+        return jsonify({"ok": False, "error": "저장 중 오류가 발생했습니다."}), 500
+    finally:
+        cursor.close()
+        conn.close()
     return jsonify({"ok": True})
 
 
@@ -1485,9 +1531,13 @@ def api_rooms_summary():
     """
     with db_cursor() as cursor:
 
+        # 통계 탭의 병실별 막대와 같은 기준으로 센다 — 지금 재원 중인 환자에게 발생한 낙상만.
+        # 퇴원 처리가 fall_log.patient_id를 NULL로 끊으므로 JOIN이 자동으로 걸러낸다.
+        # (아직 낙상 환자를 지정하지 않은 건은 여기 안 잡힌다. 이력 자체는 fall_log에 그대로 남는다)
         cursor.execute(
-            "SELECT room_number, COUNT(*) FROM fall_log "
-            "WHERE room_number IS NOT NULL GROUP BY room_number"
+            "SELECT f.room_number, COUNT(*) FROM fall_log f "
+            "JOIN patients p ON p.id = f.patient_id "
+            "WHERE f.room_number IS NOT NULL GROUP BY f.room_number"
         )
         falls = dict(cursor.fetchall())
 
@@ -1539,19 +1589,38 @@ def api_stats_admin():
         monthly_falls = monthly_fall_series(months, cursor.fetchall())
 
         # 병실별 낙상 발생 · 위험도(그 병실에서 가장 높은 위험도로 막대 색을 정한다)
-        # 등록된 병실은 낙상이 한 건도 없어도 0건 막대로 항상 표시한다 (그래야 그래프 모양이 유지됨)
-        cursor.execute("SELECT room_number, COUNT(*) FROM fall_log GROUP BY room_number")
+        #
+        # 막대 높이는 '지금 재원 중인 환자에게 발생한' 낙상만 센다.
+        # 퇴원 처리가 fall_log.patient_id를 NULL로 끊으므로, JOIN이 그 낙상을 자동으로 걸러낸다.
+        # 같은 병실에 다른 환자가 남아 있어도 퇴원한 환자의 낙상은 빠진다.
+        #
+        # 병실은 '낙상이 일어난 당시 병실'(fall_log.room_number)로 센다.
+        # 환자가 그 뒤 병실을 옮겼어도 낙상이 발생한 곳은 그 병실이기 때문이다.
+        #
+        # ※ 아직 간호사가 낙상 환자를 지정하지 않은 건(patient_id IS NULL)은 여기 안 잡힌다.
+        #   이 차트는 '현재 재원 환자' 기준이고, 전체 건수는 월별·시간대별 차트와
+        #   아래 이력 표에 그대로 남는다. (fall_log 자체는 지우지 않는다)
+        cursor.execute(
+            "SELECT f.room_number, COUNT(*) FROM fall_log f "
+            "JOIN patients p ON p.id = f.patient_id "
+            "WHERE f.room_number IS NOT NULL GROUP BY f.room_number"
+        )
         fall_count_by_room = dict(cursor.fetchall())
+
         cursor.execute("SELECT room_number, risk_level FROM patients WHERE room_number IS NOT NULL")
         room_risk = {}
-        all_rooms = set(fall_count_by_room.keys())   # 낙상이 실제 기록된 병실은 환자 등록 여부와 무관하게 포함
+        occupied_rooms = set()          # 지금 재원 환자가 한 명이라도 있는 병실
         for room, risk in cursor.fetchall():
-            all_rooms.add(room)
+            occupied_rooms.add(room)
             if not risk:
                 continue
             best = room_risk.get(room)
             if best is None or STATS_RISK_RANK.get(risk, 0) > STATS_RISK_RANK.get(best, 0):
                 room_risk[room] = risk
+
+        # 등록된 병실은 낙상이 한 건도 없어도 0건 막대로 항상 표시한다 (그래야 그래프 모양이 유지됨).
+        # 재원 환자가 아무도 없어도 막대 4개는 남아야 화면이 비어 보이지 않는다.
+        all_rooms = PATIENT_ROOM_NUMBERS | occupied_rooms | set(fall_count_by_room)
         room_falls = [
             [f"{room}호", fall_count_by_room.get(room, 0), STATS_RISK_CLASS.get(room_risk.get(room), "low")]
             for room in sorted(all_rooms)

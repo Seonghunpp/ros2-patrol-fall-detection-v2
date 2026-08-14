@@ -830,7 +830,8 @@
                         <div class="room" id="room-104"><strong>104</strong><span>4인실</span></div>
                         <div class="robot-marker" id="robot-marker" style="display:none;">🤖</div>
                     </div>
-                    <p class="mon-note">로봇이 있는 병실이 파랗게, 낙상이 잦은 병실이 붉게 표시됩니다.</p>
+                    <p class="mon-note">로봇이 있는 병실이 파랗게, 낙상이 잦은 병실이 붉게 표시됩니다.
+                        낙상은 현재 재원 환자 기준이라 퇴원하면 색이 빠집니다.</p>
                 </section>
             </aside>
 
@@ -932,7 +933,8 @@
                 <div class="lc" id="lc-astats-month"><!-- renderLineCharts()로 그림 --></div>
             </div>
             <div class="panel">
-                <div class="panel-head">병실별 낙상 발생 · 위험도</div>
+                <div class="panel-head">병실별 낙상 발생 · 위험도
+                    <span class="panel-head-note">현재 재원 환자의 낙상만 집계 (퇴원 시 제외)</span></div>
                 <div class="lc" id="bc-astats-room"><!-- renderCharts()로 그림 --></div>
             </div>
             <div class="panel">
@@ -2359,135 +2361,6 @@ function syncRoomLabels() {
     });
 }
 
-/* ============================================================
-   데이터 계층 — 지금은 임시 데이터, 나중에 MySQL + Flask API 로 교체
-   ------------------------------------------------------------
-   ▶ 백엔드 담당자에게: 이 블록만 고치면 화면 코드는 손댈 필요가 없습니다.
-     DB.load() 안의 주석 두 줄을 풀고 아래 시드 배열을 지우면 연동 끝입니다.
-
-   테이블 ↔ 필드 대응 (컬럼명을 그대로 맞춰두었습니다)
-     patients   : patient_id, name, room_number('101'~'104'), room_type,
-                  age, gender, diagnosis, risk_level('high'|'mid'|'low'),
-                  last_fall_at, admitted(재원 여부 1/0), nurse_name, nurse_tel
-     guardians  : guardian_id, username, name, phone, patient_id,
-                  mapping_code, status('pending'|'approved'|'registered'|'rejected')
-     users      : username, password_hash, role('admin' | 'user'), ...
-                  ※ role 은 DB 표기('admin'=관리자·간호사, 'user'=보호자)를 그대로 주면 됩니다.
-                    화면 내부 표기('admin'/'guardian')로는 toAppRole() 이 알아서 바꿉니다.
-
-   기대 응답 형태
-     GET /api/patients            → [ {patients 레코드}, ... ]
-     GET /api/guardians           → [ {guardians 레코드}, ... ]
-   ============================================================ */
-const DB = {
-    // ----- 임시 시드 (화면 확인용) : 연동 시 삭제 -----
-    patients: [
-        { patient_id: 1, name: "홍길동", room_number: "101", room_type: "1인실",
-          age: 78, gender: "남", diagnosis: "뇌졸중 후유증", risk_level: "high",
-          last_fall_at: "2026-07-14 03:20", admitted: 1, nurse_name: "김간호", nurse_tel: "02-1234-5678" },
-        { patient_id: 2, name: "김영수", room_number: "102", room_type: "2인실",
-          age: 72, gender: "남", diagnosis: "고관절 골절 회복", risk_level: "low",
-          last_fall_at: "2026-07-02 21:10", admitted: 1, nurse_name: "이간호", nurse_tel: "02-1234-5679" },
-        { patient_id: 3, name: "이순자", room_number: "103", room_type: "2인실",
-          age: 81, gender: "여", diagnosis: "파킨슨병", risk_level: "mid",
-          last_fall_at: "2026-07-15 11:05", admitted: 1, nurse_name: "김간호", nurse_tel: "02-1234-5678" },
-        { patient_id: 4, name: "최판서", room_number: "104", room_type: "4인실",
-          age: 69, gender: "남", diagnosis: "당뇨 · 저혈압", risk_level: "low",
-          last_fall_at: "낙상 이력 없음", admitted: 1, nurse_name: "이간호", nurse_tel: "02-1234-5679" },
-
-        // 같은 병실을 쓰는 다른 환자들 — 낙상 감지 시 "누가 넘어졌는지" 고르는 후보가 된다.
-        // 101호는 1인실이라 후보가 1명뿐이므로, 여러 명 고르는 흐름은 104호(4인실)로 확인한다
-        { patient_id: 5, name: "장복순", room_number: "104", room_type: "4인실",
-          age: 84, gender: "여", diagnosis: "고관절 수술 후 회복", risk_level: "high",
-          last_fall_at: "2026-06-28 05:40", admitted: 1, nurse_name: "김간호", nurse_tel: "02-1234-5678" },
-        { patient_id: 6, name: "오갑수", room_number: "104", room_type: "4인실",
-          age: 76, gender: "남", diagnosis: "척추관 협착증", risk_level: "mid",
-          last_fall_at: "낙상 이력 없음", admitted: 1, nurse_name: "김간호", nurse_tel: "02-1234-5678" },
-        { patient_id: 7, name: "윤말자", room_number: "104", room_type: "4인실",
-          age: 79, gender: "여", diagnosis: "당뇨 합병증", risk_level: "low",
-          last_fall_at: "낙상 이력 없음", admitted: 1, nurse_name: "김간호", nurse_tel: "02-1234-5678" },
-        { patient_id: 8, name: "한정식", room_number: "103", room_type: "2인실",
-          age: 83, gender: "남", diagnosis: "뇌경색 후유증", risk_level: "mid",
-          last_fall_at: "낙상 이력 없음", admitted: 1, nurse_name: "김간호", nurse_tel: "02-1234-5678" },
-        { patient_id: 9, name: "서금자", room_number: "102", room_type: "2인실",
-          age: 74, gender: "여", diagnosis: "무릎 인공관절 수술", risk_level: "low",
-          last_fall_at: "낙상 이력 없음", admitted: 1, nurse_name: "이간호", nurse_tel: "02-1234-5679" }
-    ],
-
-    // 병실 정원은 ROOM_INFO(roomCapacityOf)가 원본이라 여기서는 들고 있지 않는다
-
-    guardians: [
-        { guardian_id: 1, username: "cus", name: "박보호", phone: "010-3456-7890",
-          patient_id: 1, mapping_code: "KJ-3E91-A47C", status: "registered", role: "user" }
-    ],
-
-    // ----- 연동 지점 -----
-    async load() {
-        // TODO(백엔드): 아래 두 줄의 주석을 풀고 위 시드 배열을 지우면 됩니다.
-        // DB.patients  = await (await fetch("/api/patients")).json();
-        // DB.guardians = await (await fetch("/api/guardians")).json();
-    },
-
-    // ----- 조회 헬퍼 (화면은 항상 이 함수들만 사용) -----
-    getPatient(id) {
-        return DB.patients.find(p => p.patient_id === id) || null;
-    },
-
-    // 연동 신청 검증용: 재원 중인 환자 중에서 이름+병실이 모두 맞아야 통과
-    findAdmittedPatient(name, room) {
-        const n = String(name).replace(/\s/g, "");
-        return DB.patients.find(p =>
-            p.admitted === 1 && p.name.replace(/\s/g, "") === n && p.room_number === String(room)
-        ) || null;
-    },
-
-    isAdmittedName(name) {
-        const n = String(name).replace(/\s/g, "");
-        return DB.patients.some(p => p.admitted === 1 && p.name.replace(/\s/g, "") === n);
-    },
-
-    // 같은 병실에 있는 재원 환자들 (4인실이면 최대 4명)
-    listPatientsByRoom(room) {
-        return DB.patients.filter(p => p.admitted === 1 && p.room_number === String(room));
-    },
-
-    getGuardianByUsername(username) {
-        return DB.guardians.find(g => g.username === username) || null;
-    },
-
-    addGuardian(g) { DB.guardians.push(g); },   // TODO: POST /api/guardians
-
-    /* 순찰 로그
-       patrol_logs : log_id, patient_id, room_number, patrolled_at(DATETIME),
-                     result('normal' | 'fall' | 'call')
-       순찰 주기가 병실당 약 2분이라 하루 300건 이상 쌓입니다.
-       화면은 최신순으로 받는 것을 기대합니다. */
-    listPatrolLogs(patientId, date) {
-        // TODO(백엔드): GET /api/patrols?patient_id={id}&date={YYYY-MM-DD} 로 교체
-        //   return await (await fetch(`/api/patrols?patient_id=${patientId}&date=${date}`)).json();
-        return DB._demoPatrolLogs(patientId);
-    },
-
-    // ----- 임시 생성기 (연동 시 삭제) : 오늘 08:00부터 2분 간격 -----
-    _demoPatrolLogs(patientId) {
-        const p = DB.getPatient(patientId);
-        if (!p) return [];
-        const out = [];
-        const now = new Date();
-        const t = new Date(now);
-        t.setHours(8, 0, 0, 0);
-        while (t <= now) {
-            out.push({
-                patrolled_at: `${pad2(t.getHours())}:${pad2(t.getMinutes())}`,
-                room_number: p.room_number,
-                result: "normal"
-            });
-            t.setMinutes(t.getMinutes() + 2);
-        }
-        return out.reverse();   // 최신순
-    }
-};
-
 // 재원 환자 목록 (환자관리 탭 · 이벤트 환자 지정이 함께 사용)
 let WARDS = [];
 
@@ -2547,6 +2420,20 @@ async function openEvCapture(id) {
 
     // 영상만으로는 같은 병실의 누가 넘어졌는지 알 수 없으므로 현장에서 확인해 지정한다
     const people = document.getElementById("ev-people");
+
+    // 확정한 환자가 퇴원한 기록은 잠근다. 후보로 뜨는 건 '지금' 그 병실에 있는 환자라,
+    // 그대로 두면 나중에 입원한 사람이 과거 낙상의 당사자로 기록된다 (서버도 409로 막는다)
+    if (e.discharged) {
+        people.innerHTML = "";
+        const p = document.createElement("p");
+        p.className = "a-hint";
+        p.textContent = `${e.patient_name} 님으로 확정된 기록입니다. ` +
+                        "해당 환자가 퇴원해 환자를 다시 지정할 수 없습니다.";
+        people.appendChild(p);
+        document.getElementById("ev-modal").classList.add("open");
+        return;
+    }
+
     WARDS = await fetchWards();
     const list = WARDS.filter(w => w.room === e.room_number);
     people.innerHTML = list.length
@@ -3236,6 +3123,7 @@ async function doLogin() {
     document.getElementById("login-id").value = "";
     closeLogin();
     renderNav();
+    reloadVideo();   // 로그인 전 401로 끊긴 영상을 다시 붙인다
     if (toAppRole(data.role) === "admin") {
         renderPending();
         renderGuardians();
@@ -3256,6 +3144,7 @@ async function logout() {
     [localStorage, sessionStorage].forEach(s => {
         s.removeItem(AUTH_KEY); s.removeItem(ROLE_KEY); s.removeItem(NAME_KEY); s.removeItem(USER_KEY);
     });
+    stopVideo();   // 열려 있던 영상 스트림도 함께 끊는다
     renderNav();
     goHome();
 }
@@ -3374,6 +3263,26 @@ function closeFallAlert() {  // * 팝업 부분 수정 *
 function goFallMonitoring() {
     closeFallAlert();
     showTab("monitoring");
+}
+
+// 영상 라우트가 @login_required라, 로그인 전에는 <img>가 401을 받고 오류 상태로 굳는다.
+// 로그인 직후 여기서 다시 붙여야 모니터링 탭에 영상이 나온다.
+// 같은 URL을 그대로 넣으면 브라우저가 재요청을 안 할 수 있어 쿼리를 붙인다.
+function reloadVideo() {
+    const img = document.getElementById("video-img");
+    if (!img) { return; }
+    const base = currentVideoMode === "yolo" ? "/video_feed_yolo" : "/video_feed";
+    img.style.visibility = "visible";
+    if (img.parentElement) { img.parentElement.classList.remove("no-signal"); }
+    img.src = base + "?t=" + Date.now();
+}
+
+// 로그아웃하면 열려 있던 스트림도 끊는다. 안 그러면 이미 연결된 영상은 계속 흐른다
+function stopVideo() {
+    const img = document.getElementById("video-img");
+    if (!img) { return; }
+    img.removeAttribute("src");
+    img.style.visibility = "hidden";
 }
 
 function switchVideo(mode) {
@@ -4177,13 +4086,48 @@ function renderBarChart(el) {
     };
 }
 
-// 관리자 통계 탭의 4개 차트(월별 낙상/병실별 낙상·위험도/시간대별 낙상/일별 순찰)만
-// 실제 DB 집계로 덮어쓴다. 그 외 차트(홈 요약, 보호자 통계)는 아직 데모 값을 그대로 쓴다.
+// 관리자 통계 차트 id 목록. 실패 처리에서도 같은 목록을 쓴다
+const ADMIN_STAT_CHARTS = [
+    "lc-ahome-month", "lc-astats-month", "lc-astats-hour", "lc-astats-day", "bc-astats-room"
+];
+const ADMIN_STAT_TILES = [
+    "a-stat-rooms", "a-stat-risk-rooms", "a-stat-today-falls", "a-stat-month-falls"
+];
+
+// 통계를 못 받았을 때 자리표시용 숫자를 그대로 두면 가짜 값이 진짜처럼 보인다.
+// 자리표시 데이터를 아예 지우고 화면에 실패를 드러낸다.
+// (LINE_CHARTS/BAR_CHARTS에서 지우면 renderCharts가 그 element를 건드리지 않으므로
+//  여기서 넣은 안내 문구가 그대로 남는다)
+function markAdminStatsFailed(reason) {
+    console.error("[stats] 관리자 통계를 불러오지 못했습니다:", reason);
+
+    ADMIN_STAT_CHARTS.forEach(id => {
+        delete LINE_CHARTS[id];
+        delete BAR_CHARTS[id];
+        const el = document.getElementById(id);
+        if (el) {
+            el.textContent = "";
+            const p = document.createElement("p");
+            p.className = "lc-empty";
+            p.textContent = "통계를 불러오지 못했습니다.";
+            el.appendChild(p);
+        }
+    });
+
+    ADMIN_STAT_TILES.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = "—";   // 단위 span까지 같이 지운다
+    });
+}
+
+
 async function loadAdminStats() {
     try {
         const res = await fetch("/api/stats/admin");
+        // 보호자 계정이면 이 API를 쓸 일이 없다. 401/403은 실패 표시 없이 조용히 넘긴다
+        if (res.status === 401 || res.status === 403) { return; }
         const data = await res.json();
-        if (!data.ok) return;
+        if (!data.ok) { markAdminStatsFailed(data.error || `서버 응답 ${res.status}`); return; }
         LINE_CHARTS["lc-ahome-month"] = { unit: "건", data: data.monthly_falls };
         LINE_CHARTS["lc-astats-month"] = { unit: "건", data: data.monthly_falls };
         LINE_CHARTS["lc-astats-hour"] = { unit: "건", data: data.hourly_falls };
@@ -4198,7 +4142,9 @@ async function loadAdminStats() {
         setNum("a-stat-risk-rooms", data.risk_rooms, "실");
         setNum("a-stat-today-falls", data.today_falls, "건");
         setNum("a-stat-month-falls", data.month_falls, "건");
-    } catch (e) { /* 실패하면 기존 값(데모) 유지 */ }
+    } catch (e) {
+        markAdminStatsFailed(e);
+    }
 }
 
 async function loadGuardianStats() {
@@ -4222,7 +4168,7 @@ async function loadGuardianStats() {
         setNum("g-stat-today", data.patrol_today, "회");
         setNum("g-stat-patrol30", data.patrol_30d, "회");
         set("g-stat-patrol30-sub", `하루 평균 ${Math.round(data.patrol_30d / 30 * 10) / 10}회`);
-    } catch (e) { /* 실패하면 기존 값(데모) 유지 */ }
+    } catch (e) { /* 실패하면 기존 값 유지 */ }
 }
 
 async function renderCharts() {
@@ -4233,9 +4179,9 @@ async function renderCharts() {
     });
 }
 
-// ===== 탭 콘텐츠 (더미 데이터 · 실제 값은 각 API 연동) =====
+// ===== 탭 콘텐츠 (각 API 연동) =====
 
-// --- 환자 관리 (관리자) ---  ※ TODO: 환자 정보 API 연동
+// --- 환자 관리 (관리자) --- 
 async function renderPatients() {
     const tb = document.getElementById("pt-tbody");
     if (!tb) return;
@@ -4335,7 +4281,7 @@ async function dischargePatient(i) {
     });
 }
 
-// --- 낙상 이력 / 통계 ---  ※ TODO: 낙상 이력 API 연동
+// --- 낙상 이력 / 통계 --- 
 async function renderFalls() {
     let rows = [];
     try {
@@ -4765,7 +4711,7 @@ function rcToast(msg) {
     rcToast._t = setTimeout(() => el.classList.remove("show"), 1800);
 }
 
-// ===== 이벤트 로그 =====  ※ TODO: 이벤트 API 연동
+// ===== 이벤트 로그 ===== 
 // 순찰·호출 로그는 '병실 모니터링'의 실시간 이벤트 로그에서 보므로,
 // 이 탭은 간호사가 확인·처리해야 하는 낙상(fall_log)만 다룬다
 let FALL_LOGS = [];
@@ -4793,8 +4739,10 @@ function renderEventRows(rows) {
         rows.forEach(e => {
             const tr = document.createElement("tr");
             // 간호사가 확인해 지정한 환자를 함께 보여준다
+            // 퇴원한 환자도 확정 당시 이름이 남아 있다. 지금 재원 중이 아님을 함께 표시한다
             const who = e.patient_name
-                ? ` · <b class="ev-who">${e.patient_name} 님</b>`
+                ? ` · <b class="ev-who">${e.patient_name} 님</b>` +
+                  (e.discharged ? ' <span class="ev-unknown">(퇴원)</span>' : "")
                 : ' · <span class="ev-unknown">-</span>';
             tr.innerHTML =
                 `<td>${e.detected_at}</td><td>병실 ${e.room_number}</td><td>낙상 감지${who}</td>` +
@@ -4827,9 +4775,6 @@ function clearEventFilter() {
     renderEventRows(FALL_LOGS);
 }
 
-// 데이터를 먼저 불러온 뒤 화면을 그린다.
-// TODO(백엔드): DB.load() 가 API 를 호출하게 되면 아래 렌더 호출들을 then() 안으로 옮기면 됩니다.
-DB.load();
 
 renderPatients();
 renderCharts();

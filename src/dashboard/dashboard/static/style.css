@@ -1635,6 +1635,14 @@ body {
 .mini-btn:hover { background: var(--surface-hover); }
 .panel { background: var(--card); border: 1px solid var(--border); border-radius: 4px; padding: 20px; }
 .panel-head { font-size: 15px; font-weight: 700; margin-bottom: 14px; }
+
+/* 제목 옆 부연 — 집계 기준처럼 안 적으면 오해할 수 있는 것만 붙인다 */
+.panel-head-note {
+    margin-left: 8px;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-muted);
+}
 .rank {
     width: 22px; height: 22px; flex-shrink: 0;
     display: flex; align-items: center; justify-content: center;
@@ -2701,6 +2709,18 @@ html.reveal-on .rm-svc-grid .rm-svc-card:nth-child(8) { transition-delay: 0.49s;
 }
 
 .riskbars-empty { margin: 6px 0; font-size: 13px; color: var(--text-muted); }
+
+/* 차트 자리에 값 대신 사유를 보여줄 때 (통계 API 실패 등) */
+.lc-empty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    min-height: 120px;
+    margin: 0;
+    font-size: 13px;
+    color: var(--text-muted);
+}
 
 .mon-risk-foot {
     margin: 12px 0 0;
