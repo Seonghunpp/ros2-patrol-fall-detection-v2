@@ -93,6 +93,21 @@ def login_required(view_func):
     return wrapped
 
 
+# 관리자(간호사)만 쓰는 화면의 API. 로그인까지 함께 검사하므로 login_required와 겹쳐 쓰지 않는다.
+# 401(로그인 안 함)과 403(로그인했지만 권한 없음)을 구분해서 돌려준다 —
+# 화면이 401이면 로그인 창을 띄우고, 403이면 띄워도 소용없기 때문이다.
+# 보호자 계정은 화면에 버튼이 없을 뿐 API는 그대로 부를 수 있어서, 서버에서 막아야 한다.
+def admin_required(view_func):
+    @wraps(view_func)
+    def wrapped(*args, **kwargs):
+        if not session.get("user"):
+            return jsonify({"ok": False, "error": "로그인이 필요합니다"}), 401
+        if session.get("role") != "admin":
+            return jsonify({"ok": False, "error": "권한이 없습니다."}), 403
+        return view_func(*args, **kwargs)
+    return wrapped
+
+
 latest_frame = None
 latest_annotated_frame = None
 last_heartbeat = 0.0
@@ -602,7 +617,7 @@ def index():
 # 병실 영상도 개인정보다. 낙상 캡처 이미지와 같은 기준으로 로그인을 요구한다.
 # <img src="/video_feed">는 같은 출처라 세션 쿠키가 자동으로 실린다.
 @app.route("/video_feed")
-@login_required
+@admin_required
 def video_feed():
     def generate():
         while True:
@@ -622,7 +637,7 @@ def video_feed():
 
 
 @app.route("/video_feed_yolo")
-@login_required
+@admin_required
 def video_feed_yolo():
     def generate():
         while True:
@@ -770,7 +785,7 @@ def api_apply():
 
 
 @app.route("/api/applications")
-@login_required
+@admin_required
 def api_applications():
     with db_cursor(dictionary=True) as cursor:
         cursor.execute(
@@ -792,7 +807,7 @@ def api_applications():
 
 
 @app.route("/api/applications/<int:app_id>/approve", methods=["POST"])
-@login_required
+@admin_required
 def api_application_approve(app_id):
     conn = get_db()
     cursor = conn.cursor()
@@ -827,7 +842,7 @@ def api_application_approve(app_id):
 
 
 @app.route("/api/applications/<int:app_id>/reject", methods=["POST"])
-@login_required
+@admin_required
 def api_application_reject(app_id):
     conn = get_db()
     cursor = conn.cursor()
@@ -955,7 +970,7 @@ def api_status():
 
 
 @app.route("/api/guardian-accounts")
-@login_required
+@admin_required
 def api_guardian_accounts():
     with db_cursor(dictionary=True) as cursor:
         cursor.execute("""
@@ -974,7 +989,7 @@ def api_guardian_accounts():
 
 
 @app.route("/api/guardian-accounts/<int:user_id>/delete", methods=["POST"])
-@login_required
+@admin_required
 def api_guardian_account_delete(user_id):
     conn = get_db()
     cursor = conn.cursor()
@@ -998,18 +1013,12 @@ def api_guardian_account_delete(user_id):
 # 간호사는 로그인 계정이 아니라 '직원 명부' 데이터다. 로그인은 admin 계정만 쓰고
 # 여러 간호사가 그 계정을 공유한다. 이름/전화번호는 환자처럼 암호화해서 저장한다.
 
-def _is_admin():
-    return session.get("role") == "admin"
-
-
 VALID_ROOMS = ("all", "101", "102", "103", "104")
 
 
 @app.route("/api/nurses")
-@login_required
+@admin_required
 def api_nurses_list():
-    if not _is_admin():
-        return jsonify({"ok": False, "error": "권한이 없습니다."}), 403
     with db_cursor(dictionary=True) as cursor:
         cursor.execute(
             "SELECT id, name, employee_no, phone, assigned_room FROM nurses ORDER BY id"
@@ -1022,10 +1031,8 @@ def api_nurses_list():
 
 
 @app.route("/api/nurses", methods=["POST"])
-@login_required
+@admin_required
 def api_nurses_create():
-    if not _is_admin():
-        return jsonify({"ok": False, "error": "권한이 없습니다."}), 403
     body = request.get_json(silent=True) or {}
     name = str(body.get("name", "")).strip()
     employee_no = str(body.get("employee_no", "")).strip()
@@ -1059,10 +1066,8 @@ def api_nurses_create():
 
 
 @app.route("/api/nurses/<int:nurse_id>/room", methods=["POST"])
-@login_required
+@admin_required
 def api_nurses_room(nurse_id):
-    if not _is_admin():
-        return jsonify({"ok": False, "error": "권한이 없습니다."}), 403
     body = request.get_json(silent=True) or {}
     assigned_room = str(body.get("assigned_room", "")).strip()
     if assigned_room not in VALID_ROOMS:
@@ -1085,10 +1090,8 @@ def api_nurses_room(nurse_id):
 
 
 @app.route("/api/nurses/<int:nurse_id>/delete", methods=["POST"])
-@login_required
+@admin_required
 def api_nurses_delete(nurse_id):
-    if not _is_admin():
-        return jsonify({"ok": False, "error": "권한이 없습니다."}), 403
     conn = get_db()
     cursor = conn.cursor()
     try:
@@ -1184,7 +1187,7 @@ def find_patient_id_by_name_room(conn, name, room):
 
 
 @app.route("/api/patients", methods=["GET"])
-@login_required
+@admin_required
 def api_patients_get():
     with db_cursor(dictionary=True) as cursor:
         cursor.execute(
@@ -1211,7 +1214,7 @@ def api_patients_get():
 # 병실+이름이 일치하는 환자가 이미 있으면(보호자 연동으로 먼저 생겨난 행일 수 있음) 나이·성별·병명·위험도만 채워 넣고,
 # 없으면 새로 등록한다. 보호자 연동 신청에는 이름·병실만 담기므로 이 화면에서 나머지를 채우는 구조.
 @app.route("/api/patients", methods=["POST"])
-@login_required
+@admin_required
 def api_patients_add():
     body = request.get_json(silent=True) or {}
     room = str(body.get("room", "")).strip()
@@ -1259,7 +1262,7 @@ def api_patients_add():
 
 
 @app.route("/api/patients/<int:patient_id>/delete", methods=["POST"])
-@login_required
+@admin_required
 def api_patient_delete(patient_id):
     conn = get_db()
     cursor = conn.cursor()
@@ -1328,7 +1331,7 @@ def api_fall_log_get():
 
 
 @app.route("/api/fall-log/<int:log_id>/capture")
-@login_required
+@admin_required
 def api_fall_log_capture(log_id):
     with db_cursor(dictionary=True) as cursor:
         cursor.execute("SELECT capture_path FROM fall_log WHERE id = %s", (log_id,))
@@ -1339,7 +1342,7 @@ def api_fall_log_capture(log_id):
 
 
 @app.route("/api/fall-log/<int:log_id>/confirm", methods=["POST"])
-@login_required
+@admin_required
 def api_fall_log_confirm(log_id):
     body = request.get_json(silent=True) or {}
     patient_id = body.get("patient_id")
@@ -1408,18 +1411,20 @@ def api_my_fall_state():
     #   warning : 확정 10분 경과 ~ 그날 자정까지 (노랑, '낙상 있었음')
     # 다음 날이 되면 오늘 기록이 아니므로 자동으로 normal로 돌아간다.
     with db_cursor(dictionary=True) as cursor:
-        cursor.execute("SELECT id, room_number FROM patients WHERE user_id = %s", (session.get("user_id"),))
+        cursor.execute("SELECT id FROM patients WHERE user_id = %s", (session.get("user_id"),))
         prow = cursor.fetchone()
         state = "normal"
         last_detected_at = None
         if prow:
-            # "최근 감지"는 병실 상세 정보 카드에 있는 값이라 내 담당 환자 한 명이 아니라
-            # 그 병실에서 확정된(done=TRUE) 낙상 중 가장 최근 것을 본다 (누구 환자든 상관없음)
+            # "최근 감지"는 내 담당 환자의 낙상만 본다(patient_id 기준).
+            # 병실 기준으로 잡으면 같은 병실을 쓰던 다른 환자 — 이미 퇴원한 사람까지 —
+            # 의 낙상 시각이 새로 들어온 환자의 보호자에게 보인다.
+            # 퇴원 처리가 fall_log.patient_id를 NULL로 끊으므로 이 조건이면 자동으로 빠진다.
             cursor.execute(
                 "SELECT detected_at FROM fall_log "
-                "WHERE room_number = %s AND done = TRUE "
+                "WHERE patient_id = %s AND done = TRUE "
                 "ORDER BY detected_at DESC LIMIT 1",
-                (prow["room_number"],),
+                (prow["id"],),
             )
             last_row = cursor.fetchone()
             if last_row and last_row["detected_at"]:
@@ -1453,7 +1458,7 @@ def api_my_fall_state():
 # ===== 캘린더 일정: DB(calendar_events)에 저장 (여러 브라우저가 같은 일정을 공유) =====
 
 @app.route("/api/events", methods=["GET"])
-@login_required
+@admin_required
 def api_events_get():
     with db_cursor() as cursor:
         cursor.execute("""
@@ -1473,7 +1478,7 @@ def api_events_get():
 
 
 @app.route("/api/events", methods=["POST"])
-@login_required
+@admin_required
 def api_events_add():
     body = request.get_json(silent=True) or {}
     date = str(body.get("date", "")).strip()
@@ -1500,7 +1505,7 @@ def api_events_add():
 
 
 @app.route("/api/events/delete", methods=["POST"])
-@login_required
+@admin_required
 def api_events_delete():
     body = request.get_json(silent=True) or {}
     event_id = body.get("id")
@@ -1548,7 +1553,7 @@ def monthly_fall_series(months, rows):
 
 
 @app.route("/api/rooms/summary")
-@login_required
+@admin_required
 def api_rooms_summary():
     """병실별 낙상 건수 · 순찰 횟수. 병실 모니터링 화면이 쓴다.
 
@@ -1600,7 +1605,7 @@ def api_rooms_summary():
 
 
 @app.route("/api/stats/admin")
-@login_required
+@admin_required
 def api_stats_admin():
     today = datetime.date.today()
     with db_cursor() as cursor:
@@ -1753,7 +1758,7 @@ def api_stats_guardian():
     })
 
 @app.route("/api/robot/places")
-@login_required
+@admin_required
 def api_robot_places():
     """이동 가능한 목적지 목록. 좌표·이름 모두 rooms.yaml이 원본이다."""
     places = load_places()
@@ -1772,10 +1777,8 @@ def api_robot_places():
 
 
 @app.route("/api/robot/goto/<place>", methods=["POST"])
-@login_required
+@admin_required
 def api_robot_goto(place):
-    if not _is_admin():
-        return jsonify({"ok": False, "error": "권한이 없습니다."}), 403
 
     places = load_places()
     if place not in places:
@@ -1796,10 +1799,8 @@ def api_robot_goto(place):
 
 
 @app.route("/api/robot/pause", methods=["POST"])
-@login_required
+@admin_required
 def api_robot_pause():
-    if not _is_admin():
-        return jsonify({"ok": False, "error": "권한이 없습니다."}), 403
     if bridge_node is None:
         return jsonify({"ok": False, "error": "ROS2에 연결되지 않았습니다."}), 503
 
@@ -1812,10 +1813,8 @@ def api_robot_pause():
 
 
 @app.route("/api/robot/resume", methods=["POST"])
-@login_required
+@admin_required
 def api_robot_resume():
-    if not _is_admin():
-        return jsonify({"ok": False, "error": "권한이 없습니다."}), 403
     if bridge_node is None:
         return jsonify({"ok": False, "error": "ROS2에 연결되지 않았습니다."}), 503
 
