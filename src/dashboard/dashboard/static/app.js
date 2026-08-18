@@ -1529,16 +1529,7 @@ async function doLogin() {
     closeLogin();
     renderNav();
     reloadVideo();   // 로그인 전 401로 끊긴 영상을 다시 붙인다
-    if (toAppRole(data.role) === "admin") {
-        renderPending();
-        renderGuardians();
-        renderNurses();
-        renderPatients();
-        renderEvents();
-        renderFalls();
-    }
-    renderCharts();   // 관리자/보호자 통계 차트 둘 다 이 함수 하나가 처리한다
-    await renderGuardian();
+    await bootstrapForRole();
     goHome();
 }
 
@@ -1760,9 +1751,12 @@ async function renderRoomTally() {
 }
 
 async function updateStatus() {
+    // 공개 화면(비로그인)에는 로봇 상태를 쓰는 곳이 없다. 그대로 두면 1초마다
+    // 401을 받아 서버 로그를 채우므로 아예 부르지 않는다.
+    if (currentRole() === "guest") return;
     try {
         const res = await fetch("/api/status");
-        if (!res.ok) return;   // 로그인 안 된 상태(401)에서는 fall_alert_id가 없어 오탐 팝업이 뜨므로 무시
+        if (!res.ok) return;   // 세션이 끊긴 순간(401)에는 fall_alert_id가 없어 오탐 팝업이 뜨므로 무시
         const data = await res.json();
 
         document.querySelectorAll(".room").forEach(room => {
@@ -2114,15 +2108,15 @@ function hideRiskTip() {
 // 순찰·낙상 집계는 DB 조회라 1초마다 돌릴 필요가 없다 (순찰 1회에 수십 초 단위)
 // "오늘 순찰" 모드일 때만 이 주기로 같이 갱신한다 — 위험도는 아래 주석대로 폴링 대상이 아니다
 setInterval(() => {
+    if (currentRole() !== "admin") { return; }   // 병실 모니터링 탭 전용 집계
     renderRoomTally();
     if (monRiskMode === "patrol") { renderRoomPatrolToday(); }
     if (monLogTab === "fall") { loadFallLogTab(); }
 }, 30000);
-renderRoomTally();
 
 // 위험도는 관리자가 환자 정보를 고칠 때만 바뀌므로 폴링하지 않는다
 // (모니터링 탭을 열 때 showTab이 다시 부른다)
-renderRoomRiskPanel();
+// 첫 조회는 bootstrapForRole()이 역할을 보고 부른다
 
 // 보호자 환자 상태(확정 낙상 → 10분 후 주의)는 분 단위로 바뀌므로 20초마다 갱신
 setInterval(refreshGuardianFallState, 20000);
@@ -2577,7 +2571,13 @@ async function loadGuardianStats() {
 }
 
 async function renderCharts() {
-    await Promise.all([loadAdminStats(), loadGuardianStats()]);
+    // /api/stats/admin은 관리자 전용이라 보호자가 부르면 반드시 403이다.
+    // loadAdminStats가 403을 조용히 넘기긴 하지만, 통계 탭을 열 때마다 실패할 게
+    // 뻔한 요청을 보낼 이유가 없어서 역할을 먼저 본다.
+    await Promise.all([
+        currentRole() === "admin" ? loadAdminStats() : Promise.resolve(),
+        loadGuardianStats(),
+    ]);
     document.querySelectorAll(".lc").forEach(el => {
         if (BAR_CHARTS[el.id]) renderBarChart(el);
         else renderLineChart(el);
@@ -2821,8 +2821,8 @@ function rcRenderWaypoints(places) {
     ).join("");
 }
 
-// 목적지 목록은 좌표를 다시 찍었을 때만 바뀌므로 화면을 열 때 한 번만 받아온다
-rcLoadPlaces();
+// 목적지 목록은 좌표를 다시 찍었을 때만 바뀌므로 한 번만 받아온다.
+// 관리자 전용 API라 호출은 bootstrapForRole()이 역할을 보고 한다.
 
 // 로봇 아이콘을 도면 위 한 지점으로 옮긴다. 단위는 건물 좌표계(SVG user unit).
 // 관리자 지도(rm-robot)와 보호자 지도(g-live-robot)가 같이 쓴다.
@@ -3174,18 +3174,40 @@ function clearEventFilter() {
 }
 
 
-renderPatients();
-renderCharts();
-renderFalls();
-renderEvents();
+// 역할에 맞는 첫 데이터 조회. 페이지를 열 때와 로그인 직후에 같은 함수를 쓴다
+// (화면이 새로고침 없이 역할을 바꾸기 때문이다).
+// 역할에 없는 API를 부르면 401/403만 돌아오면서 서버 로그를 채우므로 역할로 나눈다.
+// 각 탭은 열릴 때 showTab이 다시 조회하므로, 여기서는 첫 화면 몫만 채우면 된다.
+async function bootstrapForRole() {
+    const role = currentRole();
+    if (role === "guest") { return; }   // 공개 화면(홈·소개·기능·병실)은 API를 쓰지 않는다
+
+    // 이 함수 바로 뒤에는 항상 goHome()이 온다(페이지 로드·로그인 둘 다).
+    // goHome() -> showTab(홈 탭)이 홈 탭 몫을 스스로 조회하므로 여기서 또 부르지 않는다.
+    //   관리자 홈(ahome) -> renderCharts(), renderFalls()
+    //   보호자 홈(ghome) -> renderGuardian()
+    // showTab의 탭별 조회 분기를 고치면 이 목록도 같이 봐야 한다.
+    if (role === "admin") {
+        renderPatients();
+        renderPending();
+        renderGuardians();
+        renderNurses();     // 계정 관리 탭은 renderPending/renderGuardians만 다시 부른다
+        renderEvents();
+        renderRoomTally();   // 병실 색은 30초 인터벌에만 걸려 있어 첫 조회가 필요하다
+        renderRoomRiskPanel();
+        rcLoadPlaces();      // Robot Control 탭은 열려도 좌표를 다시 받지 않는다
+        return;
+    }
+    // 보호자 통계는 '실시간 병실' 탭의 "오늘 순찰" 값도 채우는데,
+    // 그 탭은 showTab에서 스스로 조회하지 않으므로 여기서 걸어준다
+    renderCharts();
+}
+
 renderSettingsTheme();
 renderRoomOptions();   // 환자 등록 병실 선택지 (101~104호)
 syncRoomLabels();      // 화면의 "n인실" 라벨을 ROOM_INFO에 맞춤
-renderPending();
-renderGuardians();
-renderNurses();
 renderNav();
-renderGuardian();
+bootstrapForRole();
 goHome();
 showRoom("r4");     // 병실 소개 기본값 = 4인실
 initReveal();
