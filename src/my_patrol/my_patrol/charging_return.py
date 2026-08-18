@@ -27,14 +27,15 @@ class NavigationService(Node):
 
     CHARGER_MARKER_ID = 249
     CHARGER_SEEN_TIMEOUT = 0.4
-    CHARGER_CENTER_TOL = 0.05
-    CHARGER_SEARCH_SPEED = 0.2
+    CHARGER_TARGET_OFFSET = 0.001  # 정렬 중심 보정값(정규화 비율)
+    CHARGER_CENTER_TOL = 0.01  # 중앙 정렬 허용 오차(정규화 비율)
+    CHARGER_SEARCH_SPEED = 0.6
     CHARGER_ALIGN_K = 0.6
     CHARGER_MIN_TURN = 0.10
     CHARGER_MAX_TURN = 0.4
-    CHARGER_TURN_SPEED = 0.25
+    CHARGER_TURN_SPEED = 0.50
     CHARGER_SEARCH_ANGLE = 2.0 * math.pi
-    CHARGER_TURN_ANGLE = math.pi
+    CHARGER_TURN_ANGLE = math.radians(180.0)
     CHARGER_SEARCH_TIMEOUT = 45.0
     CHARGER_TURN_TIMEOUT = 20.0
     CHARGER_APPROACH_TIMEOUT = 20.0
@@ -62,8 +63,8 @@ class NavigationService(Node):
         )
         self.create_subscription(Odometry, "/odom", self.odom_callback, 10)
         self.aruco_client = self.create_client(SetBool, "/aruco_enable")
-        self.declare_parameter("charger_target_distance", 0.20)
-        self.declare_parameter("charger_backup_distance", 0.15)
+        self.declare_parameter("charger_target_distance", 0.40)  # 정지 거리(m)
+        self.declare_parameter("charger_backup_distance", 0.15)  # 후진 거리(m)
         self.charger_target_distance = float(
             self.get_parameter("charger_target_distance").value
         )
@@ -620,8 +621,9 @@ class NavigationService(Node):
                 return
 
             offset = self.latest_charger_offset
+            center_error = offset - self.CHARGER_TARGET_OFFSET
 
-            if abs(offset) <= self.CHARGER_CENTER_TOL:
+            if abs(center_error) <= self.CHARGER_CENTER_TOL:
                 self.stop_robot()
                 self.charger_state = "approach"
                 self.charger_deadline = (
@@ -633,7 +635,7 @@ class NavigationService(Node):
                 )
                 return
 
-            angular = -self.CHARGER_ALIGN_K * offset
+            angular = -self.CHARGER_ALIGN_K * center_error
             magnitude = min(
                 self.CHARGER_MAX_TURN, max(self.CHARGER_MIN_TURN, abs(angular))
             )
@@ -652,7 +654,8 @@ class NavigationService(Node):
                 return
 
             offset = self.latest_charger_offset
-            if abs(offset) > self.CHARGER_CENTER_TOL:
+            center_error = offset - self.CHARGER_TARGET_OFFSET
+            if abs(center_error) > self.CHARGER_CENTER_TOL:
                 self.stop_robot()
                 self.charger_state = "align"
                 self.get_logger().info("접근 중 중앙 재정렬")
@@ -661,7 +664,22 @@ class NavigationService(Node):
             distance_error = (
                 self.latest_charger_distance - self.charger_target_distance
             )
-            if distance_error <= self.CHARGER_DISTANCE_TOL:
+            if distance_error < -self.CHARGER_DISTANCE_TOL:
+                # Nav2 도착 지점이 마커에 너무 가까우면 마커를 바라본
+                # 상태로 천천히 후퇴해서 목표 거리를 확보한다.
+                retreat_speed = min(
+                    self.CHARGER_BACKUP_SPEED,
+                    max(
+                        self.CHARGER_APPROACH_MIN_SPEED,
+                        self.CHARGER_APPROACH_K * abs(distance_error),
+                    ),
+                )
+                twist.linear.x = -retreat_speed
+                twist.angular.z = -self.CHARGER_ALIGN_K * center_error
+                self.cmd_vel_pub.publish(twist)
+                return
+
+            if abs(distance_error) <= self.CHARGER_DISTANCE_TOL:
                 self.stop_robot()
                 self.charger_state = "turn"
                 self.charger_rotated = 0.0
@@ -680,7 +698,7 @@ class NavigationService(Node):
                     self.CHARGER_APPROACH_K * distance_error,
                 ),
             )
-            twist.angular.z = -self.CHARGER_ALIGN_K * offset
+            twist.angular.z = -self.CHARGER_ALIGN_K * center_error
 
         elif self.charger_state == "turn":
             if self.charger_rotated >= self.CHARGER_TURN_ANGLE:
