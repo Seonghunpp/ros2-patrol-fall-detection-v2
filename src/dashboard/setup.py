@@ -10,6 +10,7 @@ setup(
         package_name: [
             'templates/*.html',
             'static/*.css',
+            'static/*.js',
             'static/*.png',
             'static/rooms/*.png',
             'static/icons/*.svg',

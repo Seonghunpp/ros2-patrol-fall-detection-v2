@@ -686,21 +686,24 @@ def api_change_password():
 
     conn = get_db()
     cursor = conn.cursor(dictionary=True)
-    cursor.execute("SELECT password_hash FROM users WHERE id = %s", (session.get("user_id"),))
-    user = cursor.fetchone()
+    try:
+        cursor.execute("SELECT password_hash FROM users WHERE id = %s", (session.get("user_id"),))
+        user = cursor.fetchone()
 
-    if user is None or not check_password_hash(user["password_hash"], current_pw):
+        if user is None or not check_password_hash(user["password_hash"], current_pw):
+            return jsonify({"ok": False, "error": "현재 비밀번호가 올바르지 않습니다."}), 401
+
+        cursor.execute(
+            "UPDATE users SET password_hash = %s WHERE id = %s",
+            (generate_password_hash(new_pw), session.get("user_id")),
+        )
+        conn.commit()
+    except mysql.connector.Error:
+        conn.rollback()
+        return jsonify({"ok": False, "error": "비밀번호 변경 중 오류가 발생했습니다."}), 500
+    finally:
         cursor.close()
         conn.close()
-        return jsonify({"ok": False, "error": "현재 비밀번호가 올바르지 않습니다."}), 401
-
-    cursor.execute(
-        "UPDATE users SET password_hash = %s WHERE id = %s",
-        (generate_password_hash(new_pw), session.get("user_id")),
-    )
-    conn.commit()
-    cursor.close()
-    conn.close()
     return jsonify({"ok": True})
 
 
@@ -722,46 +725,47 @@ def api_apply():
         return jsonify({"ok": False, "error": "모든 항목을 입력해 주세요."}), 400
 
     conn = get_db()
+    try:
+        # 관리자가 '환자 관리'에 등록해 둔 환자(병실+이름 일치)만 연동 신청을 받는다
+        patient_id = find_patient_id_by_name_room(conn, patient, room)
+        if patient_id is None:
+            return jsonify({
+                "ok": False,
+                "error": "등록된 환자 정보와 일치하지 않습니다. 환자 성함과 병실 번호를 다시 확인해 주세요.",
+            }), 400
 
-    # 관리자가 '환자 관리'에 등록해 둔 환자(병실+이름 일치)만 연동 신청을 받는다
-    patient_id = find_patient_id_by_name_room(conn, patient, room)
-    if patient_id is None:
+        # 이미 보호자 계정이 연동된 환자면 또 신청받지 않는다
+        check_cursor = conn.cursor()
+        check_cursor.execute("SELECT user_id FROM patients WHERE id = %s", (patient_id,))
+        already_linked = check_cursor.fetchone()[0] is not None
+        check_cursor.close()
+        if already_linked:
+            return jsonify({"ok": False, "error": "이미 보호자 계정이 연동된 환자입니다."}), 400
+
+        # 같은 환자로 아직 처리 안 끝난 신청이 있으면 중복 신청을 막는다
+        pending_cursor = conn.cursor(dictionary=True)
+        pending_cursor.execute(
+            "SELECT patient_name FROM guardian_applications WHERE room_number = %s AND status IN ('pending', 'approved')",
+            (room,),
+        )
+        pending_rows = pending_cursor.fetchall()
+        pending_cursor.close()
+        normalized = patient.replace(" ", "")
+        if any(decrypt_field(r["patient_name"]).replace(" ", "") == normalized for r in pending_rows):
+            return jsonify({"ok": False, "error": "이미 처리 대기 중인 신청이 있습니다."}), 400
+
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO guardian_applications (applicant_name, phone, patient_name, room_number) VALUES (%s, %s, %s, %s)",
+            (encrypt_field(name), encrypt_field(phone), encrypt_field(patient), room),
+        )
+        conn.commit()
+        cursor.close()
+    except mysql.connector.Error:
+        conn.rollback()
+        return jsonify({"ok": False, "error": "신청 접수 중 오류가 발생했습니다."}), 500
+    finally:
         conn.close()
-        return jsonify({
-            "ok": False,
-            "error": "등록된 환자 정보와 일치하지 않습니다. 환자 성함과 병실 번호를 다시 확인해 주세요.",
-        }), 400
-
-    # 이미 보호자 계정이 연동된 환자면 또 신청받지 않는다
-    check_cursor = conn.cursor()
-    check_cursor.execute("SELECT user_id FROM patients WHERE id = %s", (patient_id,))
-    already_linked = check_cursor.fetchone()[0] is not None
-    check_cursor.close()
-    if already_linked:
-        conn.close()
-        return jsonify({"ok": False, "error": "이미 보호자 계정이 연동된 환자입니다."}), 400
-
-    # 같은 환자로 아직 처리 안 끝난 신청이 있으면 중복 신청을 막는다
-    pending_cursor = conn.cursor(dictionary=True)
-    pending_cursor.execute(
-        "SELECT patient_name FROM guardian_applications WHERE room_number = %s AND status IN ('pending', 'approved')",
-        (room,),
-    )
-    pending_rows = pending_cursor.fetchall()
-    pending_cursor.close()
-    normalized = patient.replace(" ", "")
-    if any(decrypt_field(r["patient_name"]).replace(" ", "") == normalized for r in pending_rows):
-        conn.close()
-        return jsonify({"ok": False, "error": "이미 처리 대기 중인 신청이 있습니다."}), 400
-
-    cursor = conn.cursor()
-    cursor.execute(
-        "INSERT INTO guardian_applications (applicant_name, phone, patient_name, room_number) VALUES (%s, %s, %s, %s)",
-        (encrypt_field(name), encrypt_field(phone), encrypt_field(patient), room),
-    )
-    conn.commit()
-    cursor.close()
-    conn.close()
     return jsonify({"ok": True})
 
 
@@ -792,27 +796,30 @@ def api_applications():
 def api_application_approve(app_id):
     conn = get_db()
     cursor = conn.cursor()
+    try:
+        code = None
+        for _ in range(20):
+            candidate = generate_mapping_code()
+            cursor.execute("SELECT id FROM guardian_applications WHERE mapping_code = %s", (candidate,))
+            if cursor.fetchone() is None:
+                code = candidate
+                break
+        if code is None:
+            return jsonify({"ok": False, "error": "매핑 코드를 만들지 못했습니다. 다시 시도해 주세요."}), 500
 
-    code = None
-    for _ in range(20):
-        candidate = generate_mapping_code()
-        cursor.execute("SELECT id FROM guardian_applications WHERE mapping_code = %s", (candidate,))
-        if cursor.fetchone() is None:
-            code = candidate
-            break
-    if code is None:
+        cursor.execute(
+            "UPDATE guardian_applications SET status = 'approved', mapping_code = %s WHERE id = %s AND status = 'pending'",
+            (code, app_id),
+        )
+        conn.commit()
+        updated = cursor.rowcount
+    except mysql.connector.Error:
+        # 코드만 발급되고 상태는 안 바뀐 어중간한 상태로 남지 않도록 되돌린다
+        conn.rollback()
+        return jsonify({"ok": False, "error": "승인 처리 중 오류가 발생했습니다."}), 500
+    finally:
         cursor.close()
         conn.close()
-        return jsonify({"ok": False, "error": "매핑 코드를 만들지 못했습니다. 다시 시도해 주세요."}), 500
-
-    cursor.execute(
-        "UPDATE guardian_applications SET status = 'approved', mapping_code = %s WHERE id = %s AND status = 'pending'",
-        (code, app_id),
-    )
-    conn.commit()
-    updated = cursor.rowcount
-    cursor.close()
-    conn.close()
 
     if not updated:
         return jsonify({"ok": False, "error": "이미 처리된 신청입니다."}), 400
@@ -824,13 +831,18 @@ def api_application_approve(app_id):
 def api_application_reject(app_id):
     conn = get_db()
     cursor = conn.cursor()
-    cursor.execute(
-        "DELETE FROM guardian_applications WHERE id = %s AND status = 'pending'",
-        (app_id,),
-    )
-    conn.commit()
-    cursor.close()
-    conn.close()
+    try:
+        cursor.execute(
+            "DELETE FROM guardian_applications WHERE id = %s AND status = 'pending'",
+            (app_id,),
+        )
+        conn.commit()
+    except mysql.connector.Error:
+        conn.rollback()
+        return jsonify({"ok": False, "error": "반려 처리 중 오류가 발생했습니다."}), 500
+    finally:
+        cursor.close()
+        conn.close()
     return jsonify({"ok": True})
 
 
@@ -1251,18 +1263,22 @@ def api_patients_add():
 def api_patient_delete(patient_id):
     conn = get_db()
     cursor = conn.cursor()
-    cursor.execute("SELECT user_id FROM patients WHERE id = %s", (patient_id,))
-    row = cursor.fetchone()
-    if row and row[0] is not None:
+    try:
+        cursor.execute("SELECT user_id FROM patients WHERE id = %s", (patient_id,))
+        row = cursor.fetchone()
+        if row and row[0] is not None:
+            return jsonify({"ok": False, "error": "연동된 보호자 계정이 있어 삭제할 수 없습니다."}), 400
+        # fall_log.patient_id가 이 환자를 참조하고 있으면 FK 제약 위반이 나므로, 기록은 남기고 연결만 끊는다
+        # 두 문장은 한 묶음이어야 한다 — 연결만 끊기고 환자가 남으면 이력의 주인을 잃는다
+        cursor.execute("UPDATE fall_log SET patient_id = NULL WHERE patient_id = %s", (patient_id,))
+        cursor.execute("DELETE FROM patients WHERE id = %s", (patient_id,))
+        conn.commit()
+    except mysql.connector.Error:
+        conn.rollback()
+        return jsonify({"ok": False, "error": "퇴원 처리 중 오류가 발생했습니다."}), 500
+    finally:
         cursor.close()
         conn.close()
-        return jsonify({"ok": False, "error": "연동된 보호자 계정이 있어 삭제할 수 없습니다."}), 400
-    # fall_log.patient_id가 이 환자를 참조하고 있으면 FK 제약 위반이 나므로, 기록은 남기고 연결만 끊는다
-    cursor.execute("UPDATE fall_log SET patient_id = NULL WHERE patient_id = %s", (patient_id,))
-    cursor.execute("DELETE FROM patients WHERE id = %s", (patient_id,))
-    conn.commit()
-    cursor.close()
-    conn.close()
     return jsonify({"ok": True})
 
 
@@ -1467,14 +1483,19 @@ def api_events_add():
 
     conn = get_db()
     cursor = conn.cursor()
-    cursor.execute(
-        "INSERT INTO calendar_events (event_date, text, created_by) VALUES (%s, %s, %s)",
-        (date, text, session.get("user_id")),
-    )
-    conn.commit()
-    event = {"id": cursor.lastrowid, "text": text, "created_by": session.get("user")}
-    cursor.close()
-    conn.close()
+    try:
+        cursor.execute(
+            "INSERT INTO calendar_events (event_date, text, created_by) VALUES (%s, %s, %s)",
+            (date, text, session.get("user_id")),
+        )
+        conn.commit()
+        event = {"id": cursor.lastrowid, "text": text, "created_by": session.get("user")}
+    except mysql.connector.Error:
+        conn.rollback()
+        return jsonify({"ok": False, "error": "일정 저장 중 오류가 발생했습니다."}), 500
+    finally:
+        cursor.close()
+        conn.close()
     return jsonify({"ok": True, "date": date, "event": event})
 
 
@@ -1486,10 +1507,15 @@ def api_events_delete():
 
     conn = get_db()
     cursor = conn.cursor()
-    cursor.execute("DELETE FROM calendar_events WHERE id = %s", (event_id,))
-    conn.commit()
-    cursor.close()
-    conn.close()
+    try:
+        cursor.execute("DELETE FROM calendar_events WHERE id = %s", (event_id,))
+        conn.commit()
+    except mysql.connector.Error:
+        conn.rollback()
+        return jsonify({"ok": False, "error": "일정 삭제 중 오류가 발생했습니다."}), 500
+    finally:
+        cursor.close()
+        conn.close()
     return jsonify({"ok": True})
 
 
