@@ -2858,6 +2858,45 @@ function rcSetMapLive(on) {
 // 각도나 배율을 직접 잴 필요는 없다. 오차를 줄이려면 서로 가장 먼 두 점을 쓴다.
 // 2026-08-10 실측. rooms.yaml의 값을 그대로 옮긴 것이라,
 // 좌표를 다시 찍으면 이 두 줄도 같이 갱신해야 한다.
+
+/*
+
+ 회전 공식 
+ x′ = xcosθ − ysinθ
+ y′ = xsinθ + ycosθ
+
+ map과 svg는 y방향 반대 
+ x, y -> x, -y 
+ y에 -y 대입 
+
+ x′ = xcosθ + ysinθ
+ y′ = xsinθ - ycosθ
+ 
+크기도 다르기에 크기(s) 곱해줌 
+
+ x′ = scosθx + ssinθy
+ y′ = ssinθx - scosθy
+
+A = scosθ, B = ssinθ 치환 (크기 + 회전각)
+
+ x′ = Ax + By 
+ y′ = Bx - Ay
+
+A, B 구하기 위해 연립방정식 
+ 
+ x · x′ = x(Ax + By)
+ y · y′ = y(Bx - Ay)
+ 
+ x · x′ - y · y′ = x(Ax + By) - y(Bx - Ay) 
+                 = Ax^2 + Bxy - Bxy + Ay^2
+                 = Ax^2 + Ay^2
+                 = A(x^2 + y^2)
+
+ (x · x′ - y · y′) / (x^2 + y^2) = A
+
+ B도 동일하게 계산.
+
+*/
 const MAP_ANCHORS = [
     { map: [-2.132, 3.181], plan: [ 80.4, 416.1] },   // dock
     { map: [ 0.882, 0.315], plan: [630.5, 125.8] },   // room4.inside
