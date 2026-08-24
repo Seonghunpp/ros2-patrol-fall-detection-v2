@@ -26,7 +26,7 @@ class ArucoIdNode(Node):
         super().__init__('aruco_id')
         self.bridge = CvBridge()
         self.enabled = True   # /aruco_enable로 끌 수 있음 (기본 ON: 단독 테스트용)
-        # ID 249 마커 전체 한 변의 실제 길이(m).
+        # 병실·충전소 마커 전체 한 변의 실제 길이(m).
         # 필요하면 --ros-args -p marker_size:=0.08로 변경한다.
         self.declare_parameter('marker_size', DEFAULT_MARKER_SIZE)
         self.marker_size = float(self.get_parameter('marker_size').value)
@@ -63,6 +63,9 @@ class ArucoIdNode(Node):
         self.id_pub = self.create_publisher(Int32MultiArray, '/room_marker', 10)
         # 병실 마커의 화면 좌우 위치 (기존 순찰 정렬용)
         self.offset_pub = self.create_publisher(Float32, '/marker_offset', 10)
+        # 카메라에서 병실 마커까지의 전방 거리(m)
+        self.distance_pub = self.create_publisher(
+            Float32, '/marker_distance', 10)
         # 충전소 마커 전용 토픽
         self.charger_id_pub = self.create_publisher(
             Int32MultiArray, '/charger_marker', 10)
@@ -120,6 +123,23 @@ class ArucoIdNode(Node):
         size = float(sum(edge_lengths) / len(edge_lengths) / image_width)
         return offset, size
 
+    def marker_distance(self, corner):
+        """카메라 보정값으로 마커까지의 전방 거리(m)를 계산한다."""
+        if self.camera_matrix is None:
+            self.get_logger().warn(
+                '/camera_info를 기다리는 중입니다.',
+                throttle_duration_sec=5.0,
+            )
+            return None
+
+        _, tvecs, _ = cv2.aruco.estimatePoseSingleMarkers(
+            [corner],
+            self.marker_size,
+            self.camera_matrix,
+            self.distortion,
+        )
+        return float(tvecs[0][0][2])
+
     def publish_room_ids(self, room_ids):
         """병실 마커 ID가 변했을 때만 발행한다."""
         if room_ids == self.last_ids:
@@ -142,6 +162,9 @@ class ArucoIdNode(Node):
         corner, selected_id = detections[selected]
         offset, _ = self.marker_geometry(corner, image_width)
         self.offset_pub.publish(Float32(data=offset))
+        distance = self.marker_distance(corner)
+        if distance is not None:
+            self.distance_pub.publish(Float32(data=distance))
 
         room_ids = [selected_id]
         room_ids.extend(
@@ -165,24 +188,9 @@ class ArucoIdNode(Node):
         self.charger_offset_pub.publish(Float32(data=offset))
         self.charger_size_pub.publish(Float32(data=size))
 
-        # 카메라 보정값이 없으면 임의의 거리를 발행하지 않는다.
-        if self.camera_matrix is None:
-            self.get_logger().warn(
-                '/camera_info를 기다리는 중입니다.',
-                throttle_duration_sec=5.0,
-            )
-            return
-
-        # 마커 모서리, 실제 크기, 카메라 보정값으로 pose를 구한다.
-        # tvec의 z가 카메라 기준 마커까지의 전방 거리다.
-        _, tvecs, _ = cv2.aruco.estimatePoseSingleMarkers(
-            [corner],
-            self.marker_size,
-            self.camera_matrix,
-            self.distortion,
-        )
-        distance = float(tvecs[0][0][2])
-        self.charger_distance_pub.publish(Float32(data=distance))
+        distance = self.marker_distance(corner)
+        if distance is not None:
+            self.charger_distance_pub.publish(Float32(data=distance))
 
     def image_cb(self, msg):
         # 꺼져 있으면 압축해제·검출 자체를 안 함 → CPU 절약
@@ -191,7 +199,7 @@ class ArucoIdNode(Node):
         img = self.bridge.compressed_imgmsg_to_cv2(msg)      # 노드 내부에서 압축 풀기
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         _, w = gray.shape[:2]
-        # ID만 검출 (pose 없음) — OpenCV 버전에 맞는 방식 사용
+        # ID와 모서리를 검출 — OpenCV 버전에 맞는 방식 사용
         if self.detector is not None:
             corners, ids, _ = self.detector.detectMarkers(gray)          # 신 API
         else:
