@@ -11,156 +11,7 @@ from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSHistoryPolicy
 from sensor_msgs.msg import CompressedImage
 from std_srvs.srv import SetBool
 
-LEFT_SHOULDER = 5
-RIGHT_SHOULDER = 6
-LEFT_ELBOW = 7
-RIGHT_ELBOW = 8
-LEFT_HIP = 11
-RIGHT_HIP = 12
-LEFT_KNEE = 13
-RIGHT_KNEE = 14
 
-class FallJudge:
-    def __init__(
-        self,
-        body_ratio=1.0,          # 몸통 수평 판정 기준
-        keypoint_conf=0.25,      # 관절을 사용할 수 있는 최소 신뢰도
-        threshold_count=10,      # 낙상으로 확정할 연속 프레임 수
-    ):
-        self.body_ratio = body_ratio
-        self.keypoint_conf = keypoint_conf
-        self.threshold_count = threshold_count
-        self.fall_count = 0
-
-    def _is_keypoint_valid(self, keypoint_scores, index): #keypoint_scores 한 사람의 17개 관절 신뢰도 / index 확인할 관절 번호
-        if keypoint_scores is None:
-            return False
-
-        if index >= len(keypoint_scores):
-            return False
-
-        return float(keypoint_scores[index]) >= self.keypoint_conf
-
-    def _get_joint_center(self, keypoints, left_index, right_index): # 좌우 관절의 가운데 좌표 계산
-        left_x, left_y = keypoints[left_index]
-        right_x, right_y = keypoints[right_index]
-
-        center_x = (left_x + right_x) / 2
-        center_y = (left_y + right_y) / 2
-
-        return center_x, center_y
-
-    def _is_horizontal(self, point_a, point_b): # 두 점이 수평인지 확인
-        x1, y1 = point_a
-        x2, y2 = point_b
-
-        x_distance = abs(x2 - x1)
-        y_distance = abs(y2 - y1)
-
-        return x_distance > y_distance * self.body_ratio
-
-    def _check_primary_joints(self, keypoints, keypoint_scores): # 어깨·골반으로 기본 수평 판정
-        required = (
-            LEFT_SHOULDER,
-            RIGHT_SHOULDER,
-            LEFT_HIP,
-            RIGHT_HIP,
-        )
-
-        for index in required:
-            if not self._is_keypoint_valid(keypoint_scores, index):
-                return None
-
-        shoulder_center = self._get_joint_center(
-            keypoints,
-            LEFT_SHOULDER,
-            RIGHT_SHOULDER,
-        )
-
-        hip_center = self._get_joint_center(
-            keypoints,
-            LEFT_HIP,
-            RIGHT_HIP,
-        )
-
-        return self._is_horizontal(
-            shoulder_center,
-            hip_center,
-        )
-
-    def _check_fallback_joints(self, keypoints, keypoint_scores): #기본 관절이 가리면 보조 관절로 판정
-        if (
-            self._is_keypoint_valid(keypoint_scores, LEFT_SHOULDER)
-            and self._is_keypoint_valid(keypoint_scores, LEFT_HIP)
-        ):
-            return self._is_horizontal(
-                keypoints[LEFT_SHOULDER],
-                keypoints[LEFT_HIP],
-            )
-
-        if (
-            self._is_keypoint_valid(keypoint_scores, RIGHT_SHOULDER)
-            and self._is_keypoint_valid(keypoint_scores, RIGHT_HIP)
-        ):
-            return self._is_horizontal(
-                keypoints[RIGHT_SHOULDER],
-                keypoints[RIGHT_HIP],
-            )
-
-        required = (
-            LEFT_ELBOW,
-            RIGHT_ELBOW,
-            LEFT_KNEE,
-            RIGHT_KNEE,
-        )
-
-        for index in required:
-            if not self._is_keypoint_valid(keypoint_scores, index):
-                return None
-
-        elbow_center = self._get_joint_center(
-            keypoints,
-            LEFT_ELBOW,
-            RIGHT_ELBOW,
-        )
-
-        knee_center = self._get_joint_center(
-            keypoints,
-            LEFT_KNEE,
-            RIGHT_KNEE,
-        )
-
-        return self._is_horizontal(
-            elbow_center,
-            knee_center,
-        )
-    def _check_body_horizontal(self, keypoints, keypoint_scores): # 기본 판정 후 필요할 때 보조 판정 실행
-        primary_result = self._check_primary_joints(
-            keypoints,
-            keypoint_scores,
-        )
-
-        if primary_result is not None:
-            return primary_result
-
-        return self._check_fallback_joints(
-            keypoints,
-            keypoint_scores,
-        )
-    
-    def _update_fall_count(self, horizontal_result): # 수평이면 증가, 벗어나면 초기화
-        if horizontal_result:
-            self.fall_count = min(
-                self.fall_count + 1,
-                self.threshold_count,
-            )
-        else:
-            self.fall_count = 0 
-
-        return self.fall_count
-    
-    def _check_fall_threshold(self): # 카운트가 기준에 도달했는지 확인
-        return self.fall_count >= self.threshold_count
 
 class FallDetectionNode(Node):
     def __init__(self):
@@ -180,7 +31,7 @@ class FallDetectionNode(Node):
         )
 
         self.model = YOLO(model_path)
-        self.judge = FallJudge()
+        self.threshold_count = 10
         self.person_states = {}
         self.frame_index = 0
         self.max_missed_frames = 30
@@ -203,7 +54,7 @@ class FallDetectionNode(Node):
         self.annotated_image_pub = self.create_publisher(
             CompressedImage,
             "/image_annotated/compressed",
-            10,
+            1,
         )
 
         self.enabled = True
@@ -235,39 +86,32 @@ class FallDetectionNode(Node):
 
         return result
 
-    def _extract_persons(self, result): # 사람별 박스와 해당 관절 묶기
+    def _extract_persons(self, result): # 사람별 박스, 클래스, 추적 ID 묶기
         persons = []
 
         boxes = result.boxes
-        keypoints = result.keypoints
-
-        self.get_logger().info(
-        f"boxes={len(boxes)}, "
-        f"ids={boxes.id}, "
-        f"keypoints={keypoints.xy is not None}"
-)
-
-        if boxes is None or keypoints is None:
+        if boxes is None or len(boxes) == 0:
             return persons
 
-        if boxes.id is None or keypoints.xy is None or keypoints.conf is None:
+        if boxes.id is None:
             return persons
 
         boxes_xyxy = boxes.xyxy.cpu().numpy()
         boxes_conf = boxes.conf.cpu().numpy()
+        boxes_cls = boxes.cls.int().cpu().tolist()
         track_ids = boxes.id.int().cpu().tolist()
-        keypoints_xy = keypoints.xy.cpu().numpy()
-        keypoints_conf = keypoints.conf.cpu().numpy()
 
         for index in range(len(boxes_xyxy)):
             x1, y1, x2, y2 = map(int, boxes_xyxy[index])
+            class_id = boxes_cls[index]
+            class_name = result.names[class_id]
 
             person = {
                 "track_id": track_ids[index],
                 "box": (x1, y1, x2, y2),
                 "confidence": float(boxes_conf[index]),
-                "keypoints": keypoints_xy[index],
-                "keypoint_scores": keypoints_conf[index],
+                "class_id": class_id,
+                "class_name": class_name,
             }
 
             persons.append(person)
@@ -291,6 +135,7 @@ class FallDetectionNode(Node):
     def _draw_person_box(self, image, person): #사람 한 명의 박스와 상태 표시
         x1, y1, x2, y2 = person["box"]
         confidence = person["confidence"]
+        class_name = person["class_name"]
         track_id = person["track_id"]
         fall_count = person["fall_count"]
         fall_detected = person["fall_detected"]
@@ -298,6 +143,9 @@ class FallDetectionNode(Node):
         if fall_detected:
             label = "FALL DETECTED"
             color = (40, 40, 230)
+        elif class_name == "fall_person":
+            label = "FALL CANDIDATE"
+            color = (0, 180, 255)
         else:
             label = "PERSON"
             color = (60, 200, 80)
@@ -323,8 +171,8 @@ class FallDetectionNode(Node):
 
         text = (
             f"{label} ID:{track_id}  "
-            f"{confidence:.0%}  "
-            f"[{fall_count}/{self.judge.threshold_count}]"
+            f"{class_name} {confidence:.0%}  "
+            f"[{fall_count}/{self.threshold_count}]"
         )
 
         font = cv2.FONT_HERSHEY_SIMPLEX
@@ -422,30 +270,26 @@ class FallDetectionNode(Node):
 
             if track_id not in self.person_states:
                 self.person_states[track_id] = {
-                    "judge": FallJudge(
-                        body_ratio=self.judge.body_ratio,
-                        keypoint_conf=self.judge.keypoint_conf,
-                        threshold_count=self.judge.threshold_count,
-                    ),
+                    "fall_count": 0,
                     "fall_event_active": False,
                     "last_seen_frame": self.frame_index,
                 }
 
             state = self.person_states[track_id]
-            person_judge = state["judge"]
             state["last_seen_frame"] = self.frame_index
 
-            horizontal_result = person_judge._check_body_horizontal(
-                person["keypoints"],
-                person["keypoint_scores"],
-            )
+            # 모델이 같은 객체를 fall_person으로 연속 판정할 때만 누적한다.
+            if person["class_name"] == "fall_person":
+                state["fall_count"] = min(
+                    state["fall_count"] + 1,
+                    self.threshold_count,
+                )
+            else:
+                state["fall_count"] = 0
 
-            # 관절을 판단할 수 없는 None이면 기존 카운트를 유지한다.
-            if horizontal_result is not None:
-                person_judge._update_fall_count(horizontal_result)
+            fall_detected = state["fall_count"] >= self.threshold_count
 
-            fall_detected = person_judge._check_fall_threshold()
-            person["fall_count"] = person_judge.fall_count
+            person["fall_count"] = state["fall_count"]
             person["fall_detected"] = fall_detected
 
             if fall_detected and not state["fall_event_active"]:
