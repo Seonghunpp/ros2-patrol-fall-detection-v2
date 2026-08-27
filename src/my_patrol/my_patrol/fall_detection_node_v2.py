@@ -150,8 +150,12 @@ class FallDetectionNode(Node):
             label = "PERSON"
             color = (60, 200, 80)
 
-        corner_length = 25
-        thickness = 3
+        box_width = max(x2 - x1, 1)
+        box_height = max(y2 - y1, 1)
+        short_side = min(box_width, box_height)
+
+        corner_length = int(np.clip(short_side * 0.2, 10, 40))
+        thickness = int(np.clip(short_side / 80, 2, 5))
 
         # 왼쪽 위
         cv2.line(image, (x1, y1), (x1 + corner_length, y1), color, thickness)
