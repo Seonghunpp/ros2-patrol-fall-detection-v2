@@ -27,7 +27,6 @@ setup(
             'patrol = my_patrol.patrol_node:main',
             'aruco_id = my_patrol.aruco_id_node:main',
             'fall_detection = my_patrol.fall_detection_node:main',
-            'charging_return = my_patrol.test_charge:main', # 임시 코드 (나중에 변경 필요)
         ],
     },
 )
