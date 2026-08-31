@@ -3,12 +3,14 @@ import numpy as np
 from ultralytics import YOLO
 from datetime import datetime
 from pathlib import Path
+import time
 
 import rclpy
 from ament_index_python.packages import get_package_share_directory
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSHistoryPolicy
 from sensor_msgs.msg import CompressedImage
+from std_msgs.msg import Bool
 from std_srvs.srv import SetBool
 
 
@@ -35,6 +37,9 @@ class FallDetectionNode(Node):
         self.person_states = {}
         self.frame_index = 0
         self.max_missed_frames = 30
+        self.fall_clear_wait = 5.0
+        self.fall_latched = False
+        self.fall_clear_since = None
         self.fall_image_dir = Path.home() / "fall_images"
         self.fall_image_dir.mkdir(parents=True, exist_ok=True)
 
@@ -56,11 +61,16 @@ class FallDetectionNode(Node):
             "/image_annotated/compressed",
             1,
         )
+        self.fall_detected_pub = self.create_publisher(
+            Bool,
+            "/fall_detected",
+            10,
+        )
 
-        self.enabled = True
+        self.enabled = False
         self.create_service(
             SetBool,
-            "fall_enable",
+            "/fall_enable",
             self.enable_callback,
         )
 
@@ -242,8 +252,11 @@ class FallDetectionNode(Node):
 
     def enable_callback(self, request, response): # 낙상 감지 켜기·끄기 서비스 처리
         self.enabled = request.data
-        if self.enabled:
-            self.person_states.clear()
+        self.person_states.clear()
+        self.fall_latched = False
+        self.fall_clear_since = None
+        if not self.enabled:
+            self.fall_detected_pub.publish(Bool(data=False))
         state = "ON" if self.enabled else "OFF"
         self.get_logger().info(f"fall detection {state}")
         response.success = True
@@ -296,9 +309,11 @@ class FallDetectionNode(Node):
             person["fall_count"] = state["fall_count"]
             person["fall_detected"] = fall_detected
 
+            # 낙상이 처음 확정된 순간에만 이미지 저장 대상으로 추가한다.
             if fall_detected and not state["fall_event_active"]:
                 new_fall_ids.append(track_id)
                 state["fall_event_active"] = True
+            # 판정이 풀리면 같은 사람이 다시 낙상했을 때 새 이벤트로 처리한다.
             elif not fall_detected:
                 state["fall_event_active"] = False
 
@@ -319,6 +334,20 @@ class FallDetectionNode(Node):
         # 같은 프레임에서 여러 명이 확정돼도 전체 이미지는 한 장만 저장한다.
         if new_fall_ids:
             self._save_fall_image(image)
+
+        current_fall = any(person["fall_count"] >= 1 for person in persons)
+
+        if current_fall:
+            self.fall_latched = True
+            self.fall_clear_since = None
+        elif self.fall_latched:
+            if self.fall_clear_since is None:
+                self.fall_clear_since = time.monotonic()
+            elif time.monotonic() - self.fall_clear_since >= self.fall_clear_wait:
+                self.fall_latched = False
+                self.fall_clear_since = None
+
+        self.fall_detected_pub.publish(Bool(data=self.fall_latched))
 
         self._publish_results(
             compressed_image_msg,
