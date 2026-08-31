@@ -34,6 +34,10 @@ CREATE TABLE IF NOT EXISTS patients (
     age INT,
     sex VARCHAR(5),
     risk_level VARCHAR(10),
+    -- 순찰 우선순위 점수. 관리자가 환자를 등록·수정할 때 서버가 계산해서 넣는다.
+    -- 화면(위험도 그래프)과 순찰 노드(병실 선택)가 둘 다 이 값을 '읽기만' 한다 —
+    -- 계산식이 여러 곳에 흩어지면 화면과 로봇 행동이 어긋나기 때문이다.
+    score INT NOT NULL DEFAULT 0,
     marker_id INT,
     user_id INT UNIQUE,
     guardian VARCHAR(255),
@@ -117,6 +121,29 @@ UPDATE fall_log f
   JOIN patients p ON p.id = f.patient_id
    SET f.patient_name = p.name
  WHERE f.patient_id IS NOT NULL AND f.patient_name IS NULL;
+
+-- patients.score 추가 (2026-08-28)
+SET @add_score := (
+    SELECT COUNT(*) = 0 FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME   = 'patients'
+      AND COLUMN_NAME  = 'score'
+);
+SET @stmt := IF(@add_score,
+    'ALTER TABLE patients ADD COLUMN score INT NOT NULL DEFAULT 0 AFTER risk_level',
+    'DO 0');
+PREPARE s FROM @stmt; EXECUTE s; DEALLOCATE PREPARE s;
+
+-- 기존 행의 점수를 채운다. 계산식은 dashboard_server.py 와 같은 값이어야 한다
+--   낙상 위험도: 매우 높음 50 / 높음 35 / 보통 20 / 낮음 5
+--   나이:        80+ 30 / 70+ 25 / 60+ 20 / 50+ 10 / 그 외 5
+UPDATE patients SET score =
+      CASE risk_level WHEN '매우 높음' THEN 50 WHEN '높음' THEN 35
+                      WHEN '보통' THEN 20 WHEN '낮음' THEN 5 ELSE 0 END
+    + CASE WHEN age >= 80 THEN 30 WHEN age >= 70 THEN 25
+           WHEN age >= 60 THEN 20 WHEN age >= 50 THEN 10 ELSE 5 END
+WHERE score = 0;
+
 
 -- checklist 테이블 제거 (2026-08-14)
 DROP TABLE IF EXISTS checklist;

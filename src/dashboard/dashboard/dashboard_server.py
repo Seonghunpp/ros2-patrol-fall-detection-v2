@@ -155,6 +155,38 @@ PATROL_ROOM_NAME_TO_NUMBER = {
 # 환자를 등록할 수 있는 병실. 순찰 대상 병실과 같아야 하므로 위 매핑에서 그대로 가져온다
 PATIENT_ROOM_NUMBERS = set(PATROL_ROOM_NAME_TO_NUMBER.values())
 
+
+# ===== 순찰 우선순위 점수 =====
+# 점수 = 낙상 위험도 + 나이. 이 파일이 유일한 계산 지점이고, 결과는 patients.score 에 저장한다.
+# 화면(위험도 그래프)도 순찰 노드(병실 선택)도 그 값을 '읽기만' 한다.
+# 예전에는 병명에도 점수를 줬는데 뺐다 — 목록에 없는 병은 전부 같은 점수라 변별력이 없었고,
+# '치매·파킨슨이면 위험도가 높다'는 판단이 이미 낙상 위험도 입력에 반영되기 때문이다.
+FALL_RISK_SCORES = {"매우 높음": 50, "높음": 35, "보통": 20, "낮음": 5}
+AGE_SCORE_BANDS = ((80, 30), (70, 25), (60, 20), (50, 10))
+BASE_AGE_SCORE = 5   # 어느 구간에도 안 걸리는 나이의 기본점
+
+# 한 사람이 받을 수 있는 최대 점수. 위험도 막대의 100% 기준선이라 화면도 이 값을 받아 쓴다.
+# 축을 관측 최댓값이 아니라 여기 고정해야 병실끼리·시점끼리 막대 길이가 비교된다.
+MAX_PATIENT_SCORE = max(FALL_RISK_SCORES.values()) + AGE_SCORE_BANDS[0][1]
+
+
+def calculate_patient_score(age, risk_level):
+    """환자 한 명의 순찰 우선순위 점수. 값이 없거나 이상하면 가장 낮은 점수로 떨어진다."""
+    fall_score = FALL_RISK_SCORES.get(risk_level, 0)
+
+    age_score = BASE_AGE_SCORE
+    try:
+        age_value = int(age)
+    except (TypeError, ValueError):
+        age_value = None
+    if age_value is not None:
+        for floor, points in AGE_SCORE_BANDS:
+            if age_value >= floor:
+                age_score = points
+                break
+
+    return fall_score + age_score
+
 state = {
     "current_room": None,
     # AMCL이 추정한 map 좌표계 위치(m). Nav2가 안 떠 있으면 계속 None
@@ -386,9 +418,11 @@ class DashboardBridge(Node):
             for key in load_places()
         }
 
-        # 이동 중 일시정지 / 이어서 이동. 일시정지해야 다른 목적지를 찍을 수 있다
+        # 순찰 시작(재개) / 일시정지.
+        # 순찰 노드는 주행 중(RUNNING)에 순찰 시작·목적지 변경을 거부하므로,
+        # 화면에서도 "먼저 일시정지해 주세요" 메시지를 그대로 받아 띄운다.
+        self.patrol_cli = self.create_client(Trigger, "/start_patrol")
         self.pause_cli = self.create_client(Trigger, "/pause_navigation")
-        self.resume_cli = self.create_client(Trigger, "/resume_navigation")
 
         # ===== 로봇 현재 위치 =====
         # /amcl_pose는 로봇이 '움직일 때만' 발행돼서, 정지 상태로 대시보드를 켜면
@@ -479,8 +513,8 @@ class DashboardBridge(Node):
     def request_pause(self, timeout=3.0):
         return self._call_trigger(self.pause_cli, timeout)
 
-    def request_resume(self, timeout=3.0):
-        return self._call_trigger(self.resume_cli, timeout)
+    def request_start_patrol(self, timeout=3.0):
+        return self._call_trigger(self.patrol_cli, timeout)
 
 
     def check_network_callback(self):
@@ -1193,7 +1227,7 @@ def api_patients_get():
         cursor.execute(
             """
             SELECT p.id, p.name, p.room_number, p.age, p.sex, p.disease, p.risk_level,
-                   f.last_fall
+                   p.score, f.last_fall
             FROM patients p
             LEFT JOIN (
                 SELECT patient_id, MAX(detected_at) AS last_fall
@@ -1208,7 +1242,8 @@ def api_patients_get():
     for p in patients:
         p["name"] = decrypt_field(p["name"])
         p["last_fall"] = p["last_fall"].strftime("%Y-%m-%d") if p["last_fall"] else None
-    return jsonify({"ok": True, "patients": patients})
+    # max_score 를 같이 보내면 화면이 100% 기준선을 따로 정의하지 않아도 된다
+    return jsonify({"ok": True, "patients": patients, "max_score": MAX_PATIENT_SCORE})
 
 
 # 병실+이름이 일치하는 환자가 이미 있으면(보호자 연동으로 먼저 생겨난 행일 수 있음) 나이·성별·병명·위험도만 채워 넣고,
@@ -1237,17 +1272,19 @@ def api_patients_add():
     conn = get_db()
     try:
         patient_id = find_patient_id_by_name_room(conn, name, room)
+        # 점수는 여기서 한 번만 계산해 저장한다. 화면·순찰 노드는 읽기만 한다.
+        score = calculate_patient_score(age, risk_level)
         cursor = conn.cursor()
         if patient_id:
             cursor.execute(
-                "UPDATE patients SET age = %s, sex = %s, disease = %s, risk_level = %s WHERE id = %s",
-                (age, sex, disease, risk_level, patient_id),
+                "UPDATE patients SET age = %s, sex = %s, disease = %s, risk_level = %s, score = %s WHERE id = %s",
+                (age, sex, disease, risk_level, score, patient_id),
             )
         else:
             cursor.execute(
-                "INSERT INTO patients (name, room_number, age, sex, disease, risk_level) "
-                "VALUES (%s, %s, %s, %s, %s, %s)",
-                (encrypt_field(name), room, age, sex, disease, risk_level),
+                "INSERT INTO patients (name, room_number, age, sex, disease, risk_level, score) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s)",
+                (encrypt_field(name), room, age, sex, disease, risk_level, score),
             )
             patient_id = cursor.lastrowid
         conn.commit()
@@ -1812,15 +1849,17 @@ def api_robot_pause():
     return jsonify({"ok": ok, "message": message}), (200 if ok else 409)
 
 
-@app.route("/api/robot/resume", methods=["POST"])
+# 순찰 시작 = 재개도 겸한다. 로봇이 병실 안에 있으면 그 병실 관찰부터 다시 하고,
+# 그 외에는 위험도 가중치로 다음 병실을 새로 뽑는다(순찰 노드가 판단).
+@app.route("/api/robot/patrol/start", methods=["POST"])
 @admin_required
-def api_robot_resume():
+def api_robot_patrol_start():
     if bridge_node is None:
         return jsonify({"ok": False, "error": "ROS2에 연결되지 않았습니다."}), 503
 
-    ok, message = bridge_node.request_resume()
+    ok, message = bridge_node.request_start_patrol()
     if ok:
-        add_event("이동 재개")
+        add_event("순찰 시작")
         state["robot_paused"] = False
 
     return jsonify({"ok": ok, "message": message}), (200 if ok else 409)

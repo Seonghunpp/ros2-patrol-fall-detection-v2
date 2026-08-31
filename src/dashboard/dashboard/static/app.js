@@ -1890,29 +1890,14 @@ setInterval(updateStatus, 1000);
 updateStatus();
 
 // ===== 병실 낙상 위험도 =====
-// 점수 체계는 my_patrol/priority_patrol.py 와 같은 값이다. 순찰 노드가 이 점수로
-// 순찰 순서를 정하므로, 두 곳이 어긋나면 화면과 로봇 행동이 달라진다.
-// ※ 환자 원본은 갈라져 있다 — 순찰 노드는 patients.yaml, 이 화면은 DB(/api/patients).
-const FALL_RISK_SCORES = { "매우 높음": 50, "높음": 35, "보통": 20, "낮음": 5 };
-const AGE_SCORE_BANDS  = [[80, 30], [70, 25], [60, 20], [50, 10]];
-const DISEASE_SCORES   = [["치매", 25], ["뇌경색", 25], ["파킨슨", 25],
-                          ["대퇴골", 20], ["골절", 20], ["심부전", 15]];
-const BASE_SCORE = 5;   // 어느 구간에도 안 걸리는 나이·질환의 기본점
-
-// 한 사람이 받을 수 있는 최대 점수 = 막대의 100% 기준선.
-// 축을 관측 최댓값이 아니라 이 값에 고정해야 병실끼리·시점끼리 길이가 비교된다
-const MAX_PATIENT_SCORE = Math.max(...Object.values(FALL_RISK_SCORES))
-                        + AGE_SCORE_BANDS[0][1]
-                        + Math.max(...DISEASE_SCORES.map(d => d[1]));
-
-function patientRiskScore(p) {
-    const fall = FALL_RISK_SCORES[p.risk_level] || 0;
-    const band = AGE_SCORE_BANDS.find(([floor]) => p.age != null && p.age >= floor);
-    const hit  = DISEASE_SCORES.find(([key]) => String(p.disease || "").includes(key));
-    const ageScore = band ? band[1] : BASE_SCORE;
-    const disScore = hit ? hit[1] : BASE_SCORE;
-    return { fallScore: fall, ageScore, disScore, total: fall + ageScore + disScore };
-}
+// 순찰 우선순위 점수는 화면에서 계산하지 않는다.
+// 서버(dashboard_server.py)가 환자를 등록·수정할 때 계산해 patients.score 에 저장하고,
+// 이 화면과 순찰 노드는 그 값을 읽기만 한다. 계산식이 여러 곳에 있으면
+// 한쪽만 고쳤을 때 화면의 위험도 순위와 로봇의 실제 순찰 순서가 어긋난다.
+//
+// 막대의 100% 기준선. /api/patients 응답의 max_score 로 갱신된다.
+// 관측 최댓값이 아니라 이 값에 고정해야 병실끼리·시점끼리 막대 길이가 비교된다.
+let maxPatientScore = 80;
 
 // 막대 한 줄(호실 · 막대 · 숫자)을 만들어 돌려준다.
 // 위험도 차트와 오늘 순찰 차트가 같은 생김새라 조립을 한 곳에 모았다.
@@ -1945,15 +1930,13 @@ async function renderRoomRisk() {
     const box = document.getElementById("mon-risk-chart");
     if (!box) { return; }
 
-    const maxEl = document.getElementById("mon-risk-max");
-    if (maxEl) { maxEl.innerText = MAX_PATIENT_SCORE; }
-
     let patients;
     try {
         const res = await fetch("/api/patients");
         const data = await res.json();
         if (!data.ok) { throw new Error(data.error || "실패"); }
         patients = data.patients;
+        if (data.max_score) { maxPatientScore = data.max_score; }
     } catch (e) {
         box.innerHTML = '<p class="riskbars-empty">위험도를 불러오지 못했습니다.</p>';
         return;
@@ -1962,23 +1945,25 @@ async function renderRoomRisk() {
     // 병실 점수 = 그 병실 환자 중 개인 점수 '최댓값'.
     // 합계가 아닌 이유: 순찰 우선순위는 가장 위험한 환자 한 명이 정한다.
     // 저위험 환자가 여럿이라고 우선순위가 올라가면 안 된다.
+    const maxEl = document.getElementById("mon-risk-max");
+    if (maxEl) { maxEl.innerText = maxPatientScore; }
+
     const byRoom = {};
     patients.forEach(p => {
         if (!p.room_number) { return; }
-        (byRoom[p.room_number] = byRoom[p.room_number] || [])
-            .push(Object.assign({}, p, patientRiskScore(p)));
+        (byRoom[p.room_number] = byRoom[p.room_number] || []).push(p);
     });
 
     // 환자가 없는 병실도 0점으로 남긴다 (막대가 사라지면 병실 간 비교가 깨진다)
     const rooms = ROOM_NUMBERS.map(room => {
         const members = byRoom[room] || [];
-        const top = members.reduce((a, b) => (!a || b.total > a.total ? b : a), null);
-        return { room, count: members.length, top, score: top ? top.total : 0 };
+        const top = members.reduce((a, b) => (!a || (b.score || 0) > (a.score || 0) ? b : a), null);
+        return { room, count: members.length, top, score: top ? (top.score || 0) : 0 };
     }).sort((a, b) => b.score - a.score || a.room.localeCompare(b.room));
 
     box.textContent = "";
     rooms.forEach(r => {
-        const pct = r.score ? Math.max(2, (r.score / MAX_PATIENT_SCORE) * 100) : 0;
+        const pct = r.score ? Math.max(2, (r.score / maxPatientScore) * 100) : 0;
 
         const row = buildRiskBarRow(r.room, r.score, pct);
         row.tabIndex = 0;                     // 마우스 없이도 상세를 볼 수 있게
@@ -2021,7 +2006,7 @@ function setMonRiskMode(mode) {
         if (foot) foot.style.display = "none";
     } else {
         if (title) title.innerText = "병실별 낙상 위험도";
-        if (note) note.innerHTML = `순찰 우선순위 순 · 최대 <strong id="mon-risk-max">${MAX_PATIENT_SCORE}</strong>점`;
+        if (note) note.innerHTML = `순찰 우선순위 순 · 최대 <strong id="mon-risk-max">${maxPatientScore}</strong>점`;
         if (colLabel) colLabel.innerText = "점수";
         if (foot) foot.style.display = "";
     }
@@ -2082,10 +2067,10 @@ function showRiskTip(row) {
         who.className = "riskbar-tip-line";
         who.textContent = `${r.top.name} · ${r.top.age}세 · ${r.top.disease}`;
 
+        // 점수 = 낙상 위험도 + 나이. 나이는 윗줄에 이미 있으므로 위험도 등급만 덧붙인다
         const parts = document.createElement("p");
         parts.className = "riskbar-tip-parts";
-        parts.textContent =
-            `낙상 ${r.top.fallScore} · 연령 ${r.top.ageScore} · 질환 ${r.top.disScore}`;
+        parts.textContent = `낙상 위험도 ${r.top.risk_level || "-"}`;
 
         tip.append(who, parts);
     } else {
@@ -3054,43 +3039,54 @@ async function rcGoTo(btn) {
     }
 }
 
-// ===== 일시정지 · 이어서 이동 =====
-// 로봇은 한 번에 한 곳만 가므로, 이동 중에 다른 목적지를 찍으려면 먼저 멈춰야 한다.
-// 일시정지는 Nav2 goal을 취소하는 것이고, 남은 경유점은 로봇이 들고 있다가
-// '이어서 이동'을 누르면 취소된 지점부터 다시 간다.
+// ===== 순찰 시작 · 일시정지 =====
+// 로봇은 한 번에 한 곳만 가므로, 이동 중에는 다른 명령을 받지 않는다.
+// 순서는 항상 "일시정지 → 다른 명령"이고, 순찰 노드가 그 규칙을 강제한다
+// (주행 중 요청은 "먼저 일시정지해 주세요" 메시지로 거부된다).
+//
+// 재개도 '순찰 시작'이 겸한다. 병실 안에서 멈췄으면 그 병실 관찰부터 다시 하고,
+// 그 외에는 위험도 가중치로 다음 병실을 새로 뽑는다 — 어느 쪽이든 로봇이 정한다.
 let rcPaused = false;
-let rcPauseBusy = false;
+let rcBusy = false;
 
+// 일시정지 여부는 /api/status 의 robot_paused 로도 들어온다(새로고침 대비).
+// 버튼 라벨은 바꾸지 않는다 — 재개는 '순찰 시작'이 담당한다.
 function rcSyncPauseButton(paused) {
-    if (paused === rcPaused) { return; }
     rcPaused = paused;
+}
 
-    const btn = document.getElementById("rc-pause-btn");
-    if (btn) { btn.innerText = paused ? "이어서 이동" : "일시정지"; }
+async function rcSendCommand(url, fallbackMessage) {
+    if (rcBusy) { return; }
+    rcBusy = true;
+    try {
+        const res  = await fetch(url, { method: "POST" });
+        const data = await res.json();
+        if (data.ok) {
+            rcToast(data.message || fallbackMessage);
+        } else {
+            // 순찰 노드가 보낸 거부 사유("주행 중입니다...")를 그대로 보여준다
+            rcToast(data.error || data.message || "명령에 실패했습니다");
+        }
+        return data.ok;
+    } catch (e) {
+        rcToast("요청을 보내지 못했습니다");
+        return false;
+    } finally {
+        rcBusy = false;
+    }
+}
+
+async function rcStartPatrol() {
+    if (await rcSendCommand("/api/robot/patrol/start", "순찰을 시작합니다")) {
+        rcPaused = false;
+        rcSetState("순찰 중");
+    }
 }
 
 async function rcTogglePause() {
-    if (rcPauseBusy) { return; }
-    rcPauseBusy = true;
-
-    const resume = rcPaused;
-
-    try {
-        const res  = await fetch(resume ? "/api/robot/resume" : "/api/robot/pause",
-                                 { method: "POST" });
-        const data = await res.json();
-
-        if (data.ok) {
-            rcSyncPauseButton(!resume);
-            rcSetState(resume ? "이동 중" : "일시정지");
-            rcToast(data.message || (resume ? "이동을 다시 시작합니다" : "이동을 일시정지했습니다"));
-        } else {
-            rcToast(data.error || data.message || "명령에 실패했습니다");
-        }
-    } catch (e) {
-        rcToast("요청을 보내지 못했습니다");
-    } finally {
-        rcPauseBusy = false;
+    if (await rcSendCommand("/api/robot/pause", "이동을 일시정지했습니다")) {
+        rcPaused = true;
+        rcSetState("일시정지");
     }
 }
 
@@ -3104,12 +3100,6 @@ function rcGoDest(place) {
     rcToast("도면에 없는 목적지입니다");
 }
 
-
-// 순찰 시작 · 일시정지 · 비상 정지
-function rcCommand(label, state) {
-    rcSetState(state);
-    rcToast(label === "비상 정지" ? "비상 정지되었습니다" : label + " 명령을 보냈습니다");
-}
 
 // ===== 확인 모달 =====
 // 되돌리기 어려운 동작(삭제·퇴원·승인) 앞에 한 번 더 물어본다
