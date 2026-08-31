@@ -38,6 +38,22 @@ amcl:
     z_rand: 0.5
     z_short: 0.05
 
+    # ---- 초기 위치 자동 지정 ----
+    # 로봇은 항상 충전 스테이션에서 시작
+    # 값 얻는 법 (로봇을 도킹 자세로 세워둔 상태에서):
+    #     ros2 run tf2_ros tf2_echo map base_footprint
+    # Translation 의 x, y 와 RPY(radian) 의 세 번째(yaw)를 그대로 옮김
+    #   degree 가 아니라 radian
+    #
+    # 2026-08-31 실측. 도크를 옮기거나 맵을 다시 만들면 이 세 줄도 다시 측정
+    set_initial_pose: true
+    always_reset_initial_pose: true   # 켤 때마다 아래 값으로 초기화 (시작점이 늘 같으므로)
+    initial_pose:
+      x: -2.096
+      y: 3.323
+      z: 0.0
+      yaw: -1.175
+
 amcl_map_client:
   ros__parameters:
     use_sim_time: False
