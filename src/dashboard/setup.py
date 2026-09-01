@@ -7,7 +7,15 @@ setup(
     version='0.0.0',
     packages=[package_name],
     package_data={
-        package_name: ['templates/*.html', 'static/*.css'],
+        package_name: [
+            'templates/*.html',
+            'static/*.css',
+            'static/*.js',
+            'static/*.png',
+            'static/rooms/*.png',
+            'static/icons/*.svg',
+            'static/features/*.jpg',
+        ],
     },
     include_package_data=True,
     data_files=[
@@ -17,6 +25,7 @@ setup(
     install_requires=[
         'setuptools',
         'flask',
+        'cryptography',
     ],
     zip_safe=True,
     maintainer='user',

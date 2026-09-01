@@ -29,7 +29,6 @@ setup(
             'patrol = my_patrol.patrol_node:main',
             'aruco_id = my_patrol.aruco_id_node_v2:main',
             'fall_detection = my_patrol.fall_detection_node_v2:main',
-            'aruco_behavior_test = my_patrol.aruco_behavior_test_node:main',
         ],
     },
 )

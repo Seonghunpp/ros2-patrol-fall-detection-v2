@@ -32,8 +32,8 @@ class ArucoBehaviorController:
     TARGET_DISTANCE = 0.55
     DISTANCE_TOL = 0.02
 
-    SEARCH_SPEED = 0.6
-    RETRY_SEARCH_SPEED = 0.3
+    SEARCH_SPEED = 0.3            # 마커 탐색 회전 (0.6 -> 0.3)
+    RETRY_SEARCH_SPEED = 0.15     # 재탐색 회전 (0.3 -> 0.15)
     SEARCH_ANGLE = 2.0 * math.pi
     ALIGN_K = 0.6
     MIN_TURN = 0.10
@@ -44,7 +44,7 @@ class ArucoBehaviorController:
 
     CHARGER_TURN_ANGLE = math.pi
     ROOM_TURN_ANGLE = 3.0 * math.pi
-    TURN_SPEED = 0.50
+    TURN_SPEED = 0.25             # 병실 확인 · 도킹 제자리 회전 (0.5 -> 0.25)
     BACKUP_DISTANCE = 0.30
     BACKUP_SPEED = 0.05
 

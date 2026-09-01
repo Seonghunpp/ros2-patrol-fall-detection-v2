@@ -132,13 +132,30 @@ class ArucoIdNode(Node):
             )
             return None
 
-        _, tvecs, _ = cv2.aruco.estimatePoseSingleMarkers(
-            [corner],
-            self.marker_size,
+        # cv2.aruco.estimatePoseSingleMarkers 는 OpenCV 4.7 에서 삭제됐다.
+        # 같은 계산을 solvePnP 로 한다 — 마커를 한 변이 marker_size 인
+        # 정사각형(z=0 평면)으로 두고, 그 네 꼭짓점이 화면의 corner 로 보이는
+        # 카메라 자세를 푼다. tvec 의 z 가 전방 거리(m)다.
+        half = float(self.marker_size) / 2.0
+        object_points = np.array([
+            [-half,  half, 0.0],
+            [ half,  half, 0.0],
+            [ half, -half, 0.0],
+            [-half, -half, 0.0],
+        ], dtype=np.float32)
+
+        image_points = np.asarray(corner, dtype=np.float32).reshape(4, 2)
+
+        ok, _, tvec = cv2.solvePnP(
+            object_points,
+            image_points,
             self.camera_matrix,
             self.distortion,
+            flags=cv2.SOLVEPNP_IPPE_SQUARE,   # 평면 정사각형 전용 — 빠르고 안정적
         )
-        return float(tvecs[0][0][2])
+        if not ok:
+            return None
+        return float(tvec[2][0])
 
     def publish_room_ids(self, room_ids):
         """병실 마커 ID가 변했을 때만 발행한다."""

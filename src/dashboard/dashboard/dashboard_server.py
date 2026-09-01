@@ -1,23 +1,112 @@
-import json
+import datetime
 import os
+import re
+import secrets
 import threading
 import time
-from flask import Flask, Response, jsonify, render_template, request
+from contextlib import contextmanager
+from functools import wraps
+
+import mysql.connector
+import yaml
+from cryptography.fernet import Fernet, InvalidToken
+from flask import Flask, Response, jsonify, render_template, request, send_from_directory, session
+from werkzeug.security import check_password_hash, generate_password_hash
 
 try:
     import rclpy
     from rclpy.node import Node
     from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSHistoryPolicy
     from sensor_msgs.msg import CompressedImage, BatteryState #배터리 스테이트 추가
-    from std_msgs.msg import String, Int32MultiArray
-    from nav_msgs.msg import Odometry
-    from geometry_msgs.msg import Twist
+    from std_msgs.msg import Bool, String, Int32MultiArray
+    from nav_msgs.msg import Odometry, Path
+    from geometry_msgs.msg import Twist, PoseWithCovarianceStamped
+    from std_srvs.srv import Trigger
+    from tf2_ros import Buffer, TransformListener
     ROS_AVAILABLE = True
 except Exception:
     ROS_AVAILABLE = False
 
 
-app = Flask(__name__)
+app = Flask(__name__, static_url_path="")
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", "dev-secret-change-me")
+
+DB_CONFIG = {
+    "host": os.environ.get("DB_HOST", "127.0.0.1"),
+    "port": int(os.environ.get("DB_PORT", "3306")),
+    "user": os.environ.get("DB_USER", "root"),
+    "password": os.environ.get("DB_PASSWORD", ""),
+    "database": os.environ.get("DB_NAME", "patrol_dashboard"),
+}
+
+
+def get_db():
+    return mysql.connector.connect(**DB_CONFIG)
+
+
+# 조회 전용 헬퍼. conn/cursor를 열고 블록을 벗어날 때 반드시 닫는다.
+# 쓰기(INSERT/UPDATE/DELETE)는 commit/rollback을 라우트마다 다르게 다뤄야 해서 여기 쓰지 않는다.
+@contextmanager
+def db_cursor(dictionary=False):
+    conn = get_db()
+    cursor = conn.cursor(dictionary=dictionary)
+    try:
+        yield cursor
+    finally:
+        cursor.close()
+        conn.close()
+
+
+# ===== 개인정보 필드 암호화 (이름/전화번호/보호자명) =====
+# FIELD_ENCRYPT_KEY가 없으면 서버를 못 켜게 해서, 암호화 없이 개인정보가 저장되는 걸 막는다
+_encrypt_key = os.environ.get("FIELD_ENCRYPT_KEY")
+if not _encrypt_key:
+    raise RuntimeError(
+        "FIELD_ENCRYPT_KEY 환경변수가 설정되지 않았습니다. "
+        "python3 -c \"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())\" "
+        "로 키를 만들어서 export FIELD_ENCRYPT_KEY=... 로 지정해 주세요."
+    )
+_fernet = Fernet(_encrypt_key.encode())
+
+
+def encrypt_field(value):
+    if value is None or value == "":
+        return None
+    return _fernet.encrypt(str(value).encode()).decode()
+
+
+def decrypt_field(value):
+    if value is None:
+        return None
+    try:
+        return _fernet.decrypt(value.encode()).decode()
+    except (InvalidToken, ValueError):
+        return value  # 암호화 이전에 평문으로 들어간 값 등 — 그대로 반환
+
+
+def login_required(view_func):
+    @wraps(view_func)
+    def wrapped(*args, **kwargs):
+        if not session.get("user"):
+            return jsonify({"ok": False, "error": "로그인이 필요합니다"}), 401
+        return view_func(*args, **kwargs)
+    return wrapped
+
+
+# 관리자(간호사)만 쓰는 화면의 API. 로그인까지 함께 검사하므로 login_required와 겹쳐 쓰지 않는다.
+# 401(로그인 안 함)과 403(로그인했지만 권한 없음)을 구분해서 돌려준다 —
+# 화면이 401이면 로그인 창을 띄우고, 403이면 띄워도 소용없기 때문이다.
+# 보호자 계정은 화면에 버튼이 없을 뿐 API는 그대로 부를 수 있어서, 서버에서 막아야 한다.
+def admin_required(view_func):
+    @wraps(view_func)
+    def wrapped(*args, **kwargs):
+        if not session.get("user"):
+            return jsonify({"ok": False, "error": "로그인이 필요합니다"}), 401
+        if session.get("role") != "admin":
+            return jsonify({"ok": False, "error": "권한이 없습니다."}), 403
+        return view_func(*args, **kwargs)
+    return wrapped
+
 
 latest_frame = None
 latest_annotated_frame = None
@@ -34,6 +123,13 @@ CMD_VEL_TIMEOUT_SEC = 1.0
 FALL_EVENT_COOLDOWN_SEC = 15.0
 last_fall_event_time = 0.0
 
+# Nav2 경로(/plan)는 한 번에 수백 점이 온다. 화면에 그리는 데는 이 정도면 충분하고,
+# 그대로 실으면 1초마다 나가는 /api/status 응답이 쓸데없이 커진다
+PATH_MAX_POINTS = 40
+# 새 경로가 이만큼 안 오면 주행이 끝났다고 보고 지운다
+PLAN_STALE_SEC = 5.0
+last_plan_time = 0.0
+
 last_odom_linear = 0.0
 last_odom_angular = 0.0
 last_cmd_vel_linear = 0.0
@@ -48,22 +144,186 @@ MARKER_TO_ROOM = {
     3: "104",
 }
 
+# my_patrol의 rooms.yaml 방 이름(room1~4) -> 병실 번호 매핑
+PATROL_ROOM_NAME_TO_NUMBER = {
+    "room1": "101",
+    "room2": "102",
+    "room3": "103",
+    "room4": "104",
+}
+
+# 환자를 등록할 수 있는 병실. 순찰 대상 병실과 같아야 하므로 위 매핑에서 그대로 가져온다
+PATIENT_ROOM_NUMBERS = set(PATROL_ROOM_NAME_TO_NUMBER.values())
+
+
+# ===== 순찰 우선순위 점수 =====
+# 점수 = 낙상 위험도 + 나이. 이 파일이 유일한 계산 지점이고, 결과는 patients.score 에 저장한다.
+# 화면(위험도 그래프)도 순찰 노드(병실 선택)도 그 값을 '읽기만' 한다.
+# 예전에는 병명에도 점수를 줬는데 뺐다 — 목록에 없는 병은 전부 같은 점수라 변별력이 없었고,
+# '치매·파킨슨이면 위험도가 높다'는 판단이 이미 낙상 위험도 입력에 반영되기 때문이다.
+FALL_RISK_SCORES = {"매우 높음": 50, "높음": 35, "보통": 20, "낮음": 5}
+AGE_SCORE_BANDS = ((80, 30), (70, 25), (60, 20), (50, 10))
+BASE_AGE_SCORE = 5   # 어느 구간에도 안 걸리는 나이의 기본점
+
+# 한 사람이 받을 수 있는 최대 점수. 위험도 막대의 100% 기준선이라 화면도 이 값을 받아 쓴다.
+# 축을 관측 최댓값이 아니라 여기 고정해야 병실끼리·시점끼리 막대 길이가 비교된다.
+MAX_PATIENT_SCORE = max(FALL_RISK_SCORES.values()) + AGE_SCORE_BANDS[0][1]
+
+
+def calculate_patient_score(age, risk_level):
+    """환자 한 명의 순찰 우선순위 점수. 값이 없거나 이상하면 가장 낮은 점수로 떨어진다."""
+    fall_score = FALL_RISK_SCORES.get(risk_level, 0)
+
+    age_score = BASE_AGE_SCORE
+    try:
+        age_value = int(age)
+    except (TypeError, ValueError):
+        age_value = None
+    if age_value is not None:
+        for floor, points in AGE_SCORE_BANDS:
+            if age_value >= floor:
+                age_score = points
+                break
+
+    return fall_score + age_score
+
 state = {
     "current_room": None,
+    # AMCL이 추정한 map 좌표계 위치(m). Nav2가 안 떠 있으면 계속 None
+    "robot_x": None,
+    "robot_y": None,
+    # Nav2가 계획한 경로. [[x, y], ...] (map 좌표계)
+    "path": [],
     "robot_status": "대기 중",
     "fall_status": "정상",
+    # odom이 알려주는 실주행 속도(m/s, rad/s). 명령값(cmd_vel)이 아니라 실제로 움직인 값
+    "speed": 0.0,
+    "angular_speed": 0.0,
     "battery": "배터리 대기",
     "camera": "카메라 대기",
     "network": "네트워크 대기",
     "fall_alert_id": 0,
+    # 이동을 일시정지한 상태인지. 화면에서 버튼 표시를 바꾸는 데 쓴다
+    "robot_paused": False,
+    # Robot Control에서 병실로 수동 이동 명령을 보낸 직후, 실제 도착(room_marker) 시
+    # 순찰 기록을 남기기 위해 어느 병실을 향하고 있는지 기억해둔다. 병실이 아닌
+    # 목적지(충전소/대기장소)면 None
+    "manual_goto_room": None,
     "events": []
 }
 
+bridge_node = None
 
 def add_event(text):
     now = time.strftime("%H:%M:%S")
     state["events"].insert(0, {"time": now, "text": text})
-    state["events"] = state["events"][:10]
+    state["events"] = state["events"][:20]
+
+
+def log_patrol_complete(room):
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute("INSERT INTO patrol_log (room_number) VALUES (%s)", (room,))
+        conn.commit()
+        cursor.close()
+        conn.close()
+    except mysql.connector.Error as e:
+        print(f"[dashboard] patrol_log 기록 실패: {e}")
+
+
+# 낙상 캡처 이미지 저장 위치. static/ 밑에 두지 않는다 — static은 로그인 없이 누구나 접근 가능해서
+# 병실 안이 찍힌 사진을 거기 두면 안 됨. /api/fall-log/<id>/capture 라우트로만 (로그인 필요) 서빙한다.
+CAPTURE_DIR = os.environ.get("FALL_CAPTURE_DIR", os.path.expanduser("~/.dabom/captures"))
+os.makedirs(CAPTURE_DIR, exist_ok=True)
+
+
+def log_fall_detected(room):
+    # 카메라 프레임이 없어도(꺼져있거나 일시적으로 끊겨도) 낙상이 있었다는 기록 자체는 남긴다.
+    # capture_path만 NULL로 남고, 화면에서는 "캡처 이미지 없음"으로 표시된다.
+    frame = latest_annotated_frame or latest_frame
+    filename = None
+    if frame is None:
+        print("[dashboard] 카메라 프레임 없음: 캡처 이미지 없이 fall_log만 기록")
+    else:
+        filename = f"fall_{int(time.time() * 1000)}.jpg"
+        try:
+            with open(os.path.join(CAPTURE_DIR, filename), "wb") as f:
+                f.write(frame)
+        except OSError as e:
+            print(f"[dashboard] 캡처 이미지 저장 실패: {e}")
+            filename = None
+
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO fall_log (room_number, capture_path) VALUES (%s, %s)",
+            (room, filename),
+        )
+        conn.commit()
+        cursor.close()
+        conn.close()
+    except mysql.connector.Error as e:
+        print(f"[dashboard] fall_log 기록 실패: {e}")
+
+
+# ===== 이동 목적지 — my_patrol의 rooms.yaml 하나만 본다 =====
+#
+# 좌표를 대시보드에도 적어두면 waypoint_saver로 다시 찍었을 때 화면과 로봇이
+# 서로 다른 곳을 가리키게 된다. 그래서 로봇(navigation_service)이 읽는 것과
+# 같은 파일을 읽는다. yaml의 키(dock/standby/room1~4)가 그대로 ROS 서비스
+# 이름이 된다: room1 -> /go_to_room1
+def _rooms_yaml_path():
+    # 설치본(share)이 정석이지만, ROS 없이 웹만 띄워 볼 때를 위해 소스 경로로 넘어간다
+    try:
+        from ament_index_python.packages import get_package_share_directory
+        return os.path.join(get_package_share_directory("my_patrol"), "config", "rooms.yaml")
+    except Exception:
+        return os.path.expanduser(
+            "~/turtlebot3_ws/ros2-patrol-fall-detection/src/my_patrol/config/rooms.yaml")
+
+
+ROOMS_YAML = os.environ.get("ROOMS_YAML") or _rooms_yaml_path()
+
+
+def load_places():
+    """rooms.yaml -> {키: {label, room_number, x, y}}. 화면 순서(병실 → 대기 → 충전)대로.
+
+    좌표를 다시 찍어도 서버 재시작 없이 반영되도록 호출할 때마다 읽는다
+    (파일 하나라 비용이 사실상 없음). 파일이 없거나 깨졌으면 빈 dict.
+    """
+    try:
+        with open(ROOMS_YAML, encoding="utf-8") as f:
+            data = yaml.safe_load(f) or {}
+    except (OSError, yaml.YAMLError) as e:
+        print(f"[dashboard] rooms.yaml 읽기 실패: {e}")
+        return {}
+
+    labels = data.get("labels") or {}
+    places = {}
+
+    def add(key, point):
+        # 좌표가 덜 찍힌 항목은 건너뛴다 (화면에 0,0으로 찍히면 오해 소지)
+        if not isinstance(point, dict) or "x" not in point or "y" not in point:
+            return
+        # yaml에 표시 이름이 없으면 병실은 번호로, 나머지는 키 그대로 보여준다
+        number = PATROL_ROOM_NAME_TO_NUMBER.get(key)
+        places[key] = {
+            "label": labels.get(key) or (f"병실 {number}" if number else key),
+            "room_number": number,
+            "x": round(float(point["x"]), 3),
+            "y": round(float(point["y"]), 3),
+        }
+
+    for key, room in (data.get("rooms") or {}).items():
+        # 병실은 hall(문 앞) → inside(안) 두 지점이지만, 화면에 쓰는 건 최종 목적지인 inside
+        add(key, room.get("inside", room) if isinstance(room, dict) else room)
+
+    for key in ("standby", "dock"):
+        add(key, data.get(key))
+
+    return places
 
 
 class DashboardBridge(Node):
@@ -111,10 +371,15 @@ class DashboardBridge(Node):
             10
         )
 
+        # 감지 노드는 두 신호를 낸다.
+        #   /fall_detected  1프레임만 보여도 true — 로봇을 즉시 멈추는 용도
+        #   /fall_confirmed 확정(10프레임 연속)된 것만 true — 기록 용도
+        # 대시보드는 확정 쪽만 본다. 스쳐 지나가는 오탐까지 fall_log 에 남으면
+        # 낙상 이력과 통계가 지저분해진다.
         self.create_subscription(
-            String,
-            "/fall_status",
-            self.fall_status_callback,
+            Bool,
+            "/fall_confirmed",
+            self.fall_confirmed_callback,
             10
         )
 
@@ -125,10 +390,135 @@ class DashboardBridge(Node):
             10
         )
 
+        self.create_subscription(
+            String,
+            "/patrol_complete",
+            self.patrol_complete_callback,
+            10
+        )
+
+        # 지도에 실시간 위치를 그리기 위한 map 좌표. odom이 아니라 amcl_pose를 쓰는 이유는
+        # odom은 시작 지점 기준이라 맵과 좌표계가 다르기 때문
+        self.create_subscription(
+            PoseWithCovarianceStamped,
+            "/amcl_pose",
+            self.amcl_pose_callback,
+            10
+        )
+
+        # Nav2가 계획한 주행 경로. 목적지가 새로 잡히거나 재계획될 때마다 들어온다
+        self.create_subscription(
+            Path,
+            "/plan",
+            self.plan_callback,
+            10
+        )
+
+        # 목적지 하나당 Trigger 서비스 하나(/go_to_dock, /go_to_room1 ...).
+        # 노드가 뜬 뒤 yaml에 목적지를 추가하면 서버를 다시 켜야 한다
+        self.goto_cli = {
+            key: self.create_client(Trigger, f"/go_to_{key}")
+            for key in load_places()
+        }
+
+        # 순찰 시작(재개) / 일시정지.
+        # 순찰 노드는 주행 중(RUNNING)에 순찰 시작·목적지 변경을 거부하므로,
+        # 화면에서도 "먼저 일시정지해 주세요" 메시지를 그대로 받아 띄운다.
+        self.patrol_cli = self.create_client(Trigger, "/start_patrol")
+        self.pause_cli = self.create_client(Trigger, "/pause_navigation")
+
+        # ===== 로봇 현재 위치 =====
+        # /amcl_pose는 로봇이 '움직일 때만' 발행돼서, 정지 상태로 대시보드를 켜면
+        # 위치가 계속 비어 있었다(현재 위치·병실 표시가 안 뜸). TF는 멈춰 있어도
+        # 계속 나오므로 이쪽을 주 경로로 쓴다. amcl_pose 구독은 보조로 남겨둔다.
+        self.tf_buffer = Buffer()
+        self.tf_listener = TransformListener(self.tf_buffer, self)
+
+        # 화면 폴링이 1초라 그보다 조금 빠르게만 갱신하면 충분하다
+        self.create_timer(0.5, self.update_robot_pose)
+
         self.create_timer(1.0, self.check_network_callback)
         self.create_timer(1.0, self.check_movement_callback)
 
         self.get_logger().info("dashboard_bridge started")
+
+    def update_robot_pose(self):
+        """TF(map -> base_footprint)로 현재 위치를 읽는다.
+
+        정지 중에도 계속 나오므로, 로봇을 세워둔 채 대시보드를 켜도 위치가 뜬다.
+        Nav2/AMCL이 아직 안 떴으면 조회가 실패하는데, 그건 정상 상황이라 조용히 넘긴다.
+        """
+        global last_heartbeat
+
+        try:
+            tf = self.tf_buffer.lookup_transform(
+                "map", "base_footprint", rclpy.time.Time())
+        except Exception:
+            return
+
+        t = tf.transform.translation
+        state["robot_x"] = round(t.x, 3)
+        state["robot_y"] = round(t.y, 3)
+        last_heartbeat = time.time()
+
+    def amcl_pose_callback(self, msg):
+        # TF가 주 경로. 이건 TF가 막혔을 때를 대비한 보조 (같은 AMCL 값이라 충돌 없음)
+        global last_heartbeat
+        last_heartbeat = time.time()
+
+        p = msg.pose.pose.position
+        state["robot_x"] = round(p.x, 3)
+        state["robot_y"] = round(p.y, 3)
+
+    def plan_callback(self, msg):
+        global last_plan_time
+        last_plan_time = time.time()
+
+        poses = msg.poses
+        if not poses:
+            state["path"] = []
+            return
+
+        # 균등하게 솎아내되, 끝점(목적지)은 반드시 남긴다
+        step = max(1, len(poses) // PATH_MAX_POINTS)
+        pts = [[round(p.pose.position.x, 3), round(p.pose.position.y, 3)]
+               for p in poses[::step]]
+
+        goal = poses[-1].pose.position
+        last = [round(goal.x, 3), round(goal.y, 3)]
+        if pts[-1] != last:
+            pts.append(last)
+
+        state["path"] = pts
+
+    def _call_trigger(self, client, timeout=3.0):
+        if not client.wait_for_service(timeout_sec=0.5):
+            return False, "로봇 제어 노드에 연결할 수 없습니다."
+
+        future = client.call_async(Trigger.Request())
+        done = threading.Event()
+        future.add_done_callback(lambda _f: done.set())
+
+        if not done.wait(timeout):
+            return False, "로봇이 응답하지 않습니다."
+
+        result = future.result()
+        if result is None:
+            return False, "로봇 응답을 받지 못했습니다."
+        return result.success, result.message
+
+    def request_goto(self, place, timeout=3.0):
+        client = self.goto_cli.get(place)
+        if client is None:
+            return False, "알 수 없는 목적지입니다."
+        return self._call_trigger(client, timeout)
+
+    def request_pause(self, timeout=3.0):
+        return self._call_trigger(self.pause_cli, timeout)
+
+    def request_start_patrol(self, timeout=3.0):
+        return self._call_trigger(self.patrol_cli, timeout)
+
 
     def check_network_callback(self):
         elapsed = time.time() - last_heartbeat
@@ -163,11 +553,31 @@ class DashboardBridge(Node):
         if old_room != new_room:
             add_event(f"로봇이 병실 {new_room}에 입장했습니다.")
 
+        # Robot Control로 이 병실에 수동으로 보낸 이동이 실제 도착했다면,
+        # 자동 순찰(/patrol_complete)과 별개로 순찰 기록을 남긴다 (중복 방지를 위해
+        # 방금 보낸 목적지와 일치할 때만 기록하고, 기록 후 바로 지운다)
+        if state.get("manual_goto_room") == new_room:
+            log_patrol_complete(new_room)
+            add_event(f"병실 {new_room} 순찰을 완료했습니다. (수동 이동)")
+            state["manual_goto_room"] = None
+
+    def patrol_complete_callback(self, msg):
+        # my_patrol의 patrol_node가 한 병실 관찰(scan_for_fall)을 끝내고
+        # 복도로 돌아가기 직전에 쏘는 신호. 이 시점이 "이 병실 순찰 완료".
+        room_name = str(msg.data).strip()
+        room_number = PATROL_ROOM_NAME_TO_NUMBER.get(room_name, room_name)
+        log_patrol_complete(room_number)
+        add_event(f"병실 {room_number} 순찰을 완료했습니다.")
+
     def odom_callback(self, msg):
         global last_heartbeat, last_odom_linear, last_odom_angular
         last_heartbeat = time.time()
         last_odom_linear = msg.twist.twist.linear.x
         last_odom_angular = msg.twist.twist.angular.z
+
+        # 후진도 있으므로 크기만 쓴다 (화면에 음수 속도를 보여줄 이유가 없음)
+        state["speed"] = round(abs(last_odom_linear), 2)
+        state["angular_speed"] = round(abs(last_odom_angular), 2)
 
     def cmd_vel_callback(self, msg):
         global last_heartbeat, last_cmd_vel_linear, last_cmd_vel_angular, last_cmd_vel_time
@@ -187,15 +597,23 @@ class DashboardBridge(Node):
             or abs(last_cmd_vel_angular) > ANGULAR_MOVING_THRESHOLD
         )
 
-        old_status = state["robot_status"]
-        new_status = "이동 중" if (odom_moving or cmd_vel_moving) else "대기 중"
-        state["robot_status"] = new_status
+        state["robot_status"] = "이동 중" if (odom_moving or cmd_vel_moving) else "대기 중"
 
-    def fall_status_callback(self, msg):
+        # 정지로 판정되면 속도도 0으로 떨어뜨린다.
+        # odom이 끊기면 odom_callback이 안 불려서 마지막 속도가 화면에 남는다
+        if not (odom_moving or cmd_vel_moving):
+            state["speed"] = 0.0
+            state["angular_speed"] = 0.0
+
+        # Nav2가 경로를 그만 내보내면 주행이 끝난 것. 지워야 화면에 옛 경로가 남지 않는다
+        if state["path"] and (time.time() - last_plan_time) > PLAN_STALE_SEC:
+            state["path"] = []
+
+    def fall_confirmed_callback(self, msg):
         global last_fall_event_time
-        raw_status = str(msg.data).strip()
         old_status = state["fall_status"]
-        new_status = "낙상 환자 발견" if raw_status == "FALL" else "정상"
+        # state["fall_status"] 는 화면에 그대로 찍히는 한국어 문자열이라 그대로 둔다
+        new_status = "낙상 환자 발견" if msg.data else "정상"
         state["fall_status"] = new_status
 
         if new_status == "낙상 환자 발견" and old_status != "낙상 환자 발견":
@@ -203,13 +621,22 @@ class DashboardBridge(Node):
             if now - last_fall_event_time >= FALL_EVENT_COOLDOWN_SEC:
                 add_event(f"병실 {state['current_room']} 낙상 환자 발견")
                 state["fall_alert_id"] += 1
+                log_fall_detected(state["current_room"])
             last_fall_event_time = now
 
     def battery_callback(self, msg):
         global last_heartbeat
         last_heartbeat = time.time()
 
-        battery_percent = int(round(msg.percentage))
+        # sensor_msgs/BatteryState 표준은 percentage가 0.0~1.0인데, TurtleBot3(OpenCR)
+        # 펌웨어 버전에 따라 0~100으로 주기도 한다. 어느 쪽이 와도 맞게 환산한다.
+        # ※ 0~1 스케일이면 실제 1%(0.01)도 1%로 나오므로 문제없지만,
+        #   0~100 스케일에서 진짜 1%일 때만 100%로 잘못 보인다 (거의 방전 직전 한순간)
+        percentage = float(msg.percentage)
+        if percentage <= 1.0:
+            percentage *= 100.0
+
+        battery_percent = max(0, min(100, int(round(percentage))))
         state["battery"] = f"{battery_percent}%"
 
 
@@ -218,7 +645,10 @@ def index():
     return render_template("index.html")
 
 
+# 병실 영상도 개인정보다. 낙상 캡처 이미지와 같은 기준으로 로그인을 요구한다.
+# <img src="/video_feed">는 같은 출처라 세션 쿠키가 자동으로 실린다.
 @app.route("/video_feed")
+@admin_required
 def video_feed():
     def generate():
         while True:
@@ -238,6 +668,7 @@ def video_feed():
 
 
 @app.route("/video_feed_yolo")
+@admin_required
 def video_feed_yolo():
     def generate():
         while True:
@@ -256,42 +687,832 @@ def video_feed_yolo():
     )
 
 
+@app.route("/api/login", methods=["POST"])
+def api_login():
+    body = request.get_json(silent=True) or {}
+    username = str(body.get("username", "")).strip()
+    password = str(body.get("password", ""))
+    remember = bool(body.get("remember"))
+    login_role = str(body.get("role", ""))
+
+    with db_cursor(dictionary=True) as cursor:
+        cursor.execute("SELECT * FROM users WHERE username = %s", (username,))
+        user = cursor.fetchone()
+
+    if user is None or not check_password_hash(user["password_hash"], password):
+        return jsonify({"ok": False, "error": "아이디 또는 비밀번호가 올바르지 않습니다."}), 401
+
+    # 로그인 탭(간호사/보호자)에서 고른 유형과 실제 계정 권한이 다르면 로그인을 막는다
+    expected_role = "admin" if login_role == "admin" else "user"
+    if user["role"] != expected_role:
+        return jsonify({"ok": False, "error": "선택한 로그인 유형과 계정이 일치하지 않습니다."}), 401
+
+    session.permanent = remember
+    session["user"] = user["username"]
+    session["user_id"] = user["id"]
+    session["role"] = user["role"]
+    return jsonify({"ok": True, "username": user["username"], "role": user["role"]})
+
+
+@app.route("/api/logout", methods=["POST"])
+def api_logout():
+    session.clear()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/change-password", methods=["POST"])
+@login_required
+def api_change_password():
+    body = request.get_json(silent=True) or {}
+    current_pw = str(body.get("current_password", ""))
+    new_pw = str(body.get("new_password", ""))
+
+    if len(new_pw) < 4:
+        return jsonify({"ok": False, "error": "새 비밀번호는 4자 이상이어야 합니다."}), 400
+
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
+    try:
+        cursor.execute("SELECT password_hash FROM users WHERE id = %s", (session.get("user_id"),))
+        user = cursor.fetchone()
+
+        if user is None or not check_password_hash(user["password_hash"], current_pw):
+            return jsonify({"ok": False, "error": "현재 비밀번호가 올바르지 않습니다."}), 401
+
+        cursor.execute(
+            "UPDATE users SET password_hash = %s WHERE id = %s",
+            (generate_password_hash(new_pw), session.get("user_id")),
+        )
+        conn.commit()
+    except mysql.connector.Error:
+        conn.rollback()
+        return jsonify({"ok": False, "error": "비밀번호 변경 중 오류가 발생했습니다."}), 500
+    finally:
+        cursor.close()
+        conn.close()
+    return jsonify({"ok": True})
+
+
+def generate_mapping_code():
+    return "KJ-" + secrets.token_hex(2).upper() + "-" + secrets.token_hex(2).upper()
+
+
+# ===== 보호자 연동 신청 -> 승인(매핑코드) -> 코드로 계정 생성 =====
+
+@app.route("/api/apply", methods=["POST"])
+def api_apply():
+    body = request.get_json(silent=True) or {}
+    name = str(body.get("name", "")).strip()
+    phone = str(body.get("phone", "")).strip()
+    patient = str(body.get("patient", "")).strip()
+    room = str(body.get("room", "")).strip()
+
+    if not name or not phone or not patient or not room:
+        return jsonify({"ok": False, "error": "모든 항목을 입력해 주세요."}), 400
+
+    conn = get_db()
+    try:
+        # 관리자가 '환자 관리'에 등록해 둔 환자(병실+이름 일치)만 연동 신청을 받는다
+        patient_id = find_patient_id_by_name_room(conn, patient, room)
+        if patient_id is None:
+            return jsonify({
+                "ok": False,
+                "error": "등록된 환자 정보와 일치하지 않습니다. 환자 성함과 병실 번호를 다시 확인해 주세요.",
+            }), 400
+
+        # 이미 보호자 계정이 연동된 환자면 또 신청받지 않는다
+        check_cursor = conn.cursor()
+        check_cursor.execute("SELECT user_id FROM patients WHERE id = %s", (patient_id,))
+        already_linked = check_cursor.fetchone()[0] is not None
+        check_cursor.close()
+        if already_linked:
+            return jsonify({"ok": False, "error": "이미 보호자 계정이 연동된 환자입니다."}), 400
+
+        # 같은 환자로 아직 처리 안 끝난 신청이 있으면 중복 신청을 막는다
+        pending_cursor = conn.cursor(dictionary=True)
+        pending_cursor.execute(
+            "SELECT patient_name FROM guardian_applications WHERE room_number = %s AND status IN ('pending', 'approved')",
+            (room,),
+        )
+        pending_rows = pending_cursor.fetchall()
+        pending_cursor.close()
+        normalized = patient.replace(" ", "")
+        if any(decrypt_field(r["patient_name"]).replace(" ", "") == normalized for r in pending_rows):
+            return jsonify({"ok": False, "error": "이미 처리 대기 중인 신청이 있습니다."}), 400
+
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO guardian_applications (applicant_name, phone, patient_name, room_number) VALUES (%s, %s, %s, %s)",
+            (encrypt_field(name), encrypt_field(phone), encrypt_field(patient), room),
+        )
+        conn.commit()
+        cursor.close()
+    except mysql.connector.Error:
+        conn.rollback()
+        return jsonify({"ok": False, "error": "신청 접수 중 오류가 발생했습니다."}), 500
+    finally:
+        conn.close()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/applications")
+@admin_required
+def api_applications():
+    with db_cursor(dictionary=True) as cursor:
+        cursor.execute(
+            "SELECT id, applicant_name, phone, patient_name, room_number, status, mapping_code, applied_at "
+            "FROM guardian_applications WHERE status IN ('pending', 'approved') ORDER BY id DESC"
+        )
+        rows = cursor.fetchall()
+
+    applications = [{
+        "id": r["id"],
+        "name": decrypt_field(r["applicant_name"]),
+        "phone": decrypt_field(r["phone"]),
+        "patient": f"{decrypt_field(r['patient_name'])} ({r['room_number']}호)",
+        "at": r["applied_at"].strftime("%Y-%m-%d %H:%M") if r["applied_at"] else "",
+        "status": r["status"],
+        "code": r["mapping_code"],
+    } for r in rows]
+    return jsonify({"ok": True, "applications": applications})
+
+
+@app.route("/api/applications/<int:app_id>/approve", methods=["POST"])
+@admin_required
+def api_application_approve(app_id):
+    conn = get_db()
+    cursor = conn.cursor()
+    try:
+        code = None
+        for _ in range(20):
+            candidate = generate_mapping_code()
+            cursor.execute("SELECT id FROM guardian_applications WHERE mapping_code = %s", (candidate,))
+            if cursor.fetchone() is None:
+                code = candidate
+                break
+        if code is None:
+            return jsonify({"ok": False, "error": "매핑 코드를 만들지 못했습니다. 다시 시도해 주세요."}), 500
+
+        cursor.execute(
+            "UPDATE guardian_applications SET status = 'approved', mapping_code = %s WHERE id = %s AND status = 'pending'",
+            (code, app_id),
+        )
+        conn.commit()
+        updated = cursor.rowcount
+    except mysql.connector.Error:
+        # 코드만 발급되고 상태는 안 바뀐 어중간한 상태로 남지 않도록 되돌린다
+        conn.rollback()
+        return jsonify({"ok": False, "error": "승인 처리 중 오류가 발생했습니다."}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+    if not updated:
+        return jsonify({"ok": False, "error": "이미 처리된 신청입니다."}), 400
+    return jsonify({"ok": True, "code": code})
+
+
+@app.route("/api/applications/<int:app_id>/reject", methods=["POST"])
+@admin_required
+def api_application_reject(app_id):
+    conn = get_db()
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            "DELETE FROM guardian_applications WHERE id = %s AND status = 'pending'",
+            (app_id,),
+        )
+        conn.commit()
+    except mysql.connector.Error:
+        conn.rollback()
+        return jsonify({"ok": False, "error": "반려 처리 중 오류가 발생했습니다."}), 500
+    finally:
+        cursor.close()
+        conn.close()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/verify-code", methods=["POST"])
+def api_verify_code():
+    body = request.get_json(silent=True) or {}
+    code = str(body.get("code", "")).strip().upper()
+    if not code:
+        return jsonify({"ok": False, "error": "매핑 코드를 입력해 주세요."}), 400
+
+    with db_cursor(dictionary=True) as cursor:
+        cursor.execute(
+            "SELECT applicant_name, patient_name, room_number, status FROM guardian_applications WHERE mapping_code = %s",
+            (code,),
+        )
+        app_row = cursor.fetchone()
+
+    if not app_row or app_row["status"] == "rejected":
+        return jsonify({"ok": False, "error": "승인된 코드를 찾을 수 없습니다. 문자로 받은 코드를 확인해 주세요."}), 404
+    if app_row["status"] == "registered":
+        return jsonify({"ok": False, "error": "이미 계정이 만들어진 코드입니다. 로그인해 주세요."}), 400
+
+    return jsonify({
+        "ok": True,
+        "name": decrypt_field(app_row["applicant_name"]),
+        "patient": f"{decrypt_field(app_row['patient_name'])} ({app_row['room_number']}호)",
+    })
+
+
+@app.route("/api/redeem", methods=["POST"])
+def api_redeem():
+    body = request.get_json(silent=True) or {}
+    code = str(body.get("code", "")).strip().upper()
+    username = str(body.get("username", "")).strip()
+    password = str(body.get("password", ""))
+
+    if not code or not username or not password:
+        return jsonify({"ok": False, "error": "필요한 값이 누락되었습니다."}), 400
+
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
+    try:
+        cursor.execute(
+            "SELECT id, applicant_name, phone, patient_name, room_number, status "
+            "FROM guardian_applications WHERE mapping_code = %s",
+            (code,),
+        )
+        app_row = cursor.fetchone()
+        if not app_row or app_row["status"] != "approved":
+            return jsonify({"ok": False, "error": "유효한 승인 코드가 아닙니다."}), 400
+
+        cursor.execute("SELECT id FROM users WHERE username = %s", (username,))
+        if cursor.fetchone() is not None:
+            return jsonify({"ok": False, "error": "이미 사용 중인 아이디입니다."}), 400
+
+        write_cursor = conn.cursor()
+        write_cursor.execute(
+            "INSERT INTO users (username, password_hash, role) VALUES (%s, %s, 'user')",
+            (username, generate_password_hash(password)),
+        )
+        user_id = write_cursor.lastrowid
+
+        patient_name = decrypt_field(app_row["patient_name"])
+        existing_patient_id = find_patient_id_by_name_room(conn, patient_name, app_row["room_number"])
+        if existing_patient_id:
+            # 관리자가 나이·성별·병명·위험도를 먼저 등록해 둔 환자일 수 있으므로 그 값은 건드리지 않는다
+            write_cursor.execute(
+                "UPDATE patients SET phone = %s, guardian = %s, user_id = %s WHERE id = %s",
+                (
+                    encrypt_field(decrypt_field(app_row["phone"])),
+                    encrypt_field(decrypt_field(app_row["applicant_name"])),
+                    user_id,
+                    existing_patient_id,
+                ),
+            )
+        else:
+            write_cursor.execute(
+                "INSERT INTO patients (name, phone, room_number, guardian, user_id) VALUES (%s, %s, %s, %s, %s)",
+                (
+                    encrypt_field(patient_name),
+                    encrypt_field(decrypt_field(app_row["phone"])),
+                    app_row["room_number"],
+                    encrypt_field(decrypt_field(app_row["applicant_name"])),
+                    user_id,
+                ),
+            )
+        write_cursor.execute(
+            "UPDATE guardian_applications SET status = 'registered', user_id = %s WHERE id = %s",
+            (user_id, app_row["id"]),
+        )
+        conn.commit()
+        write_cursor.close()
+    except mysql.connector.Error:
+        conn.rollback()
+        return jsonify({"ok": False, "error": "가입 중 오류가 발생했습니다."}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+    patient_display = f"{decrypt_field(app_row['patient_name'])} ({app_row['room_number']}호)"
+    return jsonify({"ok": True, "patient": patient_display})
+
+
 @app.route("/api/status")
+@login_required
 def api_status():
     # 분석 프레임을 한 번이라도 받은 적 있으면 계속 true (꺼져도 마지막 프레임 유지)
     state["yolo_signal"] = latest_annotated_frame is not None
     return jsonify(state)
 
 
-# ===== 캘린더 일정: 서버 JSON 파일에 저장 (여러 브라우저가 같은 일정을 공유) =====
-EVENTS_FILE = os.path.expanduser("~/dashboard_events.json")
-events_lock = threading.Lock()
+@app.route("/api/guardian-accounts")
+@admin_required
+def api_guardian_accounts():
+    with db_cursor(dictionary=True) as cursor:
+        cursor.execute("""
+            SELECT u.id, u.username, p.name, p.room_number, p.guardian, ga.mapping_code AS code
+            FROM users u
+            LEFT JOIN patients p ON p.user_id = u.id
+            LEFT JOIN guardian_applications ga ON ga.user_id = u.id
+            WHERE u.role != 'admin'
+            ORDER BY u.id
+        """)
+        accounts = cursor.fetchall()
+    for a in accounts:
+        a["name"] = decrypt_field(a["name"])
+        a["guardian"] = decrypt_field(a["guardian"])
+    return jsonify({"ok": True, "accounts": accounts})
 
 
-def load_events():
-    # 반환 형식: { "YYYY-MM-DD": [ {"id": <int>, "text": <str>}, ... ], ... }
-    if not os.path.exists(EVENTS_FILE):
-        return {}
+@app.route("/api/guardian-accounts/<int:user_id>/delete", methods=["POST"])
+@admin_required
+def api_guardian_account_delete(user_id):
+    conn = get_db()
+    cursor = conn.cursor()
     try:
-        with open(EVENTS_FILE, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        return data if isinstance(data, dict) else {}
-    except Exception:
-        return {}
+        # 계정만 지우고 환자 정보(patients)는 남긴다 — 환자 자체를 지우는 건 '환자 관리 → 퇴원 처리'의 역할
+        cursor.execute("UPDATE patients SET user_id = NULL WHERE user_id = %s", (user_id,))
+        # 계정이 사라지면 그 계정의 가입 신청/코드 기록도 더는 의미가 없으므로 같이 지운다
+        cursor.execute("DELETE FROM guardian_applications WHERE user_id = %s", (user_id,))
+        cursor.execute("DELETE FROM users WHERE id = %s AND role != 'admin'", (user_id,))
+        conn.commit()
+    except mysql.connector.Error:
+        conn.rollback()
+        return jsonify({"ok": False, "error": "삭제 중 오류가 발생했습니다."}), 500
+    finally:
+        cursor.close()
+        conn.close()
+    return jsonify({"ok": True})
 
 
-def save_events(events):
-    with open(EVENTS_FILE, "w", encoding="utf-8") as f:
-        json.dump(events, f, ensure_ascii=False, indent=2)
+# ===== 간호사 명부 (nurses 테이블 · 병실 단위 배정) =====
+# 간호사는 로그인 계정이 아니라 '직원 명부' 데이터다. 로그인은 admin 계정만 쓰고
+# 여러 간호사가 그 계정을 공유한다. 이름/전화번호는 환자처럼 암호화해서 저장한다.
 
+VALID_ROOMS = ("all", "101", "102", "103", "104")
+
+
+@app.route("/api/nurses")
+@admin_required
+def api_nurses_list():
+    with db_cursor(dictionary=True) as cursor:
+        cursor.execute(
+            "SELECT id, name, employee_no, phone, assigned_room FROM nurses ORDER BY id"
+        )
+        nurses = cursor.fetchall()
+    for n in nurses:
+        n["name"] = decrypt_field(n["name"])
+        n["phone"] = decrypt_field(n["phone"])
+    return jsonify({"ok": True, "nurses": nurses})
+
+
+@app.route("/api/nurses", methods=["POST"])
+@admin_required
+def api_nurses_create():
+    body = request.get_json(silent=True) or {}
+    name = str(body.get("name", "")).strip()
+    employee_no = str(body.get("employee_no", "")).strip()
+    phone = str(body.get("phone", "")).strip()
+    assigned_room = str(body.get("assigned_room", "all")).strip() or "all"
+
+    if not name:
+        return jsonify({"ok": False, "error": "이름은 필수입니다."}), 400
+    if phone and not re.match(r"^01[016789]-\d{3,4}-\d{4}$", phone):
+        return jsonify({"ok": False, "error": "전화번호 형식이 올바르지 않습니다."}), 400
+    if assigned_room not in VALID_ROOMS:
+        return jsonify({"ok": False, "error": "잘못된 병실 값입니다."}), 400
+
+    conn = get_db()
+    cursor = conn.cursor()
+    try:
+        # 이름·전화번호는 암호화해서 저장 (환자 개인정보와 동일 정책)
+        cursor.execute(
+            "INSERT INTO nurses (name, employee_no, phone, assigned_room) "
+            "VALUES (%s, %s, %s, %s)",
+            (encrypt_field(name), employee_no, encrypt_field(phone), assigned_room),
+        )
+        conn.commit()
+    except mysql.connector.Error:
+        conn.rollback()
+        return jsonify({"ok": False, "error": "간호사 추가 중 오류가 발생했습니다."}), 500
+    finally:
+        cursor.close()
+        conn.close()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/nurses/<int:nurse_id>/room", methods=["POST"])
+@admin_required
+def api_nurses_room(nurse_id):
+    body = request.get_json(silent=True) or {}
+    assigned_room = str(body.get("assigned_room", "")).strip()
+    if assigned_room not in VALID_ROOMS:
+        return jsonify({"ok": False, "error": "잘못된 병실 값입니다."}), 400
+    conn = get_db()
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            "UPDATE nurses SET assigned_room = %s WHERE id = %s",
+            (assigned_room, nurse_id),
+        )
+        conn.commit()
+    except mysql.connector.Error:
+        conn.rollback()
+        return jsonify({"ok": False, "error": "저장 중 오류가 발생했습니다."}), 500
+    finally:
+        cursor.close()
+        conn.close()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/nurses/<int:nurse_id>/delete", methods=["POST"])
+@admin_required
+def api_nurses_delete(nurse_id):
+    conn = get_db()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("DELETE FROM nurses WHERE id = %s", (nurse_id,))
+        conn.commit()
+    except mysql.connector.Error:
+        conn.rollback()
+        return jsonify({"ok": False, "error": "삭제 중 오류가 발생했습니다."}), 500
+    finally:
+        cursor.close()
+        conn.close()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/patrol-log")
+@login_required
+def api_patrol_log():
+    with db_cursor(dictionary=True) as cursor:
+        if session.get("role") == "admin":
+            cursor.execute(
+                "SELECT room_number, patrolled_at FROM patrol_log ORDER BY patrolled_at DESC LIMIT 50"
+            )
+        else:
+            cursor.execute(
+                """
+                SELECT pl.room_number, pl.patrolled_at
+                FROM patrol_log pl
+                JOIN patients p ON p.room_number = pl.room_number
+                WHERE p.user_id = %s AND DATE(pl.patrolled_at) = CURDATE()
+                ORDER BY pl.patrolled_at DESC
+                LIMIT 20
+                """,
+                (session.get("user_id"),),
+            )
+        logs = cursor.fetchall()
+    # datetime을 그대로 jsonify하면 "Fri, 07 Aug 2026 ..." 영어 형식이 되므로
+    # 프론트가 다루기 쉬운 "YYYY-MM-DD HH:MM:SS" 문자열로 통일해서 내보낸다.
+    for log in logs:
+        ts = log.get("patrolled_at")
+        if hasattr(ts, "strftime"):
+            log["patrolled_at"] = ts.strftime("%Y-%m-%d %H:%M:%S")
+    return jsonify({"ok": True, "logs": logs})
+
+
+@app.route("/api/my-patient")
+@login_required
+def api_my_patient():
+    with db_cursor(dictionary=True) as cursor:
+        cursor.execute(
+            "SELECT name, room_number, age, sex, disease, risk_level, phone, guardian FROM patients WHERE user_id = %s",
+            (session.get("user_id"),),
+        )
+        patient = cursor.fetchone()
+        nurses = []
+        if patient:
+            patient["name"] = decrypt_field(patient["name"])
+            patient["phone"] = decrypt_field(patient["phone"])
+            patient["guardian"] = decrypt_field(patient["guardian"])
+            # 담당 간호사: 이 환자의 병실을 담당(assigned_room=병실번호)하거나 전체 담당('all')인 간호사
+            cursor.execute(
+                "SELECT name, employee_no, phone FROM nurses "
+                "WHERE assigned_room = %s OR assigned_room = 'all' ORDER BY id",
+                (patient["room_number"],),
+            )
+            nurses = cursor.fetchall()
+            for n in nurses:
+                n["name"] = decrypt_field(n["name"])    # 이름·전화번호는 암호화 저장이므로 복호화
+                n["phone"] = decrypt_field(n["phone"])
+            # 이 보호자의 매핑 코드 (가입 시 guardian_applications에 user_id로 남아 있음)
+            cursor.execute(
+                "SELECT mapping_code FROM guardian_applications WHERE user_id = %s",
+                (session.get("user_id"),),
+            )
+            mc = cursor.fetchone()
+            patient["mapping_code"] = mc["mapping_code"] if mc else None
+    if patient:
+        patient["nurses"] = nurses
+    return jsonify({"ok": True, "patient": patient})
+
+
+# name은 암호화되어 있어 SQL로 직접 비교할 수 없으므로, 같은 병실의 행을 복호화해서 이름을 비교한다.
+# 보호자 연동(코드 등록)과 관리자 환자 등록이 같은 환자를 각자 따로 만들지 않도록 이 함수로 먼저 찾는다.
+def find_patient_id_by_name_room(conn, name, room):
+    normalized = str(name).replace(" ", "")
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("SELECT id, name FROM patients WHERE room_number = %s", (room,))
+    rows = cursor.fetchall()
+    cursor.close()
+    for row in rows:
+        if decrypt_field(row["name"]).replace(" ", "") == normalized:
+            return row["id"]
+    return None
+
+
+@app.route("/api/patients", methods=["GET"])
+@admin_required
+def api_patients_get():
+    with db_cursor(dictionary=True) as cursor:
+        cursor.execute(
+            """
+            SELECT p.id, p.name, p.room_number, p.age, p.sex, p.disease, p.risk_level,
+                   p.score, f.last_fall
+            FROM patients p
+            LEFT JOIN (
+                SELECT patient_id, MAX(detected_at) AS last_fall
+                FROM fall_log
+                WHERE patient_id IS NOT NULL
+                GROUP BY patient_id
+            ) f ON f.patient_id = p.id
+            ORDER BY p.room_number, p.id
+            """
+        )
+        patients = cursor.fetchall()
+    for p in patients:
+        p["name"] = decrypt_field(p["name"])
+        p["last_fall"] = p["last_fall"].strftime("%Y-%m-%d") if p["last_fall"] else None
+    # max_score 를 같이 보내면 화면이 100% 기준선을 따로 정의하지 않아도 된다
+    return jsonify({"ok": True, "patients": patients, "max_score": MAX_PATIENT_SCORE})
+
+
+# 병실+이름이 일치하는 환자가 이미 있으면(보호자 연동으로 먼저 생겨난 행일 수 있음) 나이·성별·병명·위험도만 채워 넣고,
+# 없으면 새로 등록한다. 보호자 연동 신청에는 이름·병실만 담기므로 이 화면에서 나머지를 채우는 구조.
+@app.route("/api/patients", methods=["POST"])
+@admin_required
+def api_patients_add():
+    body = request.get_json(silent=True) or {}
+    room = str(body.get("room", "")).strip()
+    name = str(body.get("name", "")).strip()
+    sex = str(body.get("sex", "")).strip()
+    disease = str(body.get("disease", "")).strip()
+    risk_level = str(body.get("risk_level", "")).strip()
+    try:
+        age = int(body.get("age"))
+    except (TypeError, ValueError):
+        age = None
+
+    if not room or not name:
+        return jsonify({"ok": False, "error": "병실과 이름은 필수입니다."}), 400
+
+    # 화면에서는 select로 막아두지만, API를 직접 부르면 그만이므로 서버에서도 막는다
+    if room not in PATIENT_ROOM_NUMBERS:
+        return jsonify({"ok": False, "error": "병실은 101~104호만 등록할 수 있습니다."}), 400
+
+    conn = get_db()
+    try:
+        patient_id = find_patient_id_by_name_room(conn, name, room)
+        # 점수는 여기서 한 번만 계산해 저장한다. 화면·순찰 노드는 읽기만 한다.
+        score = calculate_patient_score(age, risk_level)
+        cursor = conn.cursor()
+        if patient_id:
+            cursor.execute(
+                "UPDATE patients SET age = %s, sex = %s, disease = %s, risk_level = %s, score = %s WHERE id = %s",
+                (age, sex, disease, risk_level, score, patient_id),
+            )
+        else:
+            cursor.execute(
+                "INSERT INTO patients (name, room_number, age, sex, disease, risk_level, score) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s)",
+                (encrypt_field(name), room, age, sex, disease, risk_level, score),
+            )
+            patient_id = cursor.lastrowid
+        conn.commit()
+        cursor.close()
+    except mysql.connector.Error:
+        conn.rollback()
+        return jsonify({"ok": False, "error": "저장 중 오류가 발생했습니다."}), 500
+    finally:
+        conn.close()
+
+    return jsonify({"ok": True, "id": patient_id})
+
+
+@app.route("/api/patients/<int:patient_id>/delete", methods=["POST"])
+@admin_required
+def api_patient_delete(patient_id):
+    conn = get_db()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT user_id FROM patients WHERE id = %s", (patient_id,))
+        row = cursor.fetchone()
+        if row and row[0] is not None:
+            return jsonify({"ok": False, "error": "연동된 보호자 계정이 있어 삭제할 수 없습니다."}), 400
+        # fall_log.patient_id가 이 환자를 참조하고 있으면 FK 제약 위반이 나므로, 기록은 남기고 연결만 끊는다
+        # 두 문장은 한 묶음이어야 한다 — 연결만 끊기고 환자가 남으면 이력의 주인을 잃는다
+        cursor.execute("UPDATE fall_log SET patient_id = NULL WHERE patient_id = %s", (patient_id,))
+        cursor.execute("DELETE FROM patients WHERE id = %s", (patient_id,))
+        conn.commit()
+    except mysql.connector.Error:
+        conn.rollback()
+        return jsonify({"ok": False, "error": "퇴원 처리 중 오류가 발생했습니다."}), 500
+    finally:
+        cursor.close()
+        conn.close()
+    return jsonify({"ok": True})
+
+
+# ===== 낙상 기록: fall_confirmed_callback()이 확정 즉시 자동으로 fall_log에 남긴다 =====
+# 관리자가 캡처 이미지를 보고 낙상 환자를 지정(확정)해야 보호자에게 노출된다.
+
+@app.route("/api/fall-log")
+@login_required
+def api_fall_log_get():
+    with db_cursor(dictionary=True) as cursor:
+        if session.get("role") == "admin":
+            cursor.execute("""
+                SELECT f.id, f.room_number, f.detected_at, f.patient_id, f.memo, f.done,
+                       f.patient_name AS name_snapshot, p.name AS patient_name
+                FROM fall_log f
+                LEFT JOIN patients p ON p.id = f.patient_id
+                ORDER BY f.detected_at DESC
+                LIMIT 100
+            """)
+            rows = cursor.fetchall()
+        else:
+            cursor.execute("SELECT id FROM patients WHERE user_id = %s", (session.get("user_id"),))
+            prow = cursor.fetchone()
+            rows = []
+            if prow:
+                cursor.execute("""
+                    SELECT f.id, f.room_number, f.detected_at, f.patient_id, f.memo, f.done,
+                           f.patient_name AS name_snapshot, p.name AS patient_name
+                    FROM fall_log f
+                    LEFT JOIN patients p ON p.id = f.patient_id
+                    WHERE f.patient_id = %s AND f.done = TRUE
+                    ORDER BY f.detected_at DESC
+                    LIMIT 50
+                """, (prow["id"],))
+                rows = cursor.fetchall()
+
+    for r in rows:
+        # 재원 중이면 patients의 현재 이름을, 퇴원했으면 확정 당시 남겨둔 이름을 쓴다.
+        # discharged=True면 화면에서 "(퇴원)"을 붙이고 환자 재지정을 막는다.
+        snapshot = r.pop("name_snapshot", None)
+        r["discharged"] = bool(snapshot) and r.get("patient_id") is None
+        name = r.get("patient_name") or snapshot
+        r["patient_name"] = decrypt_field(name) if name else None
+        if r.get("detected_at"):
+            r["detected_at"] = r["detected_at"].strftime("%Y-%m-%d %H:%M:%S")
+    return jsonify({"ok": True, "logs": rows})
+
+
+@app.route("/api/fall-log/<int:log_id>/capture")
+@admin_required
+def api_fall_log_capture(log_id):
+    with db_cursor(dictionary=True) as cursor:
+        cursor.execute("SELECT capture_path FROM fall_log WHERE id = %s", (log_id,))
+        row = cursor.fetchone()
+    if not row or not row["capture_path"]:
+        return jsonify({"ok": False, "error": "저장된 캡처 이미지가 없습니다."}), 404
+    return send_from_directory(CAPTURE_DIR, row["capture_path"])
+
+
+@app.route("/api/fall-log/<int:log_id>/confirm", methods=["POST"])
+@admin_required
+def api_fall_log_confirm(log_id):
+    body = request.get_json(silent=True) or {}
+    patient_id = body.get("patient_id")
+    memo = str(body.get("memo", "")).strip()
+    if not patient_id:
+        return jsonify({"ok": False, "error": "낙상 환자를 선택해 주세요."}), 400
+
+    conn = get_db()
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            "SELECT room_number, patient_id, patient_name FROM fall_log WHERE id = %s", (log_id,)
+        )
+        log_row = cursor.fetchone()
+        if log_row is None:
+            return jsonify({"ok": False, "error": "낙상 기록을 찾을 수 없습니다."}), 404
+        log_room, cur_patient_id, cur_patient_name = log_row
+
+        # 이미 확정한 뒤 그 환자가 퇴원한 기록은 잠근다.
+        # 퇴원하면 patient_id가 NULL로 끊겨서, 화면에는 '지금 그 병실에 있는 환자'가 후보로 뜬다.
+        # 그대로 두면 나중에 입원한 사람이 과거 낙상의 당사자로 기록되는 사고가 난다.
+        # (아직 그 환자가 재원 중이면 오지정을 바로잡을 수 있게 열어 둔다)
+        if cur_patient_name and cur_patient_id is None:
+            return jsonify({
+                "ok": False,
+                "error": f"이미 {decrypt_field(cur_patient_name)} 님으로 확정된 기록입니다. "
+                         "해당 환자가 퇴원해 변경할 수 없습니다.",
+            }), 409
+
+        # 지정하려는 환자가 실제로 있고, 낙상이 발생한 그 병실의 환자인지 확인한다.
+        # 화면이 후보를 좁혀 주지만, 서버에서 막지 않으면 다른 병실 환자도 그대로 들어간다.
+        cursor.execute("SELECT name, room_number FROM patients WHERE id = %s", (patient_id,))
+        prow = cursor.fetchone()
+        if prow is None:
+            return jsonify({"ok": False, "error": "등록되지 않은 환자입니다."}), 400
+        patient_name_enc, patient_room = prow
+        if patient_room != log_room:
+            return jsonify({
+                "ok": False,
+                "error": f"{log_room}호에서 발생한 낙상입니다. 그 병실의 환자만 지정할 수 있습니다.",
+            }), 400
+
+        # 이름을 함께 남긴다. 퇴원해서 patient_id가 끊겨도 '누구였는지'는 기록에 남는다
+        # confirmed_at = 처리(확정) 시각. 보호자 화면이 이 시각 기준으로 낙상(10분)→주의로 바꾼다.
+        cursor.execute(
+            "UPDATE fall_log SET patient_id = %s, patient_name = %s, confirmed_by = %s, "
+            "memo = %s, done = TRUE, confirmed_at = NOW() WHERE id = %s",
+            (patient_id, patient_name_enc, session.get("user_id"), memo, log_id),
+        )
+        conn.commit()
+    except mysql.connector.Error:
+        conn.rollback()
+        return jsonify({"ok": False, "error": "저장 중 오류가 발생했습니다."}), 500
+    finally:
+        cursor.close()
+        conn.close()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/my-fall-state")
+@login_required
+def api_my_fall_state():
+    # 로그인한 보호자의 환자에 대해 '오늘' 확정된 낙상이 있는지 보고 상태를 정한다.
+    #   normal  : 오늘 확정된 낙상 없음 (초록)
+    #   fall    : 확정(처리) 후 10분 이내 (빨강)
+    #   warning : 확정 10분 경과 ~ 그날 자정까지 (노랑, '낙상 있었음')
+    # 다음 날이 되면 오늘 기록이 아니므로 자동으로 normal로 돌아간다.
+    with db_cursor(dictionary=True) as cursor:
+        cursor.execute("SELECT id FROM patients WHERE user_id = %s", (session.get("user_id"),))
+        prow = cursor.fetchone()
+        state = "normal"
+        last_detected_at = None
+        if prow:
+            # "최근 감지"는 내 담당 환자의 낙상만 본다(patient_id 기준).
+            # 병실 기준으로 잡으면 같은 병실을 쓰던 다른 환자 — 이미 퇴원한 사람까지 —
+            # 의 낙상 시각이 새로 들어온 환자의 보호자에게 보인다.
+            # 퇴원 처리가 fall_log.patient_id를 NULL로 끊으므로 이 조건이면 자동으로 빠진다.
+            cursor.execute(
+                "SELECT detected_at FROM fall_log "
+                "WHERE patient_id = %s AND done = TRUE "
+                "ORDER BY detected_at DESC LIMIT 1",
+                (prow["id"],),
+            )
+            last_row = cursor.fetchone()
+            if last_row and last_row["detected_at"]:
+                last_detected_at = last_row["detected_at"].strftime("%Y-%m-%d %H:%M")
+
+            cursor.execute(
+                "SELECT confirmed_at FROM fall_log "
+                "WHERE patient_id = %s AND done = TRUE AND confirmed_at IS NOT NULL "
+                "AND DATE(confirmed_at) = CURDATE() "
+                "ORDER BY confirmed_at DESC LIMIT 1",
+                (prow["id"],),
+            )
+            row = cursor.fetchone()
+            if row and row["confirmed_at"]:
+                elapsed = (datetime.datetime.now() - row["confirmed_at"]).total_seconds()
+                # state = "fall" if elapsed < 600 else "warning"   # 600초 = 10분
+
+                # --- 테스트용 (원래: 낙상 600초, 주의 그날 종일) ---
+                if elapsed < 30:
+                    state = "fall"          # 0~30초: 빨강
+                elif elapsed < 50:         # 30~50초 (30 + 20): 노랑
+                    state = "warning"
+                else:
+                    state = "normal"       # 50초 이후: 다시 초록
+
+
+
+    return jsonify({"ok": True, "state": state, "last_detected_at": last_detected_at})
+
+
+# ===== 캘린더 일정: DB(calendar_events)에 저장 (여러 브라우저가 같은 일정을 공유) =====
 
 @app.route("/api/events", methods=["GET"])
+@admin_required
 def api_events_get():
-    with events_lock:
-        return jsonify(load_events())
+    with db_cursor() as cursor:
+        cursor.execute("""
+            SELECT ce.id, ce.event_date, ce.text, u.username
+            FROM calendar_events ce
+            LEFT JOIN users u ON u.id = ce.created_by
+            ORDER BY ce.event_date, ce.id
+        """)
+        rows = cursor.fetchall()
+
+    events = {}
+    for event_id, event_date, text, created_by in rows:
+        events.setdefault(event_date.isoformat(), []).append(
+            {"id": event_id, "text": text, "created_by": created_by}
+        )
+    return jsonify(events)
 
 
 @app.route("/api/events", methods=["POST"])
+@admin_required
 def api_events_add():
     body = request.get_json(silent=True) or {}
     date = str(body.get("date", "")).strip()
@@ -299,125 +1520,361 @@ def api_events_add():
     if not date or not text:
         return jsonify({"ok": False, "error": "date와 text가 필요합니다"}), 400
 
-    with events_lock:
-        events = load_events()
-        event = {"id": int(time.time() * 1000), "text": text}
-        events.setdefault(date, []).append(event)
-        save_events(events)
+    conn = get_db()
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            "INSERT INTO calendar_events (event_date, text, created_by) VALUES (%s, %s, %s)",
+            (date, text, session.get("user_id")),
+        )
+        conn.commit()
+        event = {"id": cursor.lastrowid, "text": text, "created_by": session.get("user")}
+    except mysql.connector.Error:
+        conn.rollback()
+        return jsonify({"ok": False, "error": "일정 저장 중 오류가 발생했습니다."}), 500
+    finally:
+        cursor.close()
+        conn.close()
     return jsonify({"ok": True, "date": date, "event": event})
 
 
 @app.route("/api/events/delete", methods=["POST"])
+@admin_required
 def api_events_delete():
     body = request.get_json(silent=True) or {}
-    date = str(body.get("date", "")).strip()
     event_id = body.get("id")
 
-    with events_lock:
-        events = load_events()
-        if date in events:
-            events[date] = [e for e in events[date] if e.get("id") != event_id]
-            if not events[date]:
-                del events[date]
-            save_events(events)
-    return jsonify({"ok": True})
-
-
-# ===== 체크리스트 / 메모: 서버 JSON 파일에 저장 (여러 브라우저 공유) =====
-NOTES_FILE = os.path.expanduser("~/dashboard_notes.json")
-notes_lock = threading.Lock()
-
-
-def load_notes():
-    # 형식: { "checklist": [ {"id": <int>, "text": <str>, "done": <bool>} ], "memo": <str> }
-    default = {"checklist": [], "memo": ""}
-    if not os.path.exists(NOTES_FILE):
-        return default
+    conn = get_db()
+    cursor = conn.cursor()
     try:
-        with open(NOTES_FILE, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        if not isinstance(data, dict):
-            return default
-        data.setdefault("checklist", [])
-        data.setdefault("memo", "")
-        return data
-    except Exception:
-        return default
-
-
-def save_notes(notes):
-    with open(NOTES_FILE, "w", encoding="utf-8") as f:
-        json.dump(notes, f, ensure_ascii=False, indent=2)
-
-
-@app.route("/api/notes", methods=["GET"])
-def api_notes_get():
-    with notes_lock:
-        return jsonify(load_notes())
-
-
-@app.route("/api/checklist/add", methods=["POST"])
-def api_checklist_add():
-    body = request.get_json(silent=True) or {}
-    text = str(body.get("text", "")).strip()
-    if not text:
-        return jsonify({"ok": False, "error": "text가 필요합니다"}), 400
-    with notes_lock:
-        notes = load_notes()
-        item = {"id": int(time.time() * 1000), "text": text, "done": False}
-        notes["checklist"].append(item)
-        save_notes(notes)
-    return jsonify({"ok": True, "item": item})
-
-
-@app.route("/api/checklist/toggle", methods=["POST"])
-def api_checklist_toggle():
-    body = request.get_json(silent=True) or {}
-    item_id = body.get("id")
-    with notes_lock:
-        notes = load_notes()
-        for it in notes["checklist"]:
-            if it.get("id") == item_id:
-                it["done"] = not it.get("done", False)
-                break
-        save_notes(notes)
+        cursor.execute("DELETE FROM calendar_events WHERE id = %s", (event_id,))
+        conn.commit()
+    except mysql.connector.Error:
+        conn.rollback()
+        return jsonify({"ok": False, "error": "일정 삭제 중 오류가 발생했습니다."}), 500
+    finally:
+        cursor.close()
+        conn.close()
     return jsonify({"ok": True})
 
 
-@app.route("/api/checklist/delete", methods=["POST"])
-def api_checklist_delete():
-    body = request.get_json(silent=True) or {}
-    item_id = body.get("id")
-    with notes_lock:
-        notes = load_notes()
-        notes["checklist"] = [it for it in notes["checklist"] if it.get("id") != item_id]
-        save_notes(notes)
-    return jsonify({"ok": True})
+# ===== 관리자 통계 차트: fall_log/patrol_log 실데이터 집계 =====
+
+KOREAN_WEEKDAYS = ["월", "화", "수", "목", "금", "토", "일"]
+STATS_RISK_RANK = {"매우 높음": 4, "높음": 3, "보통": 2, "낮음": 1}
+STATS_RISK_CLASS = {"매우 높음": "critical", "높음": "high", "보통": "mid", "낮음": "low"}
 
 
-@app.route("/api/memo", methods=["POST"])
-def api_memo_save():
-    body = request.get_json(silent=True) or {}
-    memo = str(body.get("memo", ""))
-    with notes_lock:
-        notes = load_notes()
-        notes["memo"] = memo
-        save_notes(notes)
-    return jsonify({"ok": True})
+def recent_months(today, count=6):
+    """이번 달까지 최근 count개월을 (연, 월) 오름차순으로 돌려준다."""
+    months = []
+    y, m = today.year, today.month
+    for _ in range(count):
+        months.append((y, m))
+        m -= 1
+        if m == 0:
+            m = 12
+            y -= 1
+    months.reverse()
+    return months
 
+
+def monthly_fall_series(months, rows):
+    """(연, 월, 건수) 행을 months 순서대로 [["N월", 건수], ...] 로 채운다.
+    기록이 없는 달도 0으로 남겨야 그래프에서 달이 빠지지 않는다."""
+    counts = {(y, m): c for y, m, c in rows}
+    return [[f"{m}월", counts.get((y, m), 0)] for y, m in months]
+
+
+@app.route("/api/rooms/summary")
+@admin_required
+def api_rooms_summary():
+    """병실별 낙상 건수 · 순찰 횟수. 병실 모니터링 화면이 쓴다.
+
+    통계 탭의 /api/stats/admin은 차트 6종을 한꺼번에 만드느라 무거워서,
+    병실 카드에 필요한 두 숫자만 따로 뽑는다.
+    """
+    with db_cursor() as cursor:
+
+        # 통계 탭의 병실별 막대와 같은 기준으로 센다 — 지금 재원 중인 환자에게 발생한 낙상만.
+        # 퇴원 처리가 fall_log.patient_id를 NULL로 끊으므로 JOIN이 자동으로 걸러낸다.
+        # (아직 낙상 환자를 지정하지 않은 건은 여기 안 잡힌다. 이력 자체는 fall_log에 그대로 남는다)
+        cursor.execute(
+            "SELECT f.room_number, COUNT(*) FROM fall_log f "
+            "JOIN patients p ON p.id = f.patient_id "
+            "WHERE f.room_number IS NOT NULL GROUP BY f.room_number"
+        )
+        falls = dict(cursor.fetchall())
+
+        cursor.execute(
+            "SELECT room_number, COUNT(*) FROM patrol_log "
+            "WHERE room_number IS NOT NULL GROUP BY room_number"
+        )
+        patrols = dict(cursor.fetchall())
+
+        cursor.execute(
+            "SELECT room_number, COUNT(*) FROM patrol_log "
+            "WHERE room_number IS NOT NULL AND DATE(patrolled_at) = CURDATE() "
+            "GROUP BY room_number"
+        )
+        patrols_today = dict(cursor.fetchall())
+
+
+    # 등록된 병실은 기록이 하나도 없어도 0으로 항상 내려준다 (카드가 사라지면 안 됨).
+    # 반대로 로그에만 있는 병실도 빠뜨리지 않는다
+    rooms = sorted(PATIENT_ROOM_NUMBERS | set(falls) | set(patrols))
+
+    return jsonify({
+        "ok": True,
+        "rooms": [
+            {
+                "room": room,
+                "falls": falls.get(room, 0),
+                "patrols": patrols.get(room, 0),
+                "patrols_today": patrols_today.get(room, 0),
+            }
+            for room in rooms
+        ],
+    })
+
+
+@app.route("/api/stats/admin")
+@admin_required
+def api_stats_admin():
+    today = datetime.date.today()
+    with db_cursor() as cursor:
+
+        # 월별 낙상 발생 (최근 6개월)
+        months = recent_months(today)
+        cursor.execute(
+            "SELECT YEAR(detected_at), MONTH(detected_at), COUNT(*) FROM fall_log "
+            "WHERE detected_at >= %s GROUP BY YEAR(detected_at), MONTH(detected_at)",
+            (datetime.date(months[0][0], months[0][1], 1),),
+        )
+        monthly_falls = monthly_fall_series(months, cursor.fetchall())
+
+        # 병실별 낙상 발생 · 위험도(그 병실에서 가장 높은 위험도로 막대 색을 정한다)
+        #
+        # 막대 높이는 '지금 재원 중인 환자에게 발생한' 낙상만 센다.
+        # 퇴원 처리가 fall_log.patient_id를 NULL로 끊으므로, JOIN이 그 낙상을 자동으로 걸러낸다.
+        # 같은 병실에 다른 환자가 남아 있어도 퇴원한 환자의 낙상은 빠진다.
+        #
+        # 병실은 '낙상이 일어난 당시 병실'(fall_log.room_number)로 센다.
+        # 환자가 그 뒤 병실을 옮겼어도 낙상이 발생한 곳은 그 병실이기 때문이다.
+        #
+        # ※ 아직 간호사가 낙상 환자를 지정하지 않은 건(patient_id IS NULL)은 여기 안 잡힌다.
+        #   이 차트는 '현재 재원 환자' 기준이고, 전체 건수는 월별·시간대별 차트와
+        #   아래 이력 표에 그대로 남는다. (fall_log 자체는 지우지 않는다)
+        cursor.execute(
+            "SELECT f.room_number, COUNT(*) FROM fall_log f "
+            "JOIN patients p ON p.id = f.patient_id "
+            "WHERE f.room_number IS NOT NULL GROUP BY f.room_number"
+        )
+        fall_count_by_room = dict(cursor.fetchall())
+
+        cursor.execute("SELECT room_number, risk_level FROM patients WHERE room_number IS NOT NULL")
+        room_risk = {}
+        occupied_rooms = set()          # 지금 재원 환자가 한 명이라도 있는 병실
+        for room, risk in cursor.fetchall():
+            occupied_rooms.add(room)
+            if not risk:
+                continue
+            best = room_risk.get(room)
+            if best is None or STATS_RISK_RANK.get(risk, 0) > STATS_RISK_RANK.get(best, 0):
+                room_risk[room] = risk
+
+        # 등록된 병실은 낙상이 한 건도 없어도 0건 막대로 항상 표시한다 (그래야 그래프 모양이 유지됨).
+        # 재원 환자가 아무도 없어도 막대 4개는 남아야 화면이 비어 보이지 않는다.
+        all_rooms = PATIENT_ROOM_NUMBERS | occupied_rooms | set(fall_count_by_room)
+        room_falls = [
+            [f"{room}호", fall_count_by_room.get(room, 0), STATS_RISK_CLASS.get(room_risk.get(room), "low")]
+            for room in sorted(all_rooms)
+        ]
+
+        # 시간대별 낙상
+        cursor.execute("SELECT HOUR(detected_at), COUNT(*) FROM fall_log GROUP BY HOUR(detected_at)")
+        hour_counts = dict(cursor.fetchall())
+        hour_buckets = [("새벽", range(0, 6)), ("오전", range(6, 12)), ("오후", range(12, 18)), ("야간", range(18, 24))]
+        hourly_falls = [[label, sum(hour_counts.get(h, 0) for h in hours)] for label, hours in hour_buckets]
+
+        # 일별 순찰 횟수 (최근 7일)
+        start = today - datetime.timedelta(days=6)
+        cursor.execute(
+            "SELECT DATE(patrolled_at), COUNT(*) FROM patrol_log WHERE patrolled_at >= %s GROUP BY DATE(patrolled_at)",
+            (start,),
+        )
+        patrol_counts = {d.isoformat(): c for d, c in cursor.fetchall()}
+        daily_patrols = []
+        for i in range(7):
+            d = start + datetime.timedelta(days=i)
+            daily_patrols.append([KOREAN_WEEKDAYS[d.weekday()], patrol_counts.get(d.isoformat(), 0)])
+
+        # Home 탭 요약 카드: 전체 병실 · 위험 병실 · 오늘 낙상 · 이번 달 낙상
+        cursor.execute("SELECT COUNT(DISTINCT room_number) FROM patients WHERE room_number IS NOT NULL")
+        total_rooms = cursor.fetchone()[0]
+        risk_rooms = sum(1 for r in room_risk.values() if r in ("높음", "매우 높음"))
+        cursor.execute("SELECT COUNT(*) FROM fall_log WHERE DATE(detected_at) = CURDATE()")
+        today_falls = cursor.fetchone()[0]
+        month_falls = monthly_falls[-1][1]   # months 마지막 = 이번 달
+
+    return jsonify({
+        "ok": True,
+        "monthly_falls": monthly_falls,
+        "room_falls": room_falls,
+        "hourly_falls": hourly_falls,
+        "daily_patrols": daily_patrols,
+        "total_rooms": total_rooms,
+        "risk_rooms": risk_rooms,
+        "today_falls": today_falls,
+        "month_falls": month_falls,
+    })
+
+
+@app.route("/api/stats/guardian")
+@login_required
+def api_stats_guardian():
+    with db_cursor() as cursor:
+        cursor.execute("SELECT id, room_number FROM patients WHERE user_id = %s", (session.get("user_id"),))
+        prow = cursor.fetchone()
+        if not prow:
+            return jsonify({"ok": True, "monthly_falls": [], "hourly_patrols": [], "daily_patrols": []})
+        patient_id, room_number = prow
+        today = datetime.date.today()
+
+        # 월별 낙상 발생 이력 (최근 6개월, 확정된 것만)
+        months = recent_months(today)
+        cursor.execute(
+            "SELECT YEAR(detected_at), MONTH(detected_at), COUNT(*) FROM fall_log "
+            "WHERE patient_id = %s AND done = TRUE AND detected_at >= %s "
+            "GROUP BY YEAR(detected_at), MONTH(detected_at)",
+            (patient_id, datetime.date(months[0][0], months[0][1], 1)),
+        )
+        monthly_falls = monthly_fall_series(months, cursor.fetchall())
+
+        # 시간대별 안심 순찰 완료 횟수 (내 병실, 전체 기간)
+        cursor.execute(
+            "SELECT HOUR(patrolled_at), COUNT(*) FROM patrol_log WHERE room_number = %s GROUP BY HOUR(patrolled_at)",
+            (room_number,),
+        )
+        hour_counts = dict(cursor.fetchall())
+        hour_buckets = [("새벽", range(0, 6)), ("오전", range(6, 12)), ("오후", range(12, 18)), ("야간", range(18, 24))]
+        hourly_patrols = [[label, sum(hour_counts.get(h, 0) for h in hours)] for label, hours in hour_buckets]
+
+        # 최근 7일 순찰 완료 횟수 (내 병실)
+        start = today - datetime.timedelta(days=6)
+        cursor.execute(
+            "SELECT DATE(patrolled_at), COUNT(*) FROM patrol_log WHERE room_number = %s AND patrolled_at >= %s "
+            "GROUP BY DATE(patrolled_at)",
+            (room_number, start),
+        )
+        patrol_counts = {d.isoformat(): c for d, c in cursor.fetchall()}
+        daily_patrols = []
+        for i in range(7):
+            d = start + datetime.timedelta(days=i)
+            daily_patrols.append([KOREAN_WEEKDAYS[d.weekday()], patrol_counts.get(d.isoformat(), 0)])
+        patrol_today = daily_patrols[-1][1]   # start+6일 = 오늘
+
+        # 최근 30일 순찰 완료 횟수 (내 병실)
+        start_30 = today - datetime.timedelta(days=29)
+        cursor.execute(
+            "SELECT COUNT(*) FROM patrol_log WHERE room_number = %s AND patrolled_at >= %s",
+            (room_number, start_30),
+        )
+        patrol_30d = cursor.fetchone()[0]
+
+    return jsonify({
+        "ok": True,
+        "monthly_falls": monthly_falls,
+        "hourly_patrols": hourly_patrols,
+        "daily_patrols": daily_patrols,
+        "patrol_today": patrol_today,
+        "patrol_30d": patrol_30d,
+    })
+
+@app.route("/api/robot/places")
+@admin_required
+def api_robot_places():
+    """이동 가능한 목적지 목록. 좌표·이름 모두 rooms.yaml이 원본이다."""
+    places = load_places()
+    if not places:
+        # 어느 파일을 못 읽었는지까지 알려줘야 원인을 찾을 수 있다
+        return jsonify({
+            "ok": False,
+            "error": f"등록된 좌표가 없습니다. ({ROOMS_YAML})",
+            "places": [],
+        }), 503
+
+    return jsonify({
+        "ok": True,
+        "places": [dict(key=key, **info) for key, info in places.items()],
+    })
+
+
+@app.route("/api/robot/goto/<place>", methods=["POST"])
+@admin_required
+def api_robot_goto(place):
+
+    places = load_places()
+    if place not in places:
+        return jsonify({"ok": False, "error": "등록되지 않은 목적지입니다."}), 404
+    if bridge_node is None:
+        return jsonify({"ok": False, "error": "ROS2에 연결되지 않았습니다."}), 503
+
+    label = places[place]["label"]
+    ok, message = bridge_node.request_goto(place)
+    if ok:
+        add_event(f"{label} 이동 명령")
+        state["robot_paused"] = False   # 새 목적지로 출발했으니 일시정지 해제
+        # 병실(room1~4)로 보낸 경우에만 채워지고, 충전소/대기장소면 None으로 비워진다
+        state["manual_goto_room"] = PATROL_ROOM_NAME_TO_NUMBER.get(place)
+
+    # 이미 이동 중이라 거절된 건 서버 장애가 아니라 "지금 상태에선 불가"라서 409
+    return jsonify({"ok": ok, "message": message, "label": label}), (200 if ok else 409)
+
+
+@app.route("/api/robot/pause", methods=["POST"])
+@admin_required
+def api_robot_pause():
+    if bridge_node is None:
+        return jsonify({"ok": False, "error": "ROS2에 연결되지 않았습니다."}), 503
+
+    ok, message = bridge_node.request_pause()
+    if ok:
+        add_event("이동 일시정지")
+        state["robot_paused"] = True
+
+    return jsonify({"ok": ok, "message": message}), (200 if ok else 409)
+
+
+# 순찰 시작 = 재개도 겸한다. 로봇이 병실 안에 있으면 그 병실 관찰부터 다시 하고,
+# 그 외에는 위험도 가중치로 다음 병실을 새로 뽑는다(순찰 노드가 판단).
+@app.route("/api/robot/patrol/start", methods=["POST"])
+@admin_required
+def api_robot_patrol_start():
+    if bridge_node is None:
+        return jsonify({"ok": False, "error": "ROS2에 연결되지 않았습니다."}), 503
+
+    ok, message = bridge_node.request_start_patrol()
+    if ok:
+        add_event("순찰 시작")
+        state["robot_paused"] = False
+
+    return jsonify({"ok": ok, "message": message}), (200 if ok else 409)
 
 def ros_spin():
+    global bridge_node
+
     if not ROS_AVAILABLE:
         add_event("ROS2 모듈 없음: 웹 화면만 테스트 중")
         return
 
     rclpy.init()
-    node = DashboardBridge()
+    bridge_node = DashboardBridge()
 
     try:
-        rclpy.spin(node)
+        rclpy.spin(bridge_node)
     finally:
-        node.destroy_node()
+        bridge_node.destroy_node()
         rclpy.shutdown()
 
 

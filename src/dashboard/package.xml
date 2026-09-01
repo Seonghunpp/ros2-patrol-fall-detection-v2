@@ -12,6 +12,11 @@
   <depend>sensor_msgs</depend>
   <depend>std_msgs</depend>
   <depend>turtlebot3_msgs</depend>
+  <depend>std_srvs</depend>
+  <!-- 로봇 현재 위치를 map -> base_footprint 변환으로 읽는다 -->
+  <depend>tf2_ros</depend>
+  <!-- 이동 목적지 좌표(config/rooms.yaml)를 my_patrol의 share 경로에서 읽는다 -->
+  <exec_depend>my_patrol</exec_depend>
 
   <export>
     <build_type>ament_python</build_type>

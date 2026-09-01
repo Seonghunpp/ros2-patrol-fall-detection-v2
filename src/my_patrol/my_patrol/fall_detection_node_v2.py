@@ -61,9 +61,19 @@ class FallDetectionNode(Node):
             "/image_annotated/compressed",
             1,
         )
+        # 로봇 제어용 — 1프레임만 보여도 즉시 true. 빨리 멈추는 게 중요하다.
         self.fall_detected_pub = self.create_publisher(
             Bool,
             "/fall_detected",
+            10,
+        )
+
+        # 기록용 — threshold_count 프레임 연속으로 확정된 것만 true.
+        # 대시보드가 이걸 보고 fall_log 에 행을 남기므로, 스쳐 지나가는
+        # 오탐까지 기록되면 낙상 이력이 지저분해진다.
+        self.fall_confirmed_pub = self.create_publisher(
+            Bool,
+            "/fall_confirmed",
             10,
         )
 
@@ -335,7 +345,18 @@ class FallDetectionNode(Node):
         if new_fall_ids:
             self._save_fall_image(image)
 
+        # 한 프레임만 낙상 자세로 보여도 곧바로 낙상으로 본다.
+        # 사람이 쓰러진 뒤 확정(threshold_count)까지 기다리면 로봇 정지가 늦는다.
+        # 오탐이 섞이더라도 fall_clear_wait 초 뒤 자동으로 풀리므로,
+        # 늦게 멈추는 쪽보다 빨리 멈추는 쪽을 택한다.
         current_fall = any(person["fall_count"] >= 1 for person in persons)
+
+        # 확정 신호는 래치·해제 지연 없이 현재 프레임 그대로 내보낸다.
+        # 대시보드는 '정상 -> 낙상' 으로 바뀌는 순간에만 기록하고
+        # 자체 쿨다운(15초)을 두므로, 여기서 또 늦출 필요가 없다.
+        self.fall_confirmed_pub.publish(Bool(data=any(
+            person["fall_count"] >= self.threshold_count for person in persons
+        )))
 
         if current_fall:
             self.fall_latched = True
