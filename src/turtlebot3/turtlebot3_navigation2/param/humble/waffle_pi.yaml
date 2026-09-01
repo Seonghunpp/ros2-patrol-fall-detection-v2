@@ -49,10 +49,10 @@ amcl:
     set_initial_pose: true
     always_reset_initial_pose: true   # 켤 때마다 아래 값으로 초기화 (시작점이 늘 같으므로)
     initial_pose:
-      x: -2.096
-      y: 3.323
+      x: -2.103
+      y: 3.367
       z: 0.0
-      yaw: -1.175
+      yaw: -1.229
 
 amcl_map_client:
   ros__parameters:

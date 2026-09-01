@@ -18,7 +18,7 @@ try:
     from rclpy.node import Node
     from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSHistoryPolicy
     from sensor_msgs.msg import CompressedImage, BatteryState #배터리 스테이트 추가
-    from std_msgs.msg import String, Int32MultiArray
+    from std_msgs.msg import Bool, String, Int32MultiArray
     from nav_msgs.msg import Odometry, Path
     from geometry_msgs.msg import Twist, PoseWithCovarianceStamped
     from std_srvs.srv import Trigger
@@ -200,8 +200,6 @@ state = {
     "speed": 0.0,
     "angular_speed": 0.0,
     "battery": "배터리 대기",
-    "speed": 0.0,
-    "angular_speed": 0.0,
     "camera": "카메라 대기",
     "network": "네트워크 대기",
     "fall_alert_id": 0,
@@ -373,10 +371,15 @@ class DashboardBridge(Node):
             10
         )
 
+        # 감지 노드는 두 신호를 낸다.
+        #   /fall_detected  1프레임만 보여도 true — 로봇을 즉시 멈추는 용도
+        #   /fall_confirmed 확정(10프레임 연속)된 것만 true — 기록 용도
+        # 대시보드는 확정 쪽만 본다. 스쳐 지나가는 오탐까지 fall_log 에 남으면
+        # 낙상 이력과 통계가 지저분해진다.
         self.create_subscription(
-            String,
-            "/fall_status",
-            self.fall_status_callback,
+            Bool,
+            "/fall_confirmed",
+            self.fall_confirmed_callback,
             10
         )
 
@@ -576,9 +579,6 @@ class DashboardBridge(Node):
         state["speed"] = round(abs(last_odom_linear), 2)
         state["angular_speed"] = round(abs(last_odom_angular), 2)
 
-        state["speed"] = round(abs(last_odom_linear), 2)
-        state["angular_speed"] = round(abs(last_odom_angular), 2)
-
     def cmd_vel_callback(self, msg):
         global last_heartbeat, last_cmd_vel_linear, last_cmd_vel_angular, last_cmd_vel_time
         last_heartbeat = time.time()
@@ -608,15 +608,12 @@ class DashboardBridge(Node):
         # Nav2가 경로를 그만 내보내면 주행이 끝난 것. 지워야 화면에 옛 경로가 남지 않는다
         if state["path"] and (time.time() - last_plan_time) > PLAN_STALE_SEC:
             state["path"] = []
-        if not (odom_moving or cmd_vel_moving):
-            state["speed"] = 0.0
-            state["angular_speed"] = 0.0
 
-    def fall_status_callback(self, msg):
+    def fall_confirmed_callback(self, msg):
         global last_fall_event_time
-        raw_status = str(msg.data).strip()
         old_status = state["fall_status"]
-        new_status = "낙상 환자 발견" if raw_status == "FALL" else "정상"
+        # state["fall_status"] 는 화면에 그대로 찍히는 한국어 문자열이라 그대로 둔다
+        new_status = "낙상 환자 발견" if msg.data else "정상"
         state["fall_status"] = new_status
 
         if new_status == "낙상 환자 발견" and old_status != "낙상 환자 발견":
@@ -1322,7 +1319,7 @@ def api_patient_delete(patient_id):
     return jsonify({"ok": True})
 
 
-# ===== 낙상 기록: fall_status_callback()이 감지 즉시 자동으로 fall_log에 남긴다 =====
+# ===== 낙상 기록: fall_confirmed_callback()이 확정 즉시 자동으로 fall_log에 남긴다 =====
 # 관리자가 캡처 이미지를 보고 낙상 환자를 지정(확정)해야 보호자에게 노출된다.
 
 @app.route("/api/fall-log")

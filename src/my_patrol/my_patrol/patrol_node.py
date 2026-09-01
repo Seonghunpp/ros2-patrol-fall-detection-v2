@@ -5,7 +5,7 @@
     ros2 run my_patrol patrol
 
 필요한 환경변수
-    DB_PASSWORD          환자 정보를 읽을 MySQL 비밀번호 / 1234(각자 비밀번호) 
+    DB_PASSWORD          환자 정보를 읽을 MySQL 비밀번호 / 1234(각자 비밀번호)
     FIELD_ENCRYPT_KEY    환자 이름 복호화용(없어도 순찰은 정상 동작, 로그에만 "환자")
 
 --------------------------------------------------------------------------
@@ -29,8 +29,8 @@
 도착 후 행동은 '가는 이유'와 분리했다
 --------------------------------------------------------------------------
     순찰로 갔든 맵을 찍어 갔든 도착하면 같은 처리를 한다.
-        dock    -> 360도 회전(도킹 정렬) // 욜로 코드 추가시 변경
-        room*   -> 마커 정렬 + 낙상 스캔 + /patrol_complete 발행
+        dock    -> ArucoBehaviorController 충전소 후면 주차
+        room*   -> ArucoBehaviorController 병실 확인 + /patrol_complete 발행
         standby -> 정지만
     끝난 뒤 PATROL 이면 다음 병실로 이어지고, MANUAL 이면 IDLE 로 돌아간다.
 """
@@ -38,7 +38,6 @@
 import math
 import os
 import random
-import time
 
 import mysql.connector
 import rclpy
@@ -47,14 +46,15 @@ from ament_index_python.packages import get_package_share_directory
 from action_msgs.msg import GoalStatus
 from geometry_msgs.msg import PoseStamped, Twist
 from nav2_msgs.action import NavigateToPose
-from nav_msgs.msg import Odometry
 from rclpy.action import ActionClient
 from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
-from std_msgs.msg import Bool, Float32, Int32MultiArray, String
-from std_srvs.srv import SetBool, Trigger
+from std_msgs.msg import String
+from std_srvs.srv import Trigger
 from tf2_ros import Buffer, TransformListener
+
+from .aruco_behavior_controller import ArucoBehaviorController
 
 try:
     from cryptography.fernet import Fernet, InvalidToken
@@ -177,31 +177,15 @@ class PatrolNode(Node):
 
     # ── 이동 ──
     PLACE_MATCH_DIST = 1.0    # 이 거리(m) 안에 등록 지점이 없으면 '위치 모름'
-    ANGULAR_SPEED = 0.3       # 도킹 360도 회전 속도(rad/s)
 
     # ── 순찰 선택 ──
     RANK_WEIGHTS = (40, 30, 20, 10)   # 1~4순위 가중치. 그 뒤는 전부 10
     RETRY_SEC = 10.0                  # 순찰할 병실이 없을 때 재확인 주기
 
-    # ── 마커 정렬 ──
-    SEARCH_SPEED = 0.3        # 탐색 회전속도(rad/s)
-    ALIGN_K = 0.6             # 정렬 비례계수
-    MAX_TURN = 0.4            # 최대 회전(rad/s)
-    MIN_TURN = 0.10           # 최소 회전(rad/s) — 모터 데드밴드 회피
-    CENTER_TOL = 0.10         # 이 안에 들면 '중앙 정렬됨'(화면폭의 10%)
-    SEEN_TIMEOUT = 0.4        # 이 시간(s) 안에 offset 오면 '마커 보임'
-    ALIGN_TIMEOUT = 40.0      # 정렬 전체 제한시간(s)
-
-    # ── 낙상 스캔 ──
-    SCAN_HALF = 50.0          # 중앙 기준 좌/우 각도(deg)
-    SCAN_SPEED = 0.2          # 스캔 회전속도(rad/s) — 느리게(YOLO 감지 시간 확보)
-    HOLD_CLEAR_SEC = 10.0     # 낙상이 이만큼 연속으로 안 보여야 '사라짐'
-
     def __init__(self):
         super().__init__('patrol_node')
 
-        # 서비스·구독이 블로킹 작업(마커 정렬·낙상 스캔) 중에도 처리되도록
-        # 별도 콜백 그룹에 둔다. main()에서 MultiThreadedExecutor로 돌린다.
+        # Nav2 액션과 서비스 콜백을 함께 처리하도록 별도 콜백 그룹에 둔다.
         self.cb_group = ReentrantCallbackGroup()
 
         # ── Nav2 (이 노드가 유일한 소유자) ──
@@ -222,28 +206,8 @@ class PatrolNode(Node):
         self.waypoints = {}
         self.load_waypoints()
 
-        # ── 마커 · 낙상 (aruco_id / fall_detection 노드와 통신) ──
-        self.latest_ids = []
-        self.latest_offset = 0.0
-        self.offset_time = None
-        self.yaw = None            # odom 기반 현재 yaw(rad) — 회전각 측정용
-        self.fall = False          # /fall_detected 최신값
-        self.fall_status = 'NO_PERSON'
-
-        for msg_type, topic, cb in (
-            (Int32MultiArray, '/room_marker', self._id_cb),
-            (Float32, '/marker_offset', self._offset_cb),
-            (Odometry, '/odom', self._odom_cb),
-            (Bool, '/fall_detected', self._fall_cb),
-            (String, '/fall_status', self._status_cb),
-        ):
-            self.create_subscription(
-                msg_type, topic, cb, 10, callback_group=self.cb_group)
-
-        self.aruco_cli = self.create_client(
-            SetBool, 'aruco_enable', callback_group=self.cb_group)
-        self.fall_cli = self.create_client(
-            SetBool, 'fall_enable', callback_group=self.cb_group)
+        # 충전소·병실 도착 후 동작은 전용 ArUco 컨트롤러에 위임한다.
+        self.aruco_behavior = ArucoBehaviorController(self)
 
         # ── 서비스 ──
         # /resume_navigation 은 두지 않는다. 대시보드 버튼이 순찰 시작 / 일시정지
@@ -264,8 +228,6 @@ class PatrolNode(Node):
         # ── 상태 ──
         self.mode = 'IDLE'          # IDLE | RUNNING | PAUSED
         self.task = None            # PATROL | MANUAL
-        self.abort = False          # 블로킹 루프(정렬·스캔)를 빠져나오라는 신호
-
         self.pending_waypoints = []
         self.active_waypoint = None
         self.goal_handle = None
@@ -273,16 +235,7 @@ class PatrolNode(Node):
         self.current_place = None   # 마지막으로 도착한 목적지 키
         self.last_room = None       # 직전에 순찰을 마친 병실 번호 (연속 중복 방지)
 
-        self.rotation_time = 0.0
-        self.rotation_timer = None
         self.retry_timer = None
-        self._pending_enables = []   # 완료 전 GC 되지 않게 붙잡아 두는 서비스 future
-
-        # 두 감지 노드는 단독 테스트용으로 기본이 ON 이다. 켜둔 채 주행하면
-        # YOLO가 쉬지 않고 돌아 CPU를 잡아먹어 주행이 끊긴다.
-        # 병실에 도착해 관찰할 때만 켜고, 그 외에는 꺼둔다.
-        self.set_enable(False)
-        self.set_fall_enable(False)
 
         # 환경변수를 빠뜨리고 실행하는 일이 잦아서, 켜자마자 한 번 확인해 알려준다
         rooms = calculate_room_priority()
@@ -299,30 +252,6 @@ class PatrolNode(Node):
                 'DB는 연결됐지만 재원 환자가 없습니다. 대시보드에서 환자를 등록해 주세요.')
 
         self.get_logger().info('Patrol node started (mode=IDLE)')
-
-    # =====================================================
-    # 마커 · 낙상 구독 콜백
-    # =====================================================
-
-    def _id_cb(self, msg):
-        self.latest_ids = list(msg.data)
-
-    def _offset_cb(self, msg):
-        self.latest_offset = msg.data
-        self.offset_time = time.time()
-
-    def _odom_cb(self, msg):
-        q = msg.pose.pose.orientation
-        # 쿼터니언 -> yaw (z축 회전각)
-        siny = 2.0 * (q.w * q.z + q.x * q.y)
-        cosy = 1.0 - 2.0 * (q.y * q.y + q.z * q.z)
-        self.yaw = math.atan2(siny, cosy)
-
-    def _fall_cb(self, msg):
-        self.fall = msg.data
-
-    def _status_cb(self, msg):
-        self.fall_status = msg.data
 
     # =====================================================
     # waypoint
@@ -439,7 +368,6 @@ class PatrolNode(Node):
             return rejected
 
         self._cancel_retry_timer()
-        self.abort = False
         self.mode = 'RUNNING'
         self.task = 'PATROL'
 
@@ -471,17 +399,12 @@ class PatrolNode(Node):
             return response
 
         self.mode = 'PAUSED'
-        self.abort = True          # 정렬·스캔 루프가 이걸 보고 빠져나온다
-
-        if self.rotation_timer is not None:
-            self.stop_rotation()
+        self.aruco_behavior.cancel('순찰 일시정지')
 
         if self.goal_handle is not None:
             self.goal_handle.cancel_goal_async()
 
         self.stop_robot()
-        self.set_enable(False)
-        self.set_fall_enable(False)
 
         # 경유점 사이 어딘가에서 멈췄으므로 현재 위치를 알 수 없다.
         # 다음 이동 때 TF로 다시 확인하게 둔다.
@@ -668,7 +591,6 @@ class PatrolNode(Node):
 
         self.mode = 'RUNNING'
         self.task = task
-        self.abort = False
         self.current_mode = mode
         self.pending_waypoints = list(points)
 
@@ -781,43 +703,71 @@ class PatrolNode(Node):
     def on_arrived(self, place):
         """도착 지점별 행동. 순찰로 왔든 맵을 찍어 왔든 같은 처리를 한다."""
         if place == 'dock':
-            self.get_logger().info('Charging station reached. Docking rotation.')
-            self.start_rotation()        # 회전이 끝나면 _finish_task 를 부른다
+            self.get_logger().info(
+                'Charging station reached. Starting ArUco parking.')
+            self._start_aruco_behavior(
+                place, self.aruco_behavior.start_charging_parking)
             return
 
         if place in (self.waypoints.get('rooms') or {}):
-            self.run_room_routine(place)
+            self.get_logger().info(
+                f'{place} reached. Starting ArUco room inspection.')
+            self._start_aruco_behavior(
+                place, self.aruco_behavior.start_room_inspection)
             return
 
         # standby 등 — 정지만
         self._finish_task()
 
-    def run_room_routine(self, room_key):
-        """병실 안에서: 마커 정렬 -> 낙상 스캔 -> /patrol_complete 발행.
+    def _start_aruco_behavior(self, place, starter):
+        """ArUco 시작 실패를 완료 콜백과 중복 없이 복구한다."""
+        callback_called = False
 
-        블로킹이라 오래 걸린다. 서비스는 다른 콜백 그룹에서 처리되므로
-        이 동안에도 일시정지를 받을 수 있고, self.abort 로 빠져나온다.
-        """
-        marker_id = self.align_to_marker()
-        if self.abort:
-            return
-        if marker_id is not None:
-            self.get_logger().info(f'Alignment successful, marker ID={marker_id}')
-        else:
-            self.get_logger().warn('Marker not found (search failed)')
+        def completed(result):
+            nonlocal callback_called
+            callback_called = True
+            self._aruco_completed(place, result)
 
-        if self.scan_for_fall(room_key):
-            self.get_logger().warn(f'{room_key} fall suspected — holding on patient')
-            self.hold_position()
-            self.get_logger().info('Patient cleared — resuming')
-        if self.abort:
+        if starter(completed):
             return
 
-        # 병실 관찰 종료 -> 대시보드에 순찰 완료 신호
-        self.complete_pub.publish(String(data=room_key))
-        self.last_room = self._room_number_of(room_key)
+        # 서비스 부재 등은 컨트롤러가 실패 콜백까지 호출하고 False를
+        # 반환한다. 그 경우 현재 작업은 이미 정리됐으므로 두 번 끝내지 않는다.
+        if callback_called:
+            return
+
+        # busy 등 콜백 없는 시작 실패. 남은 동작을 정지하되 과거 작업의
+        # 완료 콜백은 호출하지 않고, 현재 작업만 한 번 실패 처리한다.
+        self.aruco_behavior.cancel(
+            '새 ArUco 동작을 시작할 수 없어 취소합니다.', notify=False)
+        self._stop_after_aruco_failure(place, 'ArUco 동작 시작 실패')
+
+    def _aruco_completed(self, place, result):
+        """전용 ArUco 컨트롤러가 끝나면 순찰 상태 흐름을 이어간다."""
+        if self.mode == 'PAUSED':
+            return
+
+        if not result.success:
+            self._stop_after_aruco_failure(place, result.message)
+            return
+
+        if place in (self.waypoints.get('rooms') or {}):
+            self.complete_pub.publish(String(data=place))
+            self.last_room = self._room_number_of(place)
 
         self._finish_task()
+
+    def _stop_after_aruco_failure(self, place, message):
+        """ArUco 시스템 실패 시 현재 위치에서 정지하고 순찰을 종료한다."""
+        self.stop_robot()
+        self.mode = 'IDLE'
+        self.task = None
+        self.current_mode = None
+        self.pending_waypoints = []
+        self.active_waypoint = None
+        self.goal_handle = None
+        self.get_logger().error(
+            f'{place} ArUco 실패로 순찰을 중단합니다: {message}')
 
     def _room_number_of(self, room_key):
         for number, key in ROOM_KEY_MAP.items():
@@ -838,193 +788,6 @@ class PatrolNode(Node):
             self.current_mode = None
             self.get_logger().info('Manual move finished (mode=IDLE)')
 
-    # =====================================================
-    # 마커 정렬 · 낙상 스캔
-    # =====================================================
-
-    def _call_enable(self, client, on, name):
-        """SetBool 서비스로 on/off 요청. 응답은 기다리지 않는다.
-
-        (MultiThreadedExecutor 안에서 spin_until_future_complete 를 부르면
-         자기 자신을 두 번 spin 하게 되므로 쓰지 않는다.)
-
-        future 를 버리면 응답을 받기 전에 GC 되어 요청이 유실될 수 있으므로
-        완료될 때까지 목록에 들고 있는다.
-        """
-        if not client.wait_for_service(timeout_sec=0.5):
-            self.get_logger().warn(f'{name} service unavailable (skip)')
-            return
-
-        req = SetBool.Request()
-        req.data = on
-        future = client.call_async(req)
-        self._pending_enables.append(future)
-        self._pending_enables = [f for f in self._pending_enables if not f.done()]
-        self.get_logger().info(f'{name} -> {"ON" if on else "OFF"}')
-
-    def set_enable(self, on):
-        self._call_enable(self.aruco_cli, on, 'aruco_enable')
-
-    def set_fall_enable(self, on):
-        self._call_enable(self.fall_cli, on, 'fall_enable')
-
-    def _marker_visible(self):
-        return (self.offset_time is not None
-                and time.time() - self.offset_time < self.SEEN_TIMEOUT)
-
-    def _spin_wait(self, seconds):
-        """블로킹 대기. 구독 콜백은 executor의 다른 스레드가 갱신해 준다."""
-        time.sleep(seconds)
-
-    def align_to_marker(self):
-        """마커를 찾아(탐색) 화면 중앙에 오도록 회전(정렬)한다.
-
-        찾으면 마커 ID, 못 찾거나 중단되면 None.
-        """
-        self.set_enable(True)
-        start = time.time()
-        twist = Twist()
-
-        try:
-            # 1단계 — 마커가 보일 때까지 제자리 탐색 회전
-            while rclpy.ok() and not self.abort:
-                if self._marker_visible():
-                    break
-                if time.time() - start > self.ALIGN_TIMEOUT:
-                    self.get_logger().warn('Marker search timed out')
-                    return None
-                twist.angular.z = self.SEARCH_SPEED
-                self.cmd_vel_pub.publish(twist)
-                self._spin_wait(0.05)
-
-            # 2단계 — 화면 중앙으로 정렬
-            while rclpy.ok() and not self.abort:
-                if time.time() - start > self.ALIGN_TIMEOUT:
-                    self.get_logger().warn('Marker align timed out')
-                    return None
-
-                if not self._marker_visible():
-                    twist.angular.z = self.SEARCH_SPEED
-                    self.cmd_vel_pub.publish(twist)
-                    self._spin_wait(0.05)
-                    continue
-
-                offset = self.latest_offset
-                if abs(offset) <= self.CENTER_TOL:
-                    break
-
-                turn = -self.ALIGN_K * offset
-                turn = max(-self.MAX_TURN, min(self.MAX_TURN, turn))
-                if 0 < abs(turn) < self.MIN_TURN:       # 모터 데드밴드 회피
-                    turn = math.copysign(self.MIN_TURN, turn)
-                twist.angular.z = turn
-                self.cmd_vel_pub.publish(twist)
-                self._spin_wait(0.05)
-
-            self.stop_robot()
-            if self.abort:
-                return None
-            return self.latest_ids[0] if self.latest_ids else None
-        finally:
-            self.stop_robot()
-            self.set_enable(False)
-
-    def _rotate_by(self, delta_deg):
-        """제자리에서 delta_deg 만큼 회전. 도는 동안 낙상이 보이면 즉시 True."""
-        target = math.radians(abs(delta_deg))
-        direction = 1.0 if delta_deg > 0 else -1.0
-        rotated = 0.0
-        prev_yaw = self.yaw
-        twist = Twist()
-
-        while rclpy.ok() and not self.abort and rotated < target:
-            if self.fall:
-                self.stop_robot()
-                return True
-            twist.angular.z = direction * self.SCAN_SPEED
-            self.cmd_vel_pub.publish(twist)
-            self._spin_wait(0.05)
-
-            if self.yaw is not None and prev_yaw is not None:
-                d = self.yaw - prev_yaw
-                d = math.atan2(math.sin(d), math.cos(d))   # -pi~pi 로 정규화
-                rotated += abs(d)
-            prev_yaw = self.yaw
-
-        self.stop_robot()
-        return False
-
-    def scan_for_fall(self, name=''):
-        """마커 중앙 기준 좌우로 천천히 훑으며 낙상 감지.
-
-        스캔 동안만 YOLO를 켠다 (주행 중엔 꺼서 CPU 절약).
-        낙상이 보이면 True — 이때는 hold_position 이 계속 응시해야 하므로 끄지 않는다.
-        """
-        self.get_logger().info(f'[{name}] Checking patient (scanning)...')
-        self.fall = False
-        self.fall_status = 'NO_PERSON'
-        self.set_fall_enable(True)
-
-        half = self.SCAN_HALF
-        found = False
-        # 왼쪽 half -> 오른쪽 2*half(왼끝->오른끝) -> 중앙 복귀(왼쪽 half)
-        for delta in (half, -2 * half, half):
-            if self._rotate_by(delta):
-                found = True
-                break
-            if self.abort:
-                break
-
-        if not found:
-            self.set_fall_enable(False)
-        return found
-
-    def hold_position(self):
-        """낙상 환자를 향한 채 정지 유지. 10초 연속 안 보이면 복귀."""
-        self.set_fall_enable(True)
-        clear_since = None
-        try:
-            while rclpy.ok() and not self.abort:
-                self.stop_robot()
-                if self.fall:
-                    clear_since = None          # 아직 낙상 -> 타이머 리셋
-                elif clear_since is None:
-                    clear_since = time.time()
-                elif time.time() - clear_since >= self.HOLD_CLEAR_SEC:
-                    break
-                self._spin_wait(0.05)
-        finally:
-            self.set_fall_enable(False)
-
-    # =====================================================
-    # 도킹 회전
-    # =====================================================
-
-    def start_rotation(self):
-        self.rotation_time = 0.0
-        if self.rotation_timer is not None:
-            self.rotation_timer.cancel()
-        self.rotation_timer = self.create_timer(
-            0.1, self.rotate, callback_group=self.cb_group)
-
-    def rotate(self):
-        twist = Twist()
-        twist.angular.z = self.ANGULAR_SPEED
-        self.cmd_vel_pub.publish(twist)
-
-        self.rotation_time += 0.1
-        if self.rotation_time >= 2.0 * math.pi / self.ANGULAR_SPEED:
-            self.stop_rotation()
-            self.get_logger().info('360 degree rotation completed.')
-            self._finish_task()
-
-    def stop_rotation(self):
-        self.stop_robot()
-        if self.rotation_timer is not None:
-            self.rotation_timer.cancel()
-            self.destroy_timer(self.rotation_timer)
-            self.rotation_timer = None
-
     def stop_robot(self):
         self.cmd_vel_pub.publish(Twist())
 
@@ -1033,8 +796,7 @@ def main(args=None):
     rclpy.init(args=args)
     node = PatrolNode()
 
-    # 마커 정렬·낙상 스캔이 블로킹이라, 그 동안에도 서비스(일시정지)를
-    # 받으려면 스레드가 여러 개 필요하다.
+    # Nav2 결과, 서비스, ArUco 제어 타이머를 함께 처리한다.
     executor = MultiThreadedExecutor()
     executor.add_node(node)
 
@@ -1043,10 +805,8 @@ def main(args=None):
     except KeyboardInterrupt:
         pass
     finally:
-        node.abort = True
+        node.aruco_behavior.cancel('순찰 노드 종료')
         node.stop_robot()
-        node.set_enable(False)
-        node.set_fall_enable(False)
         executor.shutdown()
         node.destroy_node()
         if rclpy.ok():
