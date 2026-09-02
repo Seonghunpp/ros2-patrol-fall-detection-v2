@@ -241,7 +241,8 @@ os.makedirs(CAPTURE_DIR, exist_ok=True)
 def log_fall_detected(room):
     # 카메라 프레임이 없어도(꺼져있거나 일시적으로 끊겨도) 낙상이 있었다는 기록 자체는 남긴다.
     # capture_path만 NULL로 남고, 화면에서는 "캡처 이미지 없음"으로 표시된다.
-    frame = latest_annotated_frame or latest_frame
+    # 낙상 이력에는 분석 박스가 그려진 영상이 아닌 원본 카메라 프레임을 저장한다.
+    frame = latest_frame
     filename = None
     if frame is None:
         print("[dashboard] 카메라 프레임 없음: 캡처 이미지 없이 fall_log만 기록")

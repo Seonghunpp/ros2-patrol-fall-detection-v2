@@ -500,7 +500,7 @@ class FallDetectionNode(Node):
             return
 
         result = self._run_pose_model(image)
-        image = result.plot(boxes=False, labels=False)
+        annotated_image = result.plot(boxes=False, labels=False)
         persons = self._extract_persons(result, image.shape)
         self.frame_index += 1
 
@@ -564,8 +564,8 @@ class FallDetectionNode(Node):
             del self.person_states[track_id]
 
         # 그리기, 저장, 발행
-        image = self._draw_results(
-            image,
+        annotated_image = self._draw_results(
+            annotated_image,
             persons,
         )
 
@@ -600,7 +600,7 @@ class FallDetectionNode(Node):
 
         self._publish_results(
             compressed_image_msg,
-            image,
+            annotated_image,
         )
             
 def main(args=None):
