@@ -27,7 +27,7 @@ class ArucoBehaviorController:
     CONTROL_PERIOD = 0.05
     SEEN_TIMEOUT = 0.4
 
-    TARGET_OFFSET = 0.05
+    TARGET_OFFSET = 0.0
     CENTER_TOL = 0.03
     TARGET_DISTANCE = 0.55
     DISTANCE_TOL = 0.02
@@ -36,7 +36,7 @@ class ArucoBehaviorController:
     RETRY_SEARCH_SPEED = 0.15     # 재탐색 회전 (0.3 -> 0.15)
     SEARCH_ANGLE = 2.0 * math.pi
     ALIGN_K = 0.6
-    MIN_TURN = 0.10
+    MIN_TURN = 0.05
     MAX_TURN = 0.4
     APPROACH_K = 0.5
     APPROACH_MIN_SPEED = 0.03
@@ -307,6 +307,9 @@ class ArucoBehaviorController:
             self.timer = None
         result = ArucoBehaviorResult(success=success, message=message)
         logger = self.node.get_logger()
-        (logger.info if success else logger.warn)(message)
+        if success:
+            logger.info(message)
+        else:
+            logger.warn(message)
         if notify and callback is not None:
             callback(result)
