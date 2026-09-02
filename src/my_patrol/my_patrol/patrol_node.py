@@ -38,6 +38,9 @@
 import math
 import os
 import random
+import statistics
+import threading
+from collections import deque
 
 import mysql.connector
 import rclpy
@@ -178,7 +181,20 @@ class PatrolNode(Node):
 
     # ── 이동 ──
     PLACE_MATCH_DIST = 1.0    # 이 거리(m) 안에 등록 지점이 없으면 '위치 모름'
-    LOW_BATTERY_THRESHOLD = 30.0
+
+    # ── 배터리 ──
+    # OpenCR 이 전압에서 환산해 보내므로 주행 중 모터 부하로 값이 출렁인다
+    # (실측: 31 -> 29 -> 33 -> 28). 한 번 스친 값으로 순찰을 접으면
+    # 복귀와 순찰이 번갈아 취소되어 아무 것도 못 한다. 그래서
+    #   중앙값으로 튀는 값을 걷어내고 -> 일정 시간 계속 낮을 때만 인정하고
+    #   -> 해제 기준을 높게 잡아 임계치 근처에서 왕복하지 않게 한다.
+    LOW_BATTERY_THRESHOLD = 30.0      # 이 아래로 내려가면 복귀
+    BATTERY_RECOVER_THRESHOLD = 40.0  # 이 위로 올라와야 저전력 해제(히스테리시스)
+    BATTERY_MEDIAN_SAMPLES = 15       # 중앙값을 낼 표본 수
+    BATTERY_CONFIRM_SEC = 20.0        # 이 시간 내내 낮아야 저전력으로 인정
+    BATTERY_NOISE_MARGIN = 3.0        # 임계치 바로 위는 '잡음 구간'으로 본다
+    DOCK_RETRY_SEC = 30.0             # 복귀 주행이 실패했을 때 재시도 간격
+    DOCK_RETRY_LIMIT = 5              # 재시도 횟수
 
     # ── 순찰 선택 ──
     RANK_WEIGHTS = (40, 30, 20, 10)   # 1~4순위 가중치. 그 뒤는 전부 10
@@ -241,11 +257,20 @@ class PatrolNode(Node):
         self.last_room = None       # 직전에 순찰을 마친 병실 번호 (연속 중복 방지)
 
         # ── 배터리 자동 복귀 ──
-        self.battery_percent = None
+        self.battery_percent = None          # 중앙값으로 걸러낸 값
+        self.battery_samples = deque(maxlen=self.BATTERY_MEDIAN_SAMPLES)
+        self.battery_low_since = None        # 계속 낮기 시작한 시각
         self.low_battery_latched = False
         self.low_battery_pending = False
         self.auto_docking = False
+        self.dock_retry_count = 0
+        self.dock_retry_timer = None
         self.room_entry_started = False
+
+        # 배터리 콜백 · Nav2 결과 콜백 · ArUco 타이머가 서로 다른 스레드에서
+        # 같은 상태를 건드린다(ReentrantCallbackGroup + MultiThreadedExecutor).
+        # 주행 상태를 바꾸는 구간은 전부 이 락 안에서만 실행한다.
+        self._state_lock = threading.RLock()
 
         # 기존 goal을 취소하고 충전소 goal을 보낸 뒤, 기존 goal의
         # 결과 콜백이 늦게 도착해 새 주행을 실패 처리하지 않게 한다.
@@ -365,32 +390,76 @@ class PatrolNode(Node):
     # =====================================================
 
     def battery_callback(self, msg):
-        """배터리가 임계치 아래로 내려가는 순간을 한 번만 처리한다.
+        """튀는 값을 걸러낸 뒤, 정말로 낮을 때만 한 번 복귀를 요청한다.
 
         BatteryState.percentage는 표준상 0.0~1.0이지만 OpenCR 버전에
         따라 0~100으로 올 수 있어 두 형식을 모두 받는다.
         """
-        percentage = float(msg.percentage)
-        if not math.isfinite(percentage) or percentage < 0.0:
+        percentage = self._normalize_battery(msg.percentage)
+        if percentage is None:
             return
+
+        with self._state_lock:
+            self.battery_samples.append(percentage)
+            # 표본이 덜 모였으면 아직 판단하지 않는다. 켜자마자 들어온
+            # 첫 값 하나로 순찰을 접는 일을 막는다.
+            if len(self.battery_samples) < self.battery_samples.maxlen:
+                return
+
+            self.battery_percent = statistics.median(self.battery_samples)
+            now = self.get_clock().now().nanoseconds / 1e9
+
+            # 해제 기준(40%)을 넘어야 저전력 상태를 푼다. 켜는 기준과
+            # 다르게 두어야 30% 근처에서 왕복하지 않는다.
+            if self.battery_percent >= self.BATTERY_RECOVER_THRESHOLD:
+                self.battery_low_since = None
+                self.low_battery_latched = False
+                if not self.auto_docking:
+                    self.low_battery_pending = False
+                return
+
+            noise_top = self.LOW_BATTERY_THRESHOLD + self.BATTERY_NOISE_MARGIN
+            if self.battery_percent > noise_top:
+                # 확실히 임계치 위. 확인 타이머를 처음부터 다시 잰다.
+                self.battery_low_since = None
+                return
+            if self.battery_percent > self.LOW_BATTERY_THRESHOLD:
+                # 30~33% 는 잡음 구간. 중앙값이 29 <-> 31 로 오가는 것만으로
+                # 확인 타이머가 리셋되면 실제로 30% 언저리인데도 영영
+                # 복귀하지 않는다. 그래서 여기서는 타이머를 건드리지 않는다.
+                return
+
+            # 여기부터 30% 이하. 잠깐 스친 것인지 확인한다.
+            if self.battery_low_since is None:
+                self.battery_low_since = now
+                self.get_logger().warn(
+                    f'배터리 {self.battery_percent:.1f}%: '
+                    f'{self.BATTERY_CONFIRM_SEC:.0f}초 더 지켜봅니다.')
+                return
+            if now - self.battery_low_since < self.BATTERY_CONFIRM_SEC:
+                return
+
+            if self.low_battery_latched:
+                return
+            self.low_battery_latched = True
+
+            self.get_logger().warn(
+                f'배터리 {self.battery_percent:.1f}%: 충전소 복귀를 요청합니다.')
+            self._request_auto_docking()
+
+    def _normalize_battery(self, raw):
+        """센서 값을 0~100 퍼센트로 바꾼다. 못 믿을 값이면 None."""
+        try:
+            percentage = float(raw)
+        except (TypeError, ValueError):
+            return None
+        if not math.isfinite(percentage) or percentage <= 0.0:
+            # OpenCR 펌웨어가 battery_percentage 레지스터를 채우지 않으면
+            # 0.0 이 계속 온다. 이걸 0% 로 믿으면 켜자마자 충전소로 간다.
+            return None
         if percentage <= 1.0:
             percentage *= 100.0
-        self.battery_percent = max(0.0, min(100.0, percentage))
-
-        if self.battery_percent > self.LOW_BATTERY_THRESHOLD:
-            self.low_battery_latched = False
-            if not self.auto_docking:
-                self.low_battery_pending = False
-            return
-
-        # 30% 이하 메시지가 계속 와도 복귀를 중복 호출하지 않는다.
-        if self.low_battery_latched:
-            return
-        self.low_battery_latched = True
-
-        self.get_logger().warn(
-            f'배터리 {self.battery_percent:.1f}%: 충전소 복귀를 요청합니다.')
-        self._request_auto_docking()
+        return max(0.0, min(100.0, percentage))
 
     def _request_auto_docking(self):
         """병실 진입 후에는 현재 확인을 끝내고, 그 전에는 즉시 복귀한다."""
@@ -404,44 +473,94 @@ class PatrolNode(Node):
                 '충전소로 복귀합니다.')
             return
 
+        if self.mode == 'PAUSED':
+            # 복도에 선 채로 방전되는 편이 더 위험하므로 일시정지를 풀고 간다.
+            self.get_logger().warn('일시정지 상태이지만 저전력이라 복귀합니다.')
+
         self._start_auto_docking()
 
     def _start_auto_docking(self):
         """현재 작업을 버리고 충전소 Nav2 이동을 시작한다."""
-        if self.auto_docking:
+        with self._state_lock:
+            if self.auto_docking:
+                return True
+
+            self.load_waypoints()
+            dock = self.waypoints.get('dock')
+            if not dock:
+                self.get_logger().error('충전소 좌표가 등록되어 있지 않습니다.')
+                self._schedule_dock_retry('충전소 좌표 없음')
+                return False
+
+            self._cancel_retry_timer()
+            self._cancel_dock_retry()
+            self.auto_docking = True
+            self.room_entry_started = False
+            self.aruco_behavior.cancel('저전력 충전소 복귀', notify=False)
+
+            # 진행 중이던 goal 을 취소하기 전에 세대를 먼저 올린다.
+            # 순서가 반대면 취소 결과가 '주행 실패' 로 처리되어
+            # 방금 시작한 복귀까지 같이 지워진다.
+            self.navigation_generation += 1
+            if self.goal_handle is not None:
+                self.goal_handle.cancel_goal_async()
+                self.goal_handle = None
+            self.stop_robot()
+            self.current_place = None
+
+            class _Resp:
+                success = False
+                message = ''
+
+            response = _Resp()
+            # 위치가 불확실한 이동 중이므로 병실 탈출 hall을 되돌아가지
+            # 않고 현재 위치에서 dock을 바로 목표로 삼는다.
+            self.start_navigation('dock', [dock], response, task='MANUAL')
+            if not response.success:
+                self.auto_docking = False
+                self.get_logger().error(
+                    f'충전소 자동 복귀 시작 실패: {response.message}')
+                self._schedule_dock_retry(response.message)
+                return False
+
+            # 복귀가 실제로 시작된 뒤에 보류 표시를 지운다.
+            self.low_battery_pending = False
+            self.get_logger().warn('충전소 자동 복귀를 시작합니다.')
             return True
 
-        self.load_waypoints()
-        dock = self.waypoints.get('dock')
-        if not dock:
-            self.get_logger().error('충전소 좌표가 등록되어 있지 않습니다.')
-            return False
+    # ── 복귀 실패 시 재시도 ──
+    # 복귀에 실패했다는 건 충전을 못 했다는 뜻이라 배터리는 계속 낮다.
+    # 래치가 걸린 채로 두면 battery_callback 이 매번 조기 return 해서
+    # 로봇이 복도에 선 채로 방전된다. 그래서 여기서 직접 다시 건다.
+    def _schedule_dock_retry(self, reason=''):
+        if self.dock_retry_timer is not None:
+            return
+        if self.dock_retry_count >= self.DOCK_RETRY_LIMIT:
+            self.get_logger().error(
+                f'충전소 복귀를 {self.DOCK_RETRY_LIMIT}회 시도했으나 '
+                '모두 실패했습니다. 수동 조치가 필요합니다.')
+            return
+        self.dock_retry_count += 1
+        self.get_logger().warn(
+            f'{self.DOCK_RETRY_SEC:.0f}초 뒤 충전소 복귀를 다시 시도합니다 '
+            f'({self.dock_retry_count}/{self.DOCK_RETRY_LIMIT}). {reason}')
+        self.dock_retry_timer = self.create_timer(
+            self.DOCK_RETRY_SEC, self._dock_retry, callback_group=self.cb_group)
 
-        self._cancel_retry_timer()
-        self.low_battery_pending = False
-        self.auto_docking = True
-        self.room_entry_started = False
+    def _cancel_dock_retry(self):
+        if self.dock_retry_timer is not None:
+            self.dock_retry_timer.cancel()
+            self.destroy_timer(self.dock_retry_timer)
+            self.dock_retry_timer = None
 
-        # 위치가 불확실한 이동 중이므로 병실 탈출 hall을 되돌아가지
-        # 않고 현재 위치에서 dock을 바로 목표로 삼는다.
-        if self.goal_handle is not None:
-            self.goal_handle.cancel_goal_async()
-        self.stop_robot()
-        self.current_place = None
-
-        class _Resp:
-            success = False
-            message = ''
-
-        response = _Resp()
-        self.start_navigation('dock', [dock], response, task='MANUAL')
-        if not response.success:
-            self.auto_docking = False
-            self.get_logger().error(f'충전소 자동 복귀 시작 실패: {response.message}')
-            return False
-
-        self.get_logger().warn('충전소 자동 복귀를 시작합니다.')
-        return True
+    def _dock_retry(self):
+        with self._state_lock:
+            self._cancel_dock_retry()
+            if self.auto_docking or self.current_place == 'dock':
+                return
+            if not self.low_battery_latched:
+                return          # 그 사이 배터리가 회복됐다
+            self._start_auto_docking()
 
     # =====================================================
     # 서비스 — 게이트
@@ -492,29 +611,33 @@ class PatrolNode(Node):
         return response
 
     def pause_navigation_callback(self, request, response):
-        if self.mode != 'RUNNING':
-            response.success = False
-            response.message = '이동 중이 아닙니다.'
+        with self._state_lock:
+            if self.mode != 'RUNNING':
+                response.success = False
+                response.message = '이동 중이 아닙니다.'
+                return response
+
+            self.mode = 'PAUSED'
+            self.aruco_behavior.cancel('순찰 일시정지')
+
+            if self.goal_handle is not None:
+                self.goal_handle.cancel_goal_async()
+
+            self.stop_robot()
+
+            # 경유점 사이 어딘가에서 멈췄으므로 현재 위치를 알 수 없다.
+            # 다음 이동 때 TF로 다시 확인하게 둔다.
+            self.pending_waypoints = []
+            self.active_waypoint = None
+            self.current_place = None
+            # 이걸 남겨 두면 저전력 복귀가 '병실 확인이 끝나면' 을 기다리다
+            # 영영 시작되지 않는다. _finish_task 는 PAUSED 면 곧장 return 한다.
+            self.room_entry_started = False
+
+            self.get_logger().info('Paused.')
+            response.success = True
+            response.message = '이동을 일시정지했습니다.'
             return response
-
-        self.mode = 'PAUSED'
-        self.aruco_behavior.cancel('순찰 일시정지')
-
-        if self.goal_handle is not None:
-            self.goal_handle.cancel_goal_async()
-
-        self.stop_robot()
-
-        # 경유점 사이 어딘가에서 멈췄으므로 현재 위치를 알 수 없다.
-        # 다음 이동 때 TF로 다시 확인하게 둔다.
-        self.pending_waypoints = []
-        self.active_waypoint = None
-        self.current_place = None
-
-        self.get_logger().info('Paused.')
-        response.success = True
-        response.message = '이동을 일시정지했습니다.'
-        return response
 
     # =====================================================
     # 서비스 — 수동 이동
@@ -676,36 +799,37 @@ class PatrolNode(Node):
     # =====================================================
 
     def start_navigation(self, mode, points, response, task='MANUAL'):
-        # 새 목적지를 받으면 남은 경로는 버리고 새로 시작한다
-        self.navigation_generation += 1
-        self.pending_waypoints = []
-        self.active_waypoint = None
-        self.room_entry_started = False
+        with self._state_lock:
+            # 새 목적지를 받으면 남은 경로는 버리고 새로 시작한다
+            self.navigation_generation += 1
+            self.pending_waypoints = []
+            self.active_waypoint = None
+            self.room_entry_started = False
 
-        if not points:
-            response.success = False
-            response.message = '등록된 좌표가 없습니다.'
+            if not points:
+                response.success = False
+                response.message = '등록된 좌표가 없습니다.'
+                return response
+
+            route = ' -> '.join(f"({p['x']}, {p['y']})" for p in points)
+            self.get_logger().info(f'{mode}: {len(points)} waypoint(s) — {route}')
+
+            self.mode = 'RUNNING'
+            self.task = task
+            self.current_mode = mode
+            self.pending_waypoints = list(points)
+
+            # 첫 경유점 전송 실패(Nav2 미실행)면 이동을 시작하지 못한 것이므로
+            # 성공으로 응답하지 않는다
+            if not self.send_next_waypoint():
+                self.navigation_failed()
+                response.success = False
+                response.message = 'Nav2에 연결할 수 없습니다.'
+                return response
+
+            response.success = True
+            response.message = f'{mode} 이동을 시작합니다.'
             return response
-
-        route = ' -> '.join(f"({p['x']}, {p['y']})" for p in points)
-        self.get_logger().info(f'{mode}: {len(points)} waypoint(s) — {route}')
-
-        self.mode = 'RUNNING'
-        self.task = task
-        self.current_mode = mode
-        self.pending_waypoints = list(points)
-
-        # 첫 경유점 전송 실패(Nav2 미실행)면 이동을 시작하지 못한 것이므로
-        # 성공으로 응답하지 않는다
-        if not self.send_next_waypoint():
-            self.navigation_failed()
-            response.success = False
-            response.message = 'Nav2에 연결할 수 없습니다.'
-            return response
-
-        response.success = True
-        response.message = f'{mode} 이동을 시작합니다.'
-        return response
 
     def send_next_waypoint(self):
         """경유점마다 도착을 확인하고 다음 goal을 보낸다."""
@@ -761,40 +885,47 @@ class PatrolNode(Node):
         return pose
 
     def goal_response_callback(self, future, generation):
-        goal_handle = future.result()
-        if generation != self.navigation_generation:
-            if goal_handle.accepted:
-                goal_handle.cancel_goal_async()
-            return
-        if not goal_handle.accepted:
-            self.get_logger().error('Navigation goal rejected.')
-            self.navigation_failed()
-            return
+        with self._state_lock:
+            goal_handle = future.result()
+            if generation != self.navigation_generation:
+                if goal_handle.accepted:
+                    goal_handle.cancel_goal_async()
+                return
+            if not goal_handle.accepted:
+                self.get_logger().error('Navigation goal rejected.')
+                self.navigation_failed()
+                return
 
-        self.goal_handle = goal_handle      # 일시정지가 취소할 대상
-        goal_handle.get_result_async().add_done_callback(
-            lambda done, gen=generation: self.result_callback(done, gen))
+            self.goal_handle = goal_handle      # 일시정지가 취소할 대상
+            goal_handle.get_result_async().add_done_callback(
+                lambda done, gen=generation: self.result_callback(done, gen))
 
     def feedback_callback(self, feedback_msg):
         distance = feedback_msg.feedback.distance_remaining
         self.get_logger().info(f'Distance remaining: {distance:.2f} m')
 
     def result_callback(self, future, generation):
-        if generation != self.navigation_generation:
-            return
-        # 일시정지로 취소한 결과는 실패가 아니다
-        if self.mode == 'PAUSED':
-            self.get_logger().info('Navigation paused (goal cancelled).')
-            return
+        with self._state_lock:
+            if generation != self.navigation_generation:
+                return
+            # 일시정지로 취소한 결과는 실패가 아니다
+            if self.mode == 'PAUSED':
+                self.get_logger().info('Navigation paused (goal cancelled).')
+                return
 
-        result = future.result()
-        if result.status == GoalStatus.STATUS_SUCCEEDED:
-            self.get_logger().info('Waypoint reached.')
-            if not self.send_next_waypoint():
+            result = future.result()
+            if result.status == GoalStatus.STATUS_SUCCEEDED:
+                self.get_logger().info('Waypoint reached.')
+                if not self.send_next_waypoint():
+                    self.navigation_failed()
+            elif result.status == GoalStatus.STATUS_CANCELED:
+                # 우리가 취소한 것이다. 실패로 처리하면 새로 시작한
+                # 주행까지 같이 지워진다.
+                self.get_logger().info('Navigation goal cancelled.')
+            else:
+                self.get_logger().error(
+                    f'Navigation failed. status={result.status}')
                 self.navigation_failed()
-        else:
-            self.get_logger().error(f'Navigation failed. status={result.status}')
-            self.navigation_failed()
 
     def navigation_failed(self):
         """이동 실패·중단.
@@ -813,6 +944,9 @@ class PatrolNode(Node):
         if self.auto_docking:
             self.auto_docking = False
             self.get_logger().error('충전소 자동 복귀 주행이 실패했습니다.')
+            # 배터리는 여전히 낮으므로 여기서 다시 걸어 주지 않으면
+            # 아무도 복귀를 재시도하지 않는다.
+            self._schedule_dock_retry('복귀 주행 실패')
 
     # =====================================================
     # 도착 후 행동 (순찰·수동 공통)
@@ -908,26 +1042,29 @@ class PatrolNode(Node):
 
     def _finish_task(self):
         """한 목적지 처리 완료. 순찰이면 다음 병실로, 수동이면 대기로."""
-        if self.mode == 'PAUSED':
-            return
+        with self._state_lock:
+            if self.mode == 'PAUSED':
+                return
 
-        self.room_entry_started = False
+            self.room_entry_started = False
 
-        # 병실 진입 후 보류한 저전력 복귀는 병실 확인이
-        # 정상적으로 끝난 이 시점에 시작한다.
-        if self.low_battery_pending and self.current_mode != 'dock':
-            self._start_auto_docking()
-            return
+            # 병실 진입 후 보류한 저전력 복귀는 병실 확인이
+            # 정상적으로 끝난 이 시점에 시작한다.
+            if self.low_battery_pending and self.current_mode != 'dock':
+                self._start_auto_docking()
+                return
 
-        if self.task == 'PATROL':
-            self.start_next_patrol()
-        else:
-            if self.current_mode == 'dock':
-                self.auto_docking = False
-            self.mode = 'IDLE'
-            self.task = None
-            self.current_mode = None
-            self.get_logger().info('Manual move finished (mode=IDLE)')
+            if self.task == 'PATROL':
+                self.start_next_patrol()
+            else:
+                if self.current_mode == 'dock':
+                    self.auto_docking = False
+                    self.dock_retry_count = 0
+                    self._cancel_dock_retry()
+                self.mode = 'IDLE'
+                self.task = None
+                self.current_mode = None
+                self.get_logger().info('Manual move finished (mode=IDLE)')
 
     def stop_robot(self):
         self.cmd_vel_pub.publish(Twist())
@@ -947,6 +1084,8 @@ def main(args=None):
         pass
     finally:
         node.aruco_behavior.cancel('순찰 노드 종료')
+        node._cancel_dock_retry()
+        node._cancel_retry_timer()
         node.stop_robot()
         executor.shutdown()
         node.destroy_node()
