@@ -22,19 +22,19 @@ RIGHT_HIP = 12
 LEFT_KNEE = 13
 RIGHT_KNEE = 14
 
+
+# YOLO Pose 관절 좌표로 몸통이 수평에 가까운지 판정한다.
 class FallJudge:
     def __init__(
         self,
-        body_ratio=1.0,          # 몸통 수평 판정 기준
-        keypoint_conf=0.25,      # 관절을 사용할 수 있는 최소 신뢰도
-        threshold_count=10,      # 낙상으로 확정할 연속 프레임 수
+        body_ratio=1.0,          # 가로 거리가 세로 거리의 몇 배여야 하는지
+        keypoint_conf=0.25,      # 판정에 사용할 관절의 최소 신뢰도
     ):
         self.body_ratio = body_ratio
         self.keypoint_conf = keypoint_conf
-        self.threshold_count = threshold_count
-        self.fall_count = 0
 
-    def _is_keypoint_valid(self, keypoint_scores, index): #keypoint_scores 한 사람의 17개 관절 신뢰도 / index 확인할 관절 번호
+    # 지정한 관절이 존재하고 최소 신뢰도를 만족하는지 확인한다.
+    def _is_keypoint_valid(self, keypoint_scores, index):
         if keypoint_scores is None:
             return False
 
@@ -43,7 +43,8 @@ class FallJudge:
 
         return float(keypoint_scores[index]) >= self.keypoint_conf
 
-    def _get_joint_center(self, keypoints, left_index, right_index): # 좌우 관절의 가운데 좌표 계산
+    # 좌우 관절의 중간점을 계산한다.
+    def _get_joint_center(self, keypoints, left_index, right_index):
         left_x, left_y = keypoints[left_index]
         right_x, right_y = keypoints[right_index]
 
@@ -52,16 +53,18 @@ class FallJudge:
 
         return center_x, center_y
 
-    def _is_horizontal(self, point_a, point_b): # 두 점이 수평인지 확인
+    # 두 점의 가로 거리가 세로 거리보다 충분히 큰지 확인한다.
+    def _is_horizontal(self, point_a, point_b):
         x1, y1 = point_a
         x2, y2 = point_b
 
         x_distance = abs(x2 - x1)
         y_distance = abs(y2 - y1)
 
-        return x_distance > y_distance * self.body_ratio
+        return bool(x_distance > y_distance * self.body_ratio)
 
-    def _check_primary_joints(self, keypoints, keypoint_scores): # 어깨·골반으로 기본 수평 판정
+    # 양쪽 어깨 중앙과 양쪽 골반 중앙을 이용하는 기본 판정이다.
+    def _check_primary_joints(self, keypoints, keypoint_scores):
         required = (
             LEFT_SHOULDER,
             RIGHT_SHOULDER,
@@ -90,7 +93,8 @@ class FallJudge:
             hip_center,
         )
 
-    def _check_fallback_joints(self, keypoints, keypoint_scores): #기본 관절이 가리면 보조 관절로 판정
+    # 기본 관절이 가려졌을 때 한쪽 몸통 또는 팔꿈치·무릎을 이용한다.
+    def _check_fallback_joints(self, keypoints, keypoint_scores):
         if (
             self._is_keypoint_valid(keypoint_scores, LEFT_SHOULDER)
             and self._is_keypoint_valid(keypoint_scores, LEFT_HIP)
@@ -136,7 +140,9 @@ class FallJudge:
             elbow_center,
             knee_center,
         )
-    def _check_body_horizontal(self, keypoints, keypoint_scores): # 기본 판정 후 필요할 때 보조 판정 실행
+
+    # 기본 판정에 필요한 관절이 부족할 때만 보조 판정을 실행한다.
+    def _check_body_horizontal(self, keypoints, keypoint_scores):
         primary_result = self._check_primary_joints(
             keypoints,
             keypoint_scores,
@@ -150,36 +156,23 @@ class FallJudge:
             keypoint_scores,
         )
 
-    def _update_fall_count(self, horizontal_result): # 수평이면 증가, 벗어나면 초기화
-        if horizontal_result:
-            self.fall_count = min(
-                self.fall_count + 1,
-                self.threshold_count,
-            )
-        else:
-            self.fall_count = 0
-
-        return self.fall_count
-
-    def _check_fall_threshold(self): # 카운트가 기준에 도달했는지 확인
-        return self.fall_count >= self.threshold_count
-
-
-
 class FallDetectionNode(Node):
+    # 박스가 프레임 경계와 맞닿은 경우를 제외하기 위한 픽셀 여백이다.
     FRAME_MARGIN = 10
 
     def __init__(self):
         super().__init__("fall_detection_node")
 
-        default_model = str(                    # 욜로 모델 경로
+        # 설치된 my_patrol 패키지의 기본 모델을 사용한다.
+        default_model = str(
             Path(get_package_share_directory("my_patrol"))
             / "model"
             / "patient_pose_v2.pt"
         )
         self.declare_parameter("model_path", default_model)
 
-        model_path = (                          # 욜로 모델 경로 가져오기
+        # ROS 파라미터로 다른 모델 경로를 지정할 수 있다.
+        model_path = (
             self.get_parameter("model_path")
             .get_parameter_value()
             .string_value
@@ -187,24 +180,33 @@ class FallDetectionNode(Node):
 
         self.model = YOLO(model_path)
         self.threshold_count = 10
-        self.judge = FallJudge(threshold_count=self.threshold_count)
+        self.judge = FallJudge()
+
+        # Track ID별 카운트·확정·알림 상태를 저장한다.
         self.person_states = {}
         self.frame_index = 0
+        # 이 프레임 수만큼 보이지 않은 Track ID는 화면에서 사라진 것으로 본다.
         self.max_missed_frames = 30
+        # 미확정 낙상 후보가 사라진 뒤 정지 신호를 유지하는 시간(초)이다.
         self.fall_clear_wait = 5.0
+        # /fall_detected에 발행하는 즉시 정지 상태다.
         self.fall_latched = False
         self.fall_clear_since = None
+        # 한 번의 병실 감지 세션에서 /fall_confirmed를 한 번만 확정한다.
         self.confirmed_latched = False
+
+        # 확정 순간의 원본 카메라 프레임을 저장한다.
         self.fall_image_dir = Path.home() / "fall_images"
         self.fall_image_dir.mkdir(parents=True, exist_ok=True)
 
-        image_qos = QoSProfile(                 # 이미지 구독 QoS 설정
+        # 카메라 지연을 줄이기 위해 최신 프레임 하나만 Best Effort로 받는다.
+        image_qos = QoSProfile(
             depth=1,
             reliability=QoSReliabilityPolicy.BEST_EFFORT,
             history=QoSHistoryPolicy.KEEP_LAST,
         )
 
-        self.image_sub = self.create_subscription(# 이미지 구독
+        self.image_sub = self.create_subscription(
             CompressedImage,
             "/image_raw/compressed",
             self.image_callback,
@@ -216,16 +218,15 @@ class FallDetectionNode(Node):
             "/image_annotated/compressed",
             1,
         )
-        # 로봇 제어용 — 1프레임만 보여도 즉시 true. 빨리 멈추는 게 중요하다.
+        # 로봇 정지용: 완전히 보이는 fall_person이 한 프레임만 있어도 True다.
         self.fall_detected_pub = self.create_publisher(
             Bool,
             "/fall_detected",
             10,
         )
 
-        # 기록용 — threshold_count 프레임 연속으로 확정된 것만 true.
-        # 대시보드가 이걸 보고 fall_log 에 행을 남기므로, 스쳐 지나가는
-        # 오탐까지 기록되면 낙상 이력이 지저분해진다.
+        # 기록용: 사람별 누적 기준과 관절 검증을 모두 통과해야 True다.
+        # 한 병실 감지 세션 동안 값을 유지해 대시보드의 중복 기록을 막는다.
         self.fall_confirmed_pub = self.create_publisher(
             Bool,
             "/fall_confirmed",
@@ -238,7 +239,8 @@ class FallDetectionNode(Node):
             self.enable_callback,
         )
 
-    def _decode_image(self, compressed_image_msg): # 압축 이미지를 OpenCV 이미지로 변환
+    # ROS 압축 이미지를 OpenCV BGR 이미지로 변환한다.
+    def _decode_image(self, compressed_image_msg):
         np_arr = np.frombuffer(compressed_image_msg.data, np.uint8)
         image = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
 
@@ -248,7 +250,8 @@ class FallDetectionNode(Node):
 
         return image
 
-    def _run_pose_model(self, image): # YOLO Pose 실행
+    # 이전 프레임의 Track ID를 유지하면서 YOLO Pose 추론을 실행한다.
+    def _run_pose_model(self, image):
         result = self.model.track(
             image,
             persist=True,
@@ -288,7 +291,8 @@ class FallDetectionNode(Node):
 
         return False
 
-    def _extract_persons(self, result, image_shape): # 사람별 박스, 클래스, 추적 ID 묶기
+    # 추론 결과에서 Track ID가 있는 사람의 박스·관절 정보를 추출한다.
+    def _extract_persons(self, result, image_shape):
         persons = []
 
         boxes = result.boxes
@@ -321,7 +325,6 @@ class FallDetectionNode(Node):
                 "track_id": track_ids[index],
                 "box": (x1, y1, x2, y2),
                 "confidence": float(boxes_conf[index]),
-                "class_id": class_id,
                 "class_name": class_name,
                 "box_fully_visible": box_fully_visible,
                 "keypoints": (
@@ -337,7 +340,8 @@ class FallDetectionNode(Node):
 
         return persons
 
-    def _save_fall_image(self, image): # 낙상 확정 순간 이미지 저장
+    # 낙상 확정 순간의 원본 카메라 프레임을 저장한다.
+    def _save_fall_image(self, image):
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         filename = f"fall_{timestamp}.jpg"
         filepath = self.fall_image_dir / filename
@@ -351,17 +355,18 @@ class FallDetectionNode(Node):
 
         return saved
     
-    def _draw_person_box(self, image, person): #사람 한 명의 박스와 상태 표시
+    # 사람 한 명의 현재 판정 상태를 박스와 문자열로 표시한다.
+    def _draw_person_box(self, image, person):
         x1, y1, x2, y2 = person["box"]
         confidence = person["confidence"]
         class_name = person["class_name"]
         track_id = person["track_id"]
         fall_count = person["fall_count"]
-        fall_detected = person["fall_detected"]
+        confirmed = person["confirmed"]
         box_fully_visible = person["box_fully_visible"]
         pose_result = person["pose_result"]
 
-        if fall_detected:
+        if confirmed:
             label = "FALL DETECTED"
             color = (40, 40, 230)
         elif class_name == "fall_person" and not box_fully_visible:
@@ -381,24 +386,23 @@ class FallDetectionNode(Node):
         corner_length = int(np.clip(short_side * 0.2, 10, 40))
         thickness = int(np.clip(short_side / 80, 2, 5))
 
-        # 왼쪽 위
+        # 전체 사각형 대신 네 모서리만 그려 사람과 관절이 잘 보이게 한다.
         cv2.line(image, (x1, y1), (x1 + corner_length, y1), color, thickness)
         cv2.line(image, (x1, y1), (x1, y1 + corner_length), color, thickness)
 
-        # 오른쪽 위
         cv2.line(image, (x2, y1), (x2 - corner_length, y1), color, thickness)
         cv2.line(image, (x2, y1), (x2, y1 + corner_length), color, thickness)
 
-        # 왼쪽 아래
         cv2.line(image, (x1, y2), (x1 + corner_length, y2), color, thickness)
         cv2.line(image, (x1, y2), (x1, y2 - corner_length), color, thickness)
 
-        # 오른쪽 아래
         cv2.line(image, (x2, y2), (x2 - corner_length, y2), color, thickness)
         cv2.line(image, (x2, y2), (x2, y2 - corner_length), color, thickness)
 
         pose_text = ""
-        if fall_count >= self.threshold_count:
+        if confirmed:
+            pose_text = " CONFIRMED"
+        elif fall_count >= self.threshold_count:
             if pose_result is True:
                 pose_text = " POSE:FALL"
             elif pose_result is False:
@@ -417,7 +421,7 @@ class FallDetectionNode(Node):
         font_scale = 0.55
         text_thickness = 1
 
-        (text_width, text_height), baseline = cv2.getTextSize(
+        (text_width, text_height), _ = cv2.getTextSize(
             text,
             font,
             font_scale,
@@ -427,7 +431,7 @@ class FallDetectionNode(Node):
         label_top = max(y1 - text_height - 18, 0)
         label_bottom = label_top + text_height + 16
 
-        # 글자 뒤 배경
+        # 밝은 영상에서도 읽을 수 있도록 상태 문자열 뒤에 배경색을 넣는다.
         cv2.rectangle(
             image,
             (x1, label_top),
@@ -447,7 +451,8 @@ class FallDetectionNode(Node):
             cv2.LINE_AA,
         )
 
-    def _draw_results(self, image, persons): # 검출된 모든 사람의 결과 표시
+    # 추적 중인 모든 사람의 판정 결과를 분석 화면에 표시한다.
+    def _draw_results(self, image, persons):
         for person in persons:
             self._draw_person_box(
                 image,
@@ -456,7 +461,8 @@ class FallDetectionNode(Node):
 
         return image
 
-    def _publish_results(self, original_msg, image): # 상태와 결과 영상 ROS 발행
+    # 분석 화면을 JPEG로 압축하고 원본 메시지의 헤더를 유지해 발행한다.
+    def _publish_results(self, original_msg, image):
         encode_success, encoded_image = cv2.imencode(
             ".jpg",
             image,
@@ -474,7 +480,8 @@ class FallDetectionNode(Node):
 
         self.annotated_image_pub.publish(annotated_msg)
 
-    def enable_callback(self, request, response): # 낙상 감지 켜기·끄기 서비스 처리
+    # 감지 시작·종료 시 이전 병실에서 사용한 모든 판정 상태를 초기화한다.
+    def enable_callback(self, request, response):
         self.enabled = request.data
         self.person_states.clear()
         self.fall_latched = False
@@ -488,9 +495,9 @@ class FallDetectionNode(Node):
         response.message = f"fall detection {state}"
         return response
 
-    def image_callback(self, compressed_image_msg): # 위 함수들을 실제 처리 순서대로 호출
-        
-        #입력 및 사람 추출
+    # 프레임 입력부터 판정·저장·토픽 발행까지의 전체 처리 순서다.
+    def image_callback(self, compressed_image_msg):
+
         if not self.enabled:
             return
 
@@ -504,7 +511,7 @@ class FallDetectionNode(Node):
         persons = self._extract_persons(result, image.shape)
         self.frame_index += 1
 
-        # 낙상 판정 
+        # Track ID별 누적값과 확정 상태를 갱신한다.
         new_fall_ids = []
 
         for person in persons:
@@ -513,6 +520,8 @@ class FallDetectionNode(Node):
             if track_id not in self.person_states:
                 self.person_states[track_id] = {
                     "fall_count": 0,
+                    "recovery_count": 0,
+                    "confirmed": False,
                     "alert_sent": False,
                     "last_seen_frame": self.frame_index,
                 }
@@ -520,41 +529,63 @@ class FallDetectionNode(Node):
             state = self.person_states[track_id]
             state["last_seen_frame"] = self.frame_index
 
-            # 박스가 프레임 안에 완전히 들어온 사람만 모델
-            # 카운트를 갱신한다. 경계에 걸린 박스는 기존 값을 유지한다.
-            if person["box_fully_visible"]:
-                if person["class_name"] == "fall_person":
-                    state["fall_count"] = min(
-                        state["fall_count"] + 1,
-                        self.threshold_count,
-                    )
-                else:
-                    state["fall_count"] = 0
-
-            # 모델이 동일 ID를 10회 낙상으로 판정한 뒤에만
-            # 관절 좌표로 몸통 수평 자세를 최종 확인한다.
             pose_result = None
-            fall_detected = False
-            if (person["box_fully_visible"]
-                    and person["class_name"] == "fall_person"
-                    and state["fall_count"] >= self.threshold_count):
-                pose_result = self.judge._check_body_horizontal(
-                    person["keypoints"],
-                    person["keypoint_scores"],
-                )
-                fall_detected = pose_result is True
 
-            person["fall_count"] = state["fall_count"]
-            person["fall_detected"] = fall_detected
-            person["pose_result"] = pose_result
+            # 확정된 Track ID는 상태가 만료될 때까지 클래스와 자세를 재판정하지 않는다.
+            if not state["confirmed"]:
+                # 박스 전체가 보일 때만 카운트를 갱신한다.
+                # 프레임 경계에 걸린 경우에는 기존 카운트를 유지한다.
+                if person["box_fully_visible"]:
+                    if person["class_name"] == "fall_person":
+                        state["fall_count"] = min(
+                            state["fall_count"] + 1,
+                            self.threshold_count,
+                        )
+                    else:
+                        state["fall_count"] = 0
 
-            # 낙상이 처음 확정된 순간에만 이미지 저장 대상으로 추가한다.
-            if fall_detected and not state["alert_sent"]:
+                # 동일 ID가 기준 횟수에 도달한 뒤 관절 좌표로 최종 검증한다.
+                if (person["box_fully_visible"]
+                        and person["class_name"] == "fall_person"
+                        and state["fall_count"] >= self.threshold_count):
+                    pose_result = self.judge._check_body_horizontal(
+                        person["keypoints"],
+                        person["keypoint_scores"],
+                    )
+                    if pose_result is True:
+                        state["confirmed"] = True
+                        state["fall_count"] = self.threshold_count
+
+            # 확정 후에는 전체 박스가 보이는 person 판정만 회복으로 누적한다.
+            # fall_person이 다시 나오거나 10회에 도달하지 못하면 확정 상태를 유지한다.
+            else:
+                if person["box_fully_visible"]:
+                    if person["class_name"] == "person":
+                        state["recovery_count"] = min(
+                            state["recovery_count"] + 1,
+                            self.threshold_count,
+                        )
+                    else:
+                        state["recovery_count"] = 0
+
+                if state["recovery_count"] >= self.threshold_count:
+                    state["confirmed"] = False
+                    state["fall_count"] = 0
+                    state["recovery_count"] = 0
+
+            # Track ID별 알림은 한 번만 처리하고, 병실별 기록도 한 번만 생성한다.
+            if state["confirmed"] and not state["alert_sent"]:
                 state["alert_sent"] = True
                 if not self.confirmed_latched:
                     new_fall_ids.append(track_id)
                     self.confirmed_latched = True
 
+            person["fall_count"] = state["fall_count"]
+            person["confirmed"] = state["confirmed"]
+            person["pose_result"] = pose_result
+
+        # 오래 보이지 않은 Track ID와 그 ID의 확정 상태를 함께 제거한다.
+        # 이후 다시 나타나 새 ID를 받으면 새로운 사람으로 판정한다.
         expired_ids = [
             track_id
             for track_id, state in self.person_states.items()
@@ -563,27 +594,25 @@ class FallDetectionNode(Node):
         for track_id in expired_ids:
             del self.person_states[track_id]
 
-        # 그리기, 저장, 발행
+        # 관절과 사람별 판정 결과를 분석 화면에 그린다.
         annotated_image = self._draw_results(
             annotated_image,
             persons,
         )
 
-        # 같은 프레임에서 여러 명이 확정돼도 전체 이미지는 한 장만 저장한다.
+        # 병실에서 처음 확정된 순간의 원본 프레임만 한 장 저장한다.
         if new_fall_ids:
             self._save_fall_image(image)
 
-        # 한 프레임만 낙상 자세로 보여도 곧바로 낙상으로 본다.
-        # 사람이 쓰러진 뒤 확정(threshold_count)까지 기다리면 로봇 정지가 늦는다.
-        # 오탐이 섞이더라도 fall_clear_wait 초 뒤 자동으로 풀리므로,
-        # 늦게 멈추는 쪽보다 빨리 멈추는 쪽을 택한다.
-        current_fall = self._has_visible_fall_candidate(
-            result,
-            image.shape,
+        # 미확정 후보는 한 프레임만 보여도 즉시 정지한다.
+        # 확정된 Track ID는 상태가 만료될 때까지 정지를 유지한다.
+        # 둘 다 사라진 뒤에는 fall_clear_wait 동안 기다렸다가 정지를 해제한다.
+        current_fall = (
+            any(state["confirmed"] for state in self.person_states.values())
+            or self._has_visible_fall_candidate(result, image.shape)
         )
 
-        # 한 병실 감지 중에는 확정 신호를 유지한다.
-        # 카운트가 흔들려도 같은 낙상을 반복 기록하지 않는다.
+        # 확정 신호는 감지를 끌 때까지 유지해 같은 병실의 중복 기록을 막는다.
         self.fall_confirmed_pub.publish(Bool(data=self.confirmed_latched))
 
         if current_fall:
@@ -617,5 +646,6 @@ def main(args=None):
         if rclpy.ok():
             rclpy.shutdown()
 
-if __name__ == "__main__": # python 파일을 직접 실행할 때만 main() 호출
+# 이 파일을 직접 실행할 때만 ROS 노드를 시작한다.
+if __name__ == "__main__":
     main()
