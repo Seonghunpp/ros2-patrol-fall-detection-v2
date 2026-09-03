@@ -119,10 +119,6 @@ ANGULAR_MOVING_THRESHOLD = 0.05
 
 CMD_VEL_TIMEOUT_SEC = 1.0
 
-# 낙상 판정이 짧게 흔들려(FALL->PERSON->FALL) 같은 낙상이 중복 기록되지 않도록 하는 쿨다운
-FALL_EVENT_COOLDOWN_SEC = 15.0
-last_fall_event_time = 0.0
-
 # Nav2 경로(/plan)는 한 번에 수백 점이 온다. 화면에 그리는 데는 이 정도면 충분하고,
 # 그대로 실으면 1초마다 나가는 /api/status 응답이 쓸데없이 커진다
 PATH_MAX_POINTS = 40
@@ -611,19 +607,17 @@ class DashboardBridge(Node):
             state["path"] = []
 
     def fall_confirmed_callback(self, msg):
-        global last_fall_event_time
         old_status = state["fall_status"]
         # state["fall_status"] 는 화면에 그대로 찍히는 한국어 문자열이라 그대로 둔다
         new_status = "낙상 환자 발견" if msg.data else "정상"
         state["fall_status"] = new_status
 
+        # 감지 노드가 confirmed_latched 로 한 사건당 한 번만 True 를 올려 주므로
+        # 여기서는 상승 에지만 보면 된다. (시간 쿨다운은 오히려 정상 기록을 지운다)
         if new_status == "낙상 환자 발견" and old_status != "낙상 환자 발견":
-            now = time.time()
-            if now - last_fall_event_time >= FALL_EVENT_COOLDOWN_SEC:
-                add_event(f"병실 {state['current_room']} 낙상 환자 발견")
-                state["fall_alert_id"] += 1
-                log_fall_detected(state["current_room"])
-            last_fall_event_time = now
+            add_event(f"병실 {state['current_room']} 낙상 환자 발견")
+            state["fall_alert_id"] += 1
+            log_fall_detected(state["current_room"])
 
     def battery_callback(self, msg):
         global last_heartbeat

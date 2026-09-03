@@ -192,7 +192,7 @@ class FallDetectionNode(Node):
         # /fall_detected에 발행하는 즉시 정지 상태다.
         self.fall_latched = False
         self.fall_clear_since = None
-        # 한 번의 병실 감지 세션에서 /fall_confirmed를 한 번만 확정한다.
+        # 한 사건당 /fall_confirmed를 한 번만 확정 -> 낙상 화면에서 사라진 후 5초 지난 후 다시 탐색
         self.confirmed_latched = False
 
         # 확정 순간의 원본 카메라 프레임을 저장한다.
@@ -573,7 +573,7 @@ class FallDetectionNode(Node):
                     state["fall_count"] = 0
                     state["recovery_count"] = 0
 
-            # Track ID별 알림은 한 번만 처리하고, 병실별 기록도 한 번만 생성한다.
+            # Track ID별 알림은 한 번만 처리하고, 한 사건당 기록도 한 번만 생성.
             if state["confirmed"] and not state["alert_sent"]:
                 state["alert_sent"] = True
                 if not self.confirmed_latched:
@@ -612,7 +612,7 @@ class FallDetectionNode(Node):
             or self._has_visible_fall_candidate(result, image.shape)
         )
 
-        # 확정 신호는 감지를 끌 때까지 유지해 같은 병실의 중복 기록을 막는다.
+        # 확정 신호는 낙상 사라진 후 5초가 지나고 나서 변경 -> 중복 방지 
         self.fall_confirmed_pub.publish(Bool(data=self.confirmed_latched))
 
         if current_fall:
@@ -624,7 +624,7 @@ class FallDetectionNode(Node):
             elif time.monotonic() - self.fall_clear_since >= self.fall_clear_wait:
                 self.fall_latched = False
                 self.fall_clear_since = None
-
+                self.confirmed_latched = False
         self.fall_detected_pub.publish(Bool(data=self.fall_latched))
 
         self._publish_results(
