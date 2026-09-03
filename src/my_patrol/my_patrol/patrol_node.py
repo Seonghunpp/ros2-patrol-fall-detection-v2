@@ -252,6 +252,7 @@ class PatrolNode(Node):
         self.pending_waypoints = []
         self.active_waypoint = None
         self.goal_handle = None
+        self.goal_request_future = None
         self.current_mode = None    # 지금 향하는 목적지 키 (dock/standby/room1~4)
         self.current_place = None   # 마지막으로 도착한 목적지 키
         self.last_room = None       # 직전에 순찰을 마친 병실 번호 (연속 중복 방지)
@@ -265,6 +266,9 @@ class PatrolNode(Node):
         self.auto_docking = False
         self.dock_retry_count = 0
         self.dock_retry_timer = None
+        self.auto_dock_waiting_for_cancel = False
+        self.auto_dock_goal_started = False
+        self.auto_dock_waypoint = None
         self.room_entry_started = False
 
         # 배터리 콜백 · Nav2 결과 콜백 · ArUco 타이머가 서로 다른 스레드에서
@@ -495,6 +499,8 @@ class PatrolNode(Node):
             self._cancel_retry_timer()
             self._cancel_dock_retry()
             self.auto_docking = True
+            self.auto_dock_goal_started = False
+            self.auto_dock_waypoint = dock
             self.room_entry_started = False
             self.aruco_behavior.cancel('저전력 충전소 복귀', notify=False)
 
@@ -503,30 +509,87 @@ class PatrolNode(Node):
             # 방금 시작한 복귀까지 같이 지워진다.
             self.navigation_generation += 1
             if self.goal_handle is not None:
-                self.goal_handle.cancel_goal_async()
+                previous_goal = self.goal_handle
+                cancel_future = previous_goal.cancel_goal_async()
                 self.goal_handle = None
+                self.auto_dock_waiting_for_cancel = True
+                cancel_future.add_done_callback(
+                    lambda done, goal=previous_goal:
+                    self._wait_for_previous_goal_result(done, goal))
+                self.stop_robot()
+                self.current_place = None
+                self.get_logger().info(
+                    '기존 Nav2 goal 취소 완료를 기다립니다.')
+                return True
+
+            # goal 요청은 보냈지만 서버의 수락 응답이 아직 안 온
+            # 상태라면 goal_response_callback 에서 수락 후 취소한다.
+            if self.goal_request_future is not None:
+                self.auto_dock_waiting_for_cancel = True
+                self.stop_robot()
+                self.current_place = None
+                self.get_logger().info(
+                    '기존 Nav2 goal 수락 응답을 기다립니다.')
+                return True
+
             self.stop_robot()
             self.current_place = None
 
-            class _Resp:
-                success = False
-                message = ''
+            return self._launch_auto_dock_goal()
 
-            response = _Resp()
-            # 위치가 불확실한 이동 중이므로 병실 탈출 hall을 되돌아가지
-            # 않고 현재 위치에서 dock을 바로 목표로 삼는다.
-            self.start_navigation('dock', [dock], response, task='MANUAL')
-            if not response.success:
-                self.auto_docking = False
-                self.get_logger().error(
-                    f'충전소 자동 복귀 시작 실패: {response.message}')
-                self._schedule_dock_retry(response.message)
-                return False
+    def _wait_for_previous_goal_result(self, cancel_future, goal_handle):
+        """취소 요청 응답 후 기존 goal의 최종 종료까지 기다린다."""
+        with self._state_lock:
+            try:
+                cancel_future.result()
+            except Exception as exc:  # noqa: BLE001
+                self.get_logger().warn(f'기존 Nav2 goal 취소 응답 오류: {exc}')
+            goal_handle.get_result_async().add_done_callback(
+                self._on_previous_goal_cancelled)
 
-            # 복귀가 실제로 시작된 뒤에 보류 표시를 지운다.
-            self.low_battery_pending = False
-            self.get_logger().warn('충전소 자동 복귀를 시작합니다.')
-            return True
+    def _on_previous_goal_cancelled(self, future):
+        """기존 goal이 완전히 종료된 후에만 dock goal을 보낸다."""
+        with self._state_lock:
+            try:
+                future.result()
+            except Exception as exc:  # noqa: BLE001
+                self.get_logger().warn(f'기존 Nav2 goal 종료 응답 오류: {exc}')
+            self.auto_dock_waiting_for_cancel = False
+            self._launch_auto_dock_goal()
+
+    def _launch_auto_dock_goal(self):
+        """취소 처리가 끝난 뒤 충전소 goal을 한 번만 전송한다."""
+        if not self.auto_docking or self.auto_dock_goal_started:
+            return False
+
+        dock = self.auto_dock_waypoint
+        if not dock:
+            self.auto_docking = False
+            self._schedule_dock_retry('충전소 좌표 없음')
+            return False
+
+        self.auto_dock_goal_started = True
+
+        class _Resp:
+            success = False
+            message = ''
+
+        response = _Resp()
+        # 위치가 불확실한 이동 중이므로 병실 탈출 hall을 되돌아가지
+        # 않고 현재 위치에서 dock을 바로 목표로 삼는다.
+        self.start_navigation('dock', [dock], response, task='MANUAL')
+        if not response.success:
+            self.auto_docking = False
+            self.auto_dock_goal_started = False
+            self.get_logger().error(
+                f'충전소 자동 복귀 시작 실패: {response.message}')
+            self._schedule_dock_retry(response.message)
+            return False
+
+        # 복귀가 실제로 시작된 뒤에 보류 표시를 지운다.
+        self.low_battery_pending = False
+        self.get_logger().warn('충전소 자동 복귀를 시작합니다.')
+        return True
 
     # ── 복귀 실패 시 재시도 ──
     # 복귀에 실패했다는 건 충전을 못 했다는 뜻이라 배터리는 계속 낮다.
@@ -866,6 +929,7 @@ class PatrolNode(Node):
 
         future = self.nav_client.send_goal_async(
             goal_msg, feedback_callback=self.feedback_callback)
+        self.goal_request_future = future
         generation = self.navigation_generation
         future.add_done_callback(
             lambda done, gen=generation: self.goal_response_callback(done, gen))
@@ -887,9 +951,19 @@ class PatrolNode(Node):
     def goal_response_callback(self, future, generation):
         with self._state_lock:
             goal_handle = future.result()
+            if self.goal_request_future is future:
+                self.goal_request_future = None
             if generation != self.navigation_generation:
                 if goal_handle.accepted:
-                    goal_handle.cancel_goal_async()
+                    cancel_future = goal_handle.cancel_goal_async()
+                    if (self.auto_docking
+                            and self.auto_dock_waiting_for_cancel):
+                        cancel_future.add_done_callback(
+                            lambda done, goal=goal_handle:
+                            self._wait_for_previous_goal_result(done, goal))
+                elif self.auto_docking and self.auto_dock_waiting_for_cancel:
+                    self.auto_dock_waiting_for_cancel = False
+                    self._launch_auto_dock_goal()
                 return
             if not goal_handle.accepted:
                 self.get_logger().error('Navigation goal rejected.')
@@ -908,7 +982,8 @@ class PatrolNode(Node):
         with self._state_lock:
             if generation != self.navigation_generation:
                 return
-            # 일시정지로 취소한 결과는 실패가 아니다
+            self.goal_handle = None
+            # 일시정지 요청으로 취소된 goal은 오류로 처리하지 않는다.
             if self.mode == 'PAUSED':
                 self.get_logger().info('Navigation paused (goal cancelled).')
                 return
