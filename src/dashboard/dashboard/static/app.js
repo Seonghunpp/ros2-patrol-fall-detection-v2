@@ -1310,7 +1310,6 @@ async function renderGuardian() {
         currentGuardianRoom = null;
         renderPatrolLog(null);
         renderGuardianFalls(null);
-        loadGuardianNoti();
         return;
     }
 
@@ -1376,25 +1375,7 @@ async function renderGuardian() {
 
     await renderPatrolLog(patient);
     renderGuardianFalls(patient);
-    loadGuardianNoti();
     refreshGuardianFallState();   // 확정 낙상 기준 환자 상태색 반영
-}
-
-const G_NOTI_KEY = "dabom-guardian-noti";
-
-function loadGuardianNoti() {
-    const fall = document.getElementById("g-noti-fall");
-    if (!fall) return;
-    let saved;
-    try { saved = JSON.parse(localStorage.getItem(G_NOTI_KEY)); } catch (e) { saved = null; }
-    if (!saved) return;                       // 저장값이 없으면 HTML 기본값(낙상 ON) 유지
-    fall.checked = !!saved.fall;
-}
-
-function saveGuardianNoti() {
-    const fall = document.getElementById("g-noti-fall").checked;
-    localStorage.setItem(G_NOTI_KEY, JSON.stringify({ fall }));
-    rcToast("알림 설정이 저장되었습니다");
 }
 
 // 실시간 병실(보호자): 조회 전용으로 로봇 상태·위치만 반영한다

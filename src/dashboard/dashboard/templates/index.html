@@ -518,7 +518,6 @@
                     환자 상태 <span class="g-readonly">열람 전용</span>
                 </div>
                 <div class="g-state" id="g-state-box">
-                    <span class="g-state-ring"><span class="g-state-dot"></span></span>
                     <div>
                         <strong class="g-ok" id="g-fall-state">정상</strong>
                         <p><b id="g-live-patient">-</b> · <span id="g-fall-substate">낙상 감지 없음</span></p>
@@ -719,21 +718,6 @@
                 <div class="g-care-note">
                     <p>연동된 환자의 정보만 열람할 수 있습니다. 다른 병실의 기록에는 접근할 수 없습니다.</p>
                 </div>
-            </div>
-        </div>
-
-        <!-- 알림 수신 설정 -->
-        <div class="panel" style="margin-top:18px;">
-            <div class="panel-head">알림 수신 설정</div>
-            <div class="g-switch-row">
-                <div>
-                    <strong>비상 낙상 알림</strong>
-                    <p>낙상이 감지되면 즉시 푸시·문자로 알려드립니다.</p>
-                </div>
-                <label class="g-switch">
-                    <input type="checkbox" id="g-noti-fall" checked onchange="saveGuardianNoti()">
-                    <span class="g-switch-track"></span>
-                </label>
             </div>
         </div>
     </div>
@@ -1133,25 +1117,6 @@
                         <tr><td colspan="5">좌표를 불러오는 중...</td></tr>
                     </tbody>
                 </table>
-            </div>
-
-            <div class="rc-settings">
-                <div class="rc-setting">
-                    <div>
-                        <strong>충전 복귀 조건</strong>
-                        <p>배터리가 아래 값 이하로 떨어지면 자동으로 충전 스테이션에 복귀합니다.</p>
-                    </div>
-                    <select class="form-input rc-select" id="rc-charge-th" onchange="rcToast('충전 복귀 기준을 ' + this.value + '로 저장했습니다')">
-                        <option>30%</option>
-                    </select>
-                </div>
-                <div class="rc-setting">
-                    <div>
-                        <strong>AMCL 초기 좌표</strong>
-                        <p>로봇이 인식한 현재 위치를 지도상의 초기 좌표로 설정합니다.</p>
-                    </div>
-                    <button class="rc-btn rc-btn-ghost" onclick="rcToast('현재 위치를 초기 좌표로 설정했습니다 (데모)')">현재 위치로 설정</button>
-                </div>
             </div>
         </div>
     </div>
