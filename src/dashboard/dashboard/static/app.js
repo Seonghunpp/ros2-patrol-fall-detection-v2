@@ -1775,6 +1775,13 @@ async function updateStatus() {
         // 일시정지 중에는 로봇이 안 움직여 "대기 중"으로 잡히므로 구분해서 보여준다
         rcSetState(data.robot_paused ? "일시정지" : data.robot_status);
 
+        if (Array.isArray(data.path) && data.path.length) {
+            const [gx, gy] = data.path[data.path.length - 1];
+            rcSetPlace(rcZoneLabel(rcZoneKeyByMap(gx,gy)));
+        } else if (!data.robot_paused) {
+            rcSetPlace("—");
+        }
+
         lastYoloSignal = data.yolo_signal;
         if (currentVideoMode === "yolo") {
             document.getElementById("video-img").style.visibility = data.yolo_signal ? "visible" : "hidden";
@@ -3057,9 +3064,15 @@ async function rcSendCommand(url, fallbackMessage) {
     }
 }
 
+function rcClearTarget() {
+    document.querySelectorAll(".rc-spot").forEach(s => s.classList.remove("target"));
+    rcSetPlace("—");
+}
+
 async function rcStartPatrol() {
     if (await rcSendCommand("/api/robot/patrol/start", "순찰을 시작합니다")) {
         rcPaused = false;
+        rcClearTarget();
         rcSetState("순찰 중");
     }
 }
@@ -3067,6 +3080,7 @@ async function rcStartPatrol() {
 async function rcTogglePause() {
     if (await rcSendCommand("/api/robot/pause", "이동을 일시정지했습니다")) {
         rcPaused = true;
+        rcClearTarget();
         rcSetState("일시정지");
     }
 }
