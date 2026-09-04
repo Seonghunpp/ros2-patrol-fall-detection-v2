@@ -29,7 +29,7 @@ class ArucoBehaviorController:
 
     TARGET_OFFSET = 0.0
     CENTER_TOL = 0.03
-    TARGET_DISTANCE = 0.55
+    TARGET_DISTANCE = 0.75
     DISTANCE_TOL = 0.02
 
     SEARCH_SPEED = 0.3            # 마커 탐색 회전 (0.6 -> 0.3)
@@ -137,6 +137,19 @@ class ArucoBehaviorController:
         self.mode = mode
         self.done_callback = done_callback
         self.search_retried = False
+
+        # 이전 동작에서 받은 마커 값을 새 탐색이 재사용하지 않도록 한다.
+        if mode == 'charging':
+            self.charger_visible = False
+            self.charger_offset = 0.0
+            self.charger_distance = None
+            self.charger_update_time = None
+        else:
+            self.room_visible = False
+            self.room_offset = 0.0
+            self.room_distance = None
+            self.room_update_time = None
+
         self._change_state('search', reset_rotation=True)
         if not self._set_aruco_enabled(True):
             self._finish(False, 'ArUco 인식을 켤 수 없습니다.')
@@ -162,7 +175,9 @@ class ArucoBehaviorController:
 
         twist = Twist()
         if self.state == 'search':
-            if self._marker_is_fresh():
+            # 한 프레임만 인식했더라도 최근 인식 시간은 남으므로 정렬을
+            # 시작한다. 현재 프레임에서 다시 놓쳤다면 align에서 기다린다.
+            if self._marker_recent():
                 self._change_state('align')
                 return
             if self.rotated >= self.SEARCH_ANGLE and not self.search_retried:
@@ -171,8 +186,13 @@ class ArucoBehaviorController:
             twist.angular.z = -(self.RETRY_SEARCH_SPEED if self.search_retried else self.SEARCH_SPEED)
 
         elif self.state == 'align':
-            if not self._marker_is_fresh():
+            # 허용 시간 넘게 보지 못했으면 마커를 놓친 것으로 보고 재탐색한다.
+            if not self._marker_recent():
                 self._change_state('search', reset_rotation=True)
+                return
+            # 짧은 미탐 동안에는 오래된 오차값으로 회전하지 않고 정지한다.
+            if not self._marker_visible():
+                self._stop_robot()
                 return
             center_error = self._offset() - self.TARGET_OFFSET
             if abs(center_error) <= self.CENTER_TOL:
@@ -181,7 +201,12 @@ class ArucoBehaviorController:
             twist.angular.z = self._turn_speed(center_error)
 
         elif self.state == 'approach':
-            if not self._marker_is_fresh() or self._distance() is None:
+            # 접근 중에도 장시간 놓치면 제자리에서 다시 마커를 찾는다.
+            if not self._marker_recent():
+                self._change_state('search', reset_rotation=True)
+                return
+            # 순간 미탐에는 오래된 거리값으로 전진하지 않고 잠시 멈춘다.
+            if not self._marker_visible() or self._distance() is None:
                 self._stop_robot()
                 return
             center_error = self._offset() - self.TARGET_OFFSET
@@ -234,10 +259,14 @@ class ArucoBehaviorController:
 
         self.cmd_vel_pub.publish(twist)
 
-    def _marker_is_fresh(self):
-        visible = self.charger_visible if self.mode == 'charging' else self.room_visible
+    def _marker_visible(self):
+        """현재 프레임에서 대상 마커가 검출됐는지 반환한다."""
+        return self.charger_visible if self.mode == 'charging' else self.room_visible
+
+    def _marker_recent(self):
+        """마지막 마커 측정값이 허용 시간 안에 갱신됐는지 반환한다."""
         updated = self.charger_update_time if self.mode == 'charging' else self.room_update_time
-        return visible and updated is not None and time.monotonic() - updated < self.SEEN_TIMEOUT
+        return updated is not None and time.monotonic() - updated < self.SEEN_TIMEOUT
 
     def _offset(self):
         return self.charger_offset if self.mode == 'charging' else self.room_offset
