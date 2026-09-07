@@ -13,19 +13,15 @@ from cryptography.fernet import Fernet, InvalidToken
 from flask import Flask, Response, jsonify, render_template, request, send_from_directory, session
 from werkzeug.security import check_password_hash, generate_password_hash
 
-try:
-    import rclpy
-    from rclpy.node import Node
-    from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSHistoryPolicy
-    from sensor_msgs.msg import CompressedImage, BatteryState #배터리 스테이트 추가
-    from std_msgs.msg import Bool, String, Int32MultiArray
-    from nav_msgs.msg import Odometry, Path
-    from geometry_msgs.msg import Twist, PoseWithCovarianceStamped
-    from std_srvs.srv import Trigger
-    from tf2_ros import Buffer, TransformListener
-    ROS_AVAILABLE = True
-except Exception:
-    ROS_AVAILABLE = False
+import rclpy
+from rclpy.node import Node
+from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSHistoryPolicy
+from sensor_msgs.msg import CompressedImage, BatteryState
+from std_msgs.msg import Bool, String, Int32MultiArray
+from nav_msgs.msg import Odometry, Path
+from geometry_msgs.msg import Twist, PoseWithCovarianceStamped
+from std_srvs.srv import Trigger
+from tf2_ros import Buffer, TransformListener
 
 
 app = Flask(__name__, static_url_path="")
@@ -118,10 +114,6 @@ LINEAR_MOVING_THRESHOLD = 0.02
 ANGULAR_MOVING_THRESHOLD = 0.05
 
 CMD_VEL_TIMEOUT_SEC = 1.0
-
-# 낙상 판정이 짧게 흔들려(FALL->PERSON->FALL) 같은 낙상이 중복 기록되지 않도록 하는 쿨다운
-FALL_EVENT_COOLDOWN_SEC = 15.0
-last_fall_event_time = 0.0
 
 # Nav2 경로(/plan)는 한 번에 수백 점이 온다. 화면에 그리는 데는 이 정도면 충분하고,
 # 그대로 실으면 1초마다 나가는 /api/status 응답이 쓸데없이 커진다
@@ -241,7 +233,8 @@ os.makedirs(CAPTURE_DIR, exist_ok=True)
 def log_fall_detected(room):
     # 카메라 프레임이 없어도(꺼져있거나 일시적으로 끊겨도) 낙상이 있었다는 기록 자체는 남긴다.
     # capture_path만 NULL로 남고, 화면에서는 "캡처 이미지 없음"으로 표시된다.
-    frame = latest_annotated_frame or latest_frame
+    # 낙상 이력에는 분석 박스가 그려진 영상이 아닌 원본 카메라 프레임을 저장한다.
+    frame = latest_frame
     filename = None
     if frame is None:
         print("[dashboard] 카메라 프레임 없음: 캡처 이미지 없이 fall_log만 기록")
@@ -618,19 +611,17 @@ class DashboardBridge(Node):
             state["path"] = []
 
     def fall_confirmed_callback(self, msg):
-        global last_fall_event_time
         old_status = state["fall_status"]
         # state["fall_status"] 는 화면에 그대로 찍히는 한국어 문자열이라 그대로 둔다
         new_status = "낙상 환자 발견" if msg.data else "정상"
         state["fall_status"] = new_status
 
+        # 감지 노드가 confirmed_latched 로 한 사건당 한 번만 True 를 올려 주므로
+        # 여기서는 상승 에지만 보면 된다. (시간 쿨다운은 오히려 정상 기록을 지운다)
         if new_status == "낙상 환자 발견" and old_status != "낙상 환자 발견":
-            now = time.time()
-            if now - last_fall_event_time >= FALL_EVENT_COOLDOWN_SEC:
-                add_event(f"병실 {state['current_room']} 낙상 환자 발견")
-                state["fall_alert_id"] += 1
-                log_fall_detected(state["current_room"])
-            last_fall_event_time = now
+            add_event(f"병실 {state['current_room']} 낙상 환자 발견")
+            state["fall_alert_id"] += 1
+            log_fall_detected(state["current_room"])
 
     def battery_callback(self, msg):
         global last_heartbeat
@@ -1883,10 +1874,6 @@ def api_robot_patrol_start():
 
 def ros_spin():
     global bridge_node
-
-    if not ROS_AVAILABLE:
-        add_event("ROS2 모듈 없음: 웹 화면만 테스트 중")
-        return
 
     rclpy.init()
     bridge_node = DashboardBridge()

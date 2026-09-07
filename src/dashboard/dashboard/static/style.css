@@ -327,7 +327,6 @@ body {
     width: 100%;
     box-shadow: 0 24px 60px -16px rgba(15, 23, 42, 0.5);
     overflow: hidden;
-    animation: fallAlertIn 0.28s cubic-bezier(0.34, 1.4, 0.5, 1);
 }
 
 /* 상단 빨강 액센트 바 */
@@ -339,10 +338,6 @@ body {
     background: linear-gradient(90deg, #e5484d, #ff7a7f);
 }
 
-@keyframes fallAlertIn {
-    from { opacity: 0; transform: translateY(12px) scale(0.96); }
-    to   { opacity: 1; transform: none; }
-}
 
 .fall-alert-close {
     position: absolute;
@@ -370,20 +365,6 @@ body {
     background: rgba(229, 72, 77, 0.12);
     display: grid;
     place-items: center;
-}
-
-.fall-alert-pulse::after {
-    content: "";
-    position: absolute;
-    inset: 0;
-    border-radius: 50%;
-    border: 2px solid rgba(229, 72, 77, 0.5);
-    animation: fallRipple 1.8s ease-out infinite;
-}
-
-@keyframes fallRipple {
-    0%   { transform: scale(0.9); opacity: 0.85; }
-    100% { transform: scale(1.6); opacity: 0; }
 }
 
 .fall-alert-icon { font-size: 38px; line-height: 1; }
@@ -3189,34 +3170,8 @@ html.reveal-on .rm-svc-grid .rm-svc-card:nth-child(8) { transition-delay: 0.49s;
 }
 .rc-btn-primary:hover { background: #1e293b; border-color: #1e293b; }
 
-.rc-btn-ghost { width: auto; flex: none; padding: 10px 16px; }
-
-/* 하단 설정 */
-.rc-settings {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 14px;
-    margin-top: 18px;
-}
-
-.rc-setting {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 16px;
-    padding: 16px 18px;
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    background: var(--surface-hover, #f7f9fd);
-}
-
-.rc-setting strong { display: block; font-size: 14px; }
-.rc-setting p { margin: 4px 0 0; font-size: 12px; line-height: 1.5; color: var(--text-muted); }
-.rc-select { width: auto; flex: none; min-width: 96px; }
-
 @media (max-width: 1080px) {
     .rc-layout { grid-template-columns: 1fr; }
-    .rc-settings { grid-template-columns: 1fr; }
 }
 .form-input-sm { padding: 6px 10px !important; font-size: 13px !important; }
 
@@ -3542,7 +3497,7 @@ html.reveal-on .rm-svc-grid .rm-svc-card:nth-child(8) { transition-delay: 0.49s;
 /* ----- 실시간 병실 ----- */
 .glive-cols { display: grid; grid-template-columns: 1.15fr 1fr; gap: 18px; align-items: start; }
 
-/* 큰 상태 표시 (숨쉬듯 퍼지는 링) */
+/* 큰 상태 표시 */
 .g-state {
     display: flex;
     align-items: center;
@@ -3554,46 +3509,14 @@ html.reveal-on .rm-svc-grid .rm-svc-card:nth-child(8) { transition-delay: 0.49s;
     border: 1px solid #cfe9d8;
 }
 
-.g-state-ring {
-    position: relative;
-    width: 46px;
-    height: 46px;
-    flex: none;
-    border-radius: 50%;
-    background: rgba(26, 157, 67, 0.14);
-    display: grid;
-    place-items: center;
-}
-
-.g-state-ring::after {
-    content: "";
-    position: absolute;
-    inset: 0;
-    border-radius: 50%;
-    border: 2px solid rgba(26, 157, 67, 0.5);
-    animation: gRipple 2.2s ease-out infinite;
-}
-
-@keyframes gRipple {
-    0%   { transform: scale(0.85); opacity: 0.9; }
-    100% { transform: scale(1.5);  opacity: 0; }
-}
-
-.g-state-dot { width: 14px; height: 14px; border-radius: 50%; background: #1a9d43; }
 .g-state strong { display: block; font-size: 24px; font-weight: 800; letter-spacing: -0.02em; }
 .g-state p { margin: 4px 0 0; font-size: 13px; color: var(--text-muted); }
 .g-state p b { color: var(--text); }
 
 /* 환자 상태 박스 색상: 낙상(빨강) / 주의(노랑). applyGuardianFallState가 클래스를 토글한다 */
 .g-state.state-fall { background: linear-gradient(135deg, #fdeced, #fdf5f5); border-color: #f3d0d1; }
-.g-state.state-fall .g-state-ring { background: rgba(229, 72, 77, 0.14); }
-.g-state.state-fall .g-state-ring::after { border-color: rgba(229, 72, 77, 0.5); }
-.g-state.state-fall .g-state-dot { background: #e5484d; }
 
 .g-state.state-warning { background: linear-gradient(135deg, #fdf6ea, #fffdf8); border-color: #f0e0c0; }
-.g-state.state-warning .g-state-ring { background: rgba(224, 140, 26, 0.14); }
-.g-state.state-warning .g-state-ring::after { border-color: rgba(224, 140, 26, 0.5); }
-.g-state.state-warning .g-state-dot { background: #e08c1a; }
 
 .g-chip-sm { padding: 5px 11px; font-size: 11px; }
 
@@ -3721,49 +3644,6 @@ html.reveal-on .rm-svc-grid .rm-svc-card:nth-child(8) { transition-delay: 0.49s;
     font-size: 13px;
     letter-spacing: 0.06em;
 }
-
-/* 알림 설정 토글 */
-.g-switch-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 20px;
-    padding: 16px 0;
-    border-bottom: 1px solid var(--border);
-}
-
-.g-switch-row:last-child { border-bottom: none; padding-bottom: 0; }
-.g-switch-row strong { font-size: 15px; }
-.g-switch-row p { margin: 4px 0 0; font-size: 13px; color: var(--text-muted); }
-
-.g-switch { position: relative; flex: none; cursor: pointer; }
-.g-switch input { position: absolute; opacity: 0; width: 0; height: 0; }
-
-.g-switch-track {
-    display: block;
-    width: 52px;
-    height: 30px;
-    border-radius: 6px;
-    background: #cfd6e4;
-    transition: background 0.25s;
-}
-
-.g-switch-track::after {
-    content: "";
-    position: absolute;
-    top: 3px;
-    left: 3px;
-    width: 24px;
-    height: 24px;
-    border-radius: 4px;
-    background: #ffffff;
-    box-shadow: 0 2px 6px rgba(15, 23, 42, 0.28);
-    transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.g-switch input:checked + .g-switch-track { background: #1a9d43; }
-.g-switch input:checked + .g-switch-track::after { transform: translateX(22px); }
-.g-switch input:focus-visible + .g-switch-track { outline: 2px solid var(--accent, #2f6fe4); outline-offset: 2px; }
 
 @media (max-width: 900px) {
     .g-cards3, .g-cards2 { grid-template-columns: 1fr; }

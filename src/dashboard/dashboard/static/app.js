@@ -1310,7 +1310,6 @@ async function renderGuardian() {
         currentGuardianRoom = null;
         renderPatrolLog(null);
         renderGuardianFalls(null);
-        loadGuardianNoti();
         return;
     }
 
@@ -1376,25 +1375,7 @@ async function renderGuardian() {
 
     await renderPatrolLog(patient);
     renderGuardianFalls(patient);
-    loadGuardianNoti();
     refreshGuardianFallState();   // 확정 낙상 기준 환자 상태색 반영
-}
-
-const G_NOTI_KEY = "dabom-guardian-noti";
-
-function loadGuardianNoti() {
-    const fall = document.getElementById("g-noti-fall");
-    if (!fall) return;
-    let saved;
-    try { saved = JSON.parse(localStorage.getItem(G_NOTI_KEY)); } catch (e) { saved = null; }
-    if (!saved) return;                       // 저장값이 없으면 HTML 기본값(낙상 ON) 유지
-    fall.checked = !!saved.fall;
-}
-
-function saveGuardianNoti() {
-    const fall = document.getElementById("g-noti-fall").checked;
-    localStorage.setItem(G_NOTI_KEY, JSON.stringify({ fall }));
-    rcToast("알림 설정이 저장되었습니다");
 }
 
 // 실시간 병실(보호자): 조회 전용으로 로봇 상태·위치만 반영한다
@@ -1795,6 +1776,13 @@ async function updateStatus() {
         rcSyncPauseButton(!!data.robot_paused);     // 새로고침해도 버튼 라벨이 맞도록
         // 일시정지 중에는 로봇이 안 움직여 "대기 중"으로 잡히므로 구분해서 보여준다
         rcSetState(data.robot_paused ? "일시정지" : data.robot_status);
+
+        if (Array.isArray(data.path) && data.path.length) {
+            const [gx, gy] = data.path[data.path.length - 1];
+            rcSetPlace(rcZoneLabel(rcZoneKeyByMap(gx,gy)));
+        } else if (!data.robot_paused) {
+            rcSetPlace("—");
+        }
 
         lastYoloSignal = data.yolo_signal;
         if (currentVideoMode === "yolo") {
@@ -3078,9 +3066,15 @@ async function rcSendCommand(url, fallbackMessage) {
     }
 }
 
+function rcClearTarget() {
+    document.querySelectorAll(".rc-spot").forEach(s => s.classList.remove("target"));
+    rcSetPlace("—");
+}
+
 async function rcStartPatrol() {
     if (await rcSendCommand("/api/robot/patrol/start", "순찰을 시작합니다")) {
         rcPaused = false;
+        rcClearTarget();
         rcSetState("순찰 중");
     }
 }
@@ -3088,6 +3082,7 @@ async function rcStartPatrol() {
 async function rcTogglePause() {
     if (await rcSendCommand("/api/robot/pause", "이동을 일시정지했습니다")) {
         rcPaused = true;
+        rcClearTarget();
         rcSetState("일시정지");
     }
 }
