@@ -255,6 +255,9 @@ class PatrolNode(Node):
         self.goal_request_future = None
         self.current_mode = None    # 지금 향하는 목적지 키 (dock/standby/room1~4)
         self.current_place = None   # 마지막으로 도착한 목적지 키
+        # 일시정지 당시 '낙상 관찰 중'이었던 병실 키. 순찰 시작을 다시 누를 때
+        # 그 관찰을 이어서 마칠지 판단하는 유일한 근거다 (좌표로 판단하지 않는다).
+        self.paused_scan_place = None
         self.last_room = None       # 직전에 순찰을 마친 병실 번호 (연속 중복 방지)
 
         # ── 배터리 자동 복귀 ──
@@ -588,7 +591,11 @@ class PatrolNode(Node):
 
         # 복귀가 실제로 시작된 뒤에 보류 표시를 지운다.
         self.low_battery_pending = False
-        self.get_logger().warn('충전소 자동 복귀를 시작합니다.')
+        level = (f'{self.battery_percent:.1f}%'
+                 if self.battery_percent is not None else '알 수 없음')
+        self.get_logger().warn(
+            f'[저전력] 배터리 {level} (기준 {self.LOW_BATTERY_THRESHOLD:.0f}% 이하) '
+            f'— 충전소로 복귀합니다.')
         return True
 
     # ── 복귀 실패 시 재시도 ──
@@ -640,9 +647,14 @@ class PatrolNode(Node):
     def start_patrol_callback(self, request, response):
         """순찰 시작 / 재개.
 
-        로봇이 병실 안에 있으면 그 병실 관찰부터 다시 한다 (이미 들어와 있는데
-        확인 없이 나가면 낙상 점검을 건너뛰게 된다). 그 외에는 새로 뽑는다 —
-        병실 선택이 가중 랜덤이라 '가던 병실'을 기억할 이유가 없다.
+        낙상 관찰 중에 멈췄을 때만 그 병실 관찰을 이어서 마친다 (확인 없이
+        나가면 낙상 점검을 건너뛰게 된다). 이동·도킹 중에 멈춘 것이라면
+        그 작업은 버리고 다음 병실을 새로 뽑는다 — 병실 선택이 가중 랜덤이라
+        '가던 병실'을 기억할 이유가 없다.
+
+        판단 근거는 좌표가 아니라 일시정지 시점에 기록한 paused_scan_place 다.
+        좌표로 보면 101호에서 102호로 이동하다 멈춘 경우까지 '101호 안에 있으니
+        관찰'로 처리돼, 가던 길을 버리고 엉뚱한 관찰을 시작한다.
         """
         rejected = self._reject_if_running(response)
         if rejected is not None:
@@ -652,7 +664,8 @@ class PatrolNode(Node):
         self.mode = 'RUNNING'
         self.task = 'PATROL'
 
-        here = self.current_place or self.locate_current_place()
+        here = self.paused_scan_place
+        self.paused_scan_place = None      # 한 번만 쓰고 버린다
         if here and here in (self.waypoints.get('rooms') or {}):
             self.current_place = here
             self.current_mode = here
@@ -681,6 +694,15 @@ class PatrolNode(Node):
                 return response
 
             self.mode = 'PAUSED'
+
+            # 취소하기 전에 '무엇을 하던 중이었는지'를 남긴다. 낙상 관찰 중이었을
+            # 때만 이어서 마치고, 이동·도킹 중이었으면 다음 동작을 그대로 수행한다.
+            self.paused_scan_place = (
+                self.current_mode
+                if (self.aruco_behavior.is_busy()
+                    and self.aruco_behavior.mode == 'room')
+                else None
+            )
             self.aruco_behavior.cancel('순찰 일시정지')
 
             if self.goal_handle is not None:
@@ -868,6 +890,9 @@ class PatrolNode(Node):
             self.pending_waypoints = []
             self.active_waypoint = None
             self.room_entry_started = False
+            # 다른 동작을 시작했으므로 보류해 둔 관찰은 버린다
+            # (수동 이동·충전소 복귀 어느 쪽이든 그 동작을 그대로 수행한다)
+            self.paused_scan_place = None
 
             if not points:
                 response.success = False
@@ -927,8 +952,9 @@ class PatrolNode(Node):
 
         self.get_logger().info(f"Goal: x={waypoint['x']}, y={waypoint['y']}")
 
-        future = self.nav_client.send_goal_async(
-            goal_msg, feedback_callback=self.feedback_callback)
+        # 진행 거리 피드백은 받지 않는다. 1초마다 터미널을 채워
+        # 저전력 복귀 같은 중요한 메시지가 묻힌다.
+        future = self.nav_client.send_goal_async(goal_msg)
         self.goal_request_future = future
         generation = self.navigation_generation
         future.add_done_callback(
@@ -973,10 +999,6 @@ class PatrolNode(Node):
             self.goal_handle = goal_handle      # 일시정지가 취소할 대상
             goal_handle.get_result_async().add_done_callback(
                 lambda done, gen=generation: self.result_callback(done, gen))
-
-    def feedback_callback(self, feedback_msg):
-        distance = feedback_msg.feedback.distance_remaining
-        self.get_logger().info(f'Distance remaining: {distance:.2f} m')
 
     def result_callback(self, future, generation):
         with self._state_lock:
