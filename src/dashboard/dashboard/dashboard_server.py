@@ -13,19 +13,15 @@ from cryptography.fernet import Fernet, InvalidToken
 from flask import Flask, Response, jsonify, render_template, request, send_from_directory, session
 from werkzeug.security import check_password_hash, generate_password_hash
 
-try:
-    import rclpy
-    from rclpy.node import Node
-    from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSHistoryPolicy
-    from sensor_msgs.msg import CompressedImage, BatteryState #배터리 스테이트 추가
-    from std_msgs.msg import Bool, String, Int32MultiArray
-    from nav_msgs.msg import Odometry, Path
-    from geometry_msgs.msg import Twist, PoseWithCovarianceStamped
-    from std_srvs.srv import Trigger
-    from tf2_ros import Buffer, TransformListener
-    ROS_AVAILABLE = True
-except Exception:
-    ROS_AVAILABLE = False
+import rclpy
+from rclpy.node import Node
+from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSHistoryPolicy
+from sensor_msgs.msg import CompressedImage, BatteryState
+from std_msgs.msg import Bool, String, Int32MultiArray
+from nav_msgs.msg import Odometry, Path
+from geometry_msgs.msg import Twist, PoseWithCovarianceStamped
+from std_srvs.srv import Trigger
+from tf2_ros import Buffer, TransformListener
 
 
 app = Flask(__name__, static_url_path="")
@@ -1858,10 +1854,6 @@ def api_robot_patrol_start():
 
 def ros_spin():
     global bridge_node
-
-    if not ROS_AVAILABLE:
-        add_event("ROS2 모듈 없음: 웹 화면만 테스트 중")
-        return
 
     rclpy.init()
     bridge_node = DashboardBridge()
