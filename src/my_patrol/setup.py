@@ -16,7 +16,7 @@ setup(
         (os.path.join('share', package_name, 'model'), glob('model/*.pt')),
         (os.path.join('share', package_name, 'docs'), glob('docs/*.md')),
     ],
-    install_requires=['setuptools'],
+    install_requires=['setuptools', 'pyserial'],
     zip_safe=True,
     maintainer='sh',
     maintainer_email='op_eun@naver.com',
@@ -29,6 +29,7 @@ setup(
             'patrol = my_patrol.patrol_node:main',
             'aruco_id = my_patrol.aruco_id_node_v2:main',
             'fall_detection = my_patrol.fall_detection_node_v2:main',
+            'buzzer_bridge = my_patrol.buzzer_bridge:main',
         ],
     },
 )
