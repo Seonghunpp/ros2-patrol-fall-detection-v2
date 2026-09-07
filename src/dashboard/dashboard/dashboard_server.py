@@ -383,6 +383,11 @@ class DashboardBridge(Node):
             10
         )
 
+        # 간호사가 웹에서 낙상 팝업을 닫으면(확인) 로봇에 붙은 부저를 끄라고 알려주는 토픽.
+        # 부저를 켜는 쪽(buzzer_bridge 노드)은 /fall_confirmed를 직접 구독해서 스스로 켜고,
+        # 끄는 신호만 대시보드가 대신 내보낸다 — "확인했다"는 사람의 행동이라 웹에서만 알 수 있다.
+        self.buzzer_off_pub = self.create_publisher(String, "/buzzer_off", 10)
+
         self.create_subscription(
             BatteryState,
             "/battery_state",
@@ -518,6 +523,9 @@ class DashboardBridge(Node):
 
     def request_start_patrol(self, timeout=3.0):
         return self._call_trigger(self.patrol_cli, timeout)
+
+    def publish_buzzer_off(self):
+        self.buzzer_off_pub.publish(String(data="off"))
 
 
     def check_network_callback(self):
@@ -1433,6 +1441,18 @@ def api_fall_log_confirm(log_id):
     finally:
         cursor.close()
         conn.close()
+    return jsonify({"ok": True})
+
+
+# 관리자가 웹 화면의 낙상 팝업을 "닫음(확인)" — 아두이노 부저를 끄라고 로봇 쪽에 알려준다.
+# 환자를 지정하는 확정(confirm)과는 별개다: 팝업은 그냥 "봤다"는 확인일 뿐이고,
+# 부저는 사람이 인지한 순간 꺼져야 하므로 confirm을 기다리지 않는다.
+@app.route("/api/fall-alert/ack", methods=["POST"])
+@admin_required
+def api_fall_alert_ack():
+    if bridge_node is None:
+        return jsonify({"ok": False, "error": "ROS2에 연결되지 않았습니다."}), 503
+    bridge_node.publish_buzzer_off()
     return jsonify({"ok": True})
 
 

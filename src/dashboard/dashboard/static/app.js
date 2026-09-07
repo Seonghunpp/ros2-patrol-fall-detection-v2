@@ -1653,6 +1653,8 @@ function showFallAlert(room) {  // * 팝업 부분 수정 *
 
 function closeFallAlert() {  // * 팝업 부분 수정 *
     document.getElementById("fall-alert-overlay").style.display = "none";  // * 팝업 부분 수정 *
+    // 팝업을 닫는 순간 = 사람이 확인했다는 뜻이라, 로봇에 붙은 부저를 끄라고 알려준다
+    fetch("/api/fall-alert/ack", { method: "POST" }).catch(() => {});
 }  // * 팝업 부분 수정 *
 
 // 팝업 확인 → 닫고 '병실 모니터링' 탭으로 이동
