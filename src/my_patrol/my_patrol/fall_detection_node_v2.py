@@ -418,8 +418,12 @@ class FallDetectionNode(Node):
         )
 
         font = cv2.FONT_HERSHEY_SIMPLEX
-        font_scale = 0.55
-        text_thickness = 1
+
+        font_scale = float(np.clip(short_side / 300.0, 0.4, 0.8))
+        text_thickness = int(np.clip(short_side / 150.0, 1, 2))
+
+        padding_x = int(np.clip(short_side * 0.04, 6, 14))
+        padding_y = int(np.clip(short_side * 0.03, 5, 12))
 
         (text_width, text_height), _ = cv2.getTextSize(
             text,
@@ -428,14 +432,17 @@ class FallDetectionNode(Node):
             text_thickness,
         )
 
-        label_top = max(y1 - text_height - 18, 0)
-        label_bottom = label_top + text_height + 16
+        label_top = max(
+            y1 - text_height - padding_y * 2,
+            0,
+        )
+        label_bottom = label_top + text_height + padding_y * 2
 
         # 밝은 영상에서도 읽을 수 있도록 상태 문자열 뒤에 배경색을 넣는다.
         cv2.rectangle(
             image,
             (x1, label_top),
-            (x1 + text_width + 16, label_bottom),
+            (x1 + text_width + padding_x * 2, label_bottom),
             color,
             -1,
         )
@@ -443,7 +450,7 @@ class FallDetectionNode(Node):
         cv2.putText(
             image,
             text,
-            (x1 + 8, label_bottom - 8),
+            (x1 + padding_x, label_bottom - padding_y),
             font,
             font_scale,
             (255, 255, 255),
