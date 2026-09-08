@@ -572,6 +572,7 @@ class FallDetectionNode(Node):
                     state["confirmed"] = False
                     state["fall_count"] = 0
                     state["recovery_count"] = 0
+                    state["alert_sent"] = False
 
             # Track ID별 알림은 한 번만 처리하고, 한 사건당 기록도 한 번만 생성.
             if state["confirmed"] and not state["alert_sent"]:
