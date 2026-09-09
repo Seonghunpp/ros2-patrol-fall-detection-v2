@@ -1,3 +1,10 @@
+"""
+라즈베리파이에 들어가 있는 코드 // 
+이외에 환경에서는 코드를 보는 용도 -> 실제 실행은 라즈베리파이에서만 실행
+
+"""
+
+
 import rclpy
 from rclpy.node import Node
 from std_msgs.msg import Bool, String
@@ -19,7 +26,7 @@ class BuzzerBridge(Node):
     def __init__(self):
         super().__init__("buzzer_bridge")
 
-        self.declare_parameter("serial_port", "/dev/ttyACM0")
+        self.declare_parameter("serial_port", "/dev/ttyACM1")
         self.declare_parameter("baud_rate", 9600)
         port = self.get_parameter("serial_port").get_parameter_value().string_value
         baud = self.get_parameter("baud_rate").get_parameter_value().integer_value
