@@ -353,6 +353,7 @@ class FallDetectionNode(Node):
                 f"fall image save failed: {filepath}"
             )
 
+        # 현재 호출부에서는 사용하지 않는 반환값이다.
         return saved
     
     # 사람 한 명의 현재 판정 상태를 박스와 문자열로 표시한다.
@@ -363,20 +364,13 @@ class FallDetectionNode(Node):
         track_id = person["track_id"]
         fall_count = person["fall_count"]
         confirmed = person["confirmed"]
-        box_fully_visible = person["box_fully_visible"]
         pose_result = person["pose_result"]
 
         if confirmed:
-            label = "FALL DETECTED"
             color = (40, 40, 230)
-        elif class_name == "fall_person" and not box_fully_visible:
-            label = "WAIT FULL BODY"
-            color = (0, 180, 255)
         elif class_name == "fall_person":
-            label = "FALL CANDIDATE"
             color = (0, 180, 255)
         else:
-            label = "PERSON"
             color = (60, 200, 80)
 
         box_width = max(x2 - x1, 1)
@@ -401,11 +395,9 @@ class FallDetectionNode(Node):
 
         pose_text = ""
         if not confirmed and fall_count >= self.threshold_count:
-            if pose_result is True:
-                pose_text = " POSE:FALL"
-            elif pose_result is False:
+            if pose_result is False:
                 pose_text = " POSE:NORMAL"
-            else:
+            elif pose_result is None:
                 pose_text = " POSE:UNKNOWN"
 
         text = (
@@ -619,8 +611,6 @@ class FallDetectionNode(Node):
         )
 
         # 확정 신호는 낙상 사라진 후 5초가 지나고 나서 변경 -> 중복 방지 
-        self.fall_confirmed_pub.publish(Bool(data=self.confirmed_latched))
-
         if current_fall:
             self.fall_latched = True
             self.fall_clear_since = None
@@ -631,6 +621,8 @@ class FallDetectionNode(Node):
                 self.fall_latched = False
                 self.fall_clear_since = None
                 self.confirmed_latched = False
+
+        self.fall_confirmed_pub.publish(Bool(data=self.confirmed_latched))
         self.fall_detected_pub.publish(Bool(data=self.fall_latched))
 
         self._publish_results(
