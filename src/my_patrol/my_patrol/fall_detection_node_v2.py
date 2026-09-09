@@ -353,6 +353,7 @@ class FallDetectionNode(Node):
                 f"fall image save failed: {filepath}"
             )
 
+        # 현재 호출부에서는 사용하지 않는 반환값이다.
         return saved
     
     # 사람 한 명의 현재 판정 상태를 박스와 문자열로 표시한다.
@@ -363,20 +364,13 @@ class FallDetectionNode(Node):
         track_id = person["track_id"]
         fall_count = person["fall_count"]
         confirmed = person["confirmed"]
-        box_fully_visible = person["box_fully_visible"]
         pose_result = person["pose_result"]
 
         if confirmed:
-            label = "FALL DETECTED"
             color = (40, 40, 230)
-        elif class_name == "fall_person" and not box_fully_visible:
-            label = "WAIT FULL BODY"
-            color = (0, 180, 255)
         elif class_name == "fall_person":
-            label = "FALL CANDIDATE"
             color = (0, 180, 255)
         else:
-            label = "PERSON"
             color = (60, 200, 80)
 
         box_width = max(x2 - x1, 1)
@@ -400,26 +394,26 @@ class FallDetectionNode(Node):
         cv2.line(image, (x2, y2), (x2, y2 - corner_length), color, thickness)
 
         pose_text = ""
-        if confirmed:
-            pose_text = " CONFIRMED"
-        elif fall_count >= self.threshold_count:
-            if pose_result is True:
-                pose_text = " POSE:FALL"
-            elif pose_result is False:
+        if not confirmed and fall_count >= self.threshold_count:
+            if pose_result is False:
                 pose_text = " POSE:NORMAL"
-            else:
+            elif pose_result is None:
                 pose_text = " POSE:UNKNOWN"
 
         text = (
-            f"{label} ID:{track_id}  "
+            f"ID:{track_id}  "
             f"{class_name} {confidence:.0%}  "
             f"[{fall_count}/{self.threshold_count}]"
             f"{pose_text}"
         )
 
         font = cv2.FONT_HERSHEY_SIMPLEX
-        font_scale = 0.55
-        text_thickness = 1
+
+        font_scale = float(np.clip(short_side / 300.0, 0.4, 0.8))
+        text_thickness = int(np.clip(short_side / 150.0, 1, 2))
+
+        padding_x = int(np.clip(short_side * 0.04, 6, 14))
+        padding_y = int(np.clip(short_side * 0.03, 5, 12))
 
         (text_width, text_height), _ = cv2.getTextSize(
             text,
@@ -428,14 +422,17 @@ class FallDetectionNode(Node):
             text_thickness,
         )
 
-        label_top = max(y1 - text_height - 18, 0)
-        label_bottom = label_top + text_height + 16
+        label_top = max(
+            y1 - text_height - padding_y * 2,
+            0,
+        )
+        label_bottom = label_top + text_height + padding_y * 2
 
         # 밝은 영상에서도 읽을 수 있도록 상태 문자열 뒤에 배경색을 넣는다.
         cv2.rectangle(
             image,
             (x1, label_top),
-            (x1 + text_width + 16, label_bottom),
+            (x1 + text_width + padding_x * 2, label_bottom),
             color,
             -1,
         )
@@ -443,7 +440,7 @@ class FallDetectionNode(Node):
         cv2.putText(
             image,
             text,
-            (x1 + 8, label_bottom - 8),
+            (x1 + padding_x, label_bottom - padding_y),
             font,
             font_scale,
             (255, 255, 255),
@@ -572,6 +569,7 @@ class FallDetectionNode(Node):
                     state["confirmed"] = False
                     state["fall_count"] = 0
                     state["recovery_count"] = 0
+                    state["alert_sent"] = False
 
             # Track ID별 알림은 한 번만 처리하고, 한 사건당 기록도 한 번만 생성.
             if state["confirmed"] and not state["alert_sent"]:
@@ -613,8 +611,6 @@ class FallDetectionNode(Node):
         )
 
         # 확정 신호는 낙상 사라진 후 5초가 지나고 나서 변경 -> 중복 방지 
-        self.fall_confirmed_pub.publish(Bool(data=self.confirmed_latched))
-
         if current_fall:
             self.fall_latched = True
             self.fall_clear_since = None
@@ -625,6 +621,8 @@ class FallDetectionNode(Node):
                 self.fall_latched = False
                 self.fall_clear_since = None
                 self.confirmed_latched = False
+
+        self.fall_confirmed_pub.publish(Bool(data=self.confirmed_latched))
         self.fall_detected_pub.publish(Bool(data=self.fall_latched))
 
         self._publish_results(
