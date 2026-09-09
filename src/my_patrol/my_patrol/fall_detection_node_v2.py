@@ -400,9 +400,7 @@ class FallDetectionNode(Node):
         cv2.line(image, (x2, y2), (x2, y2 - corner_length), color, thickness)
 
         pose_text = ""
-        if confirmed:
-            pose_text = " CONFIRMED"
-        elif fall_count >= self.threshold_count:
+        if not confirmed and fall_count >= self.threshold_count:
             if pose_result is True:
                 pose_text = " POSE:FALL"
             elif pose_result is False:
@@ -411,7 +409,7 @@ class FallDetectionNode(Node):
                 pose_text = " POSE:UNKNOWN"
 
         text = (
-            f"{label} ID:{track_id}  "
+            f"ID:{track_id}  "
             f"{class_name} {confidence:.0%}  "
             f"[{fall_count}/{self.threshold_count}]"
             f"{pose_text}"
