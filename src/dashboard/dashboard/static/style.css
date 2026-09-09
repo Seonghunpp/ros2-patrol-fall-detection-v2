@@ -4053,47 +4053,6 @@ html.reveal-on .rm-svc-grid .rm-svc-card:nth-child(8) { transition-delay: 0.49s;
     color: var(--lp-muted);
 }
 
-/* 시연 영상 자리 — 실제 영상이 들어올 16:9 칸 */
-.ab-video {
-    position: relative;
-    max-width: 860px;
-    margin: 0 auto;
-    aspect-ratio: 16 / 9;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 12px;
-    background: #0b1a33;
-    border-radius: 6px;
-    box-shadow: 0 26px 60px -30px rgba(9, 26, 56, 0.6);
-}
-
-.ab-video-icon {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 66px;
-    height: 66px;
-    padding-left: 4px;   /* ▶ 무게중심 보정 */
-    border-radius: 50%;
-    background: rgba(255, 255, 255, 0.12);
-    border: 1px solid rgba(255, 255, 255, 0.28);
-    color: #ffffff;
-    font-size: 22px;
-}
-
-.ab-video-label {
-    color: #ffffff;
-    font-size: 17px;
-    font-weight: 700;
-}
-
-.ab-video-note {
-    color: rgba(255, 255, 255, 0.55);
-    font-size: 13px;
-}
-
 .lp-tile.ab-cta { padding: 72px 0 96px; }
 
 /* 순차 등장 */

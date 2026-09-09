@@ -395,7 +395,7 @@ const REVEAL_SEL =
     "#tab-home .lp-stat, #tab-home .lp-btn, #tab-home .lp-footer-inner, " +
     "#tab-rooms .lp-h2, #tab-rooms .lp-sub, #tab-rooms .rm-svc-card, " +
     "#tab-about .lp-h2, #tab-about .lp-sub, #tab-about .ab-problem, " +
-    "#tab-about .ab-solution, #tab-about .ab-tier, #tab-about .ab-video, " +
+    "#tab-about .ab-solution, #tab-about .ab-tier, " +
     "#tab-about .lp-btn, " +
     "#tab-features .fx-overview li, #tab-features .fx-text, " +
     "#tab-features .fx-visual, #tab-features .lp-btn";
@@ -1627,13 +1627,55 @@ function renderEventLog() {
     if (logCount) logCount.innerText = count;
 }
 
+// ===== 낙상 알림음 =====
+let fallAudioCtx = null;
+let fallBeepTimer = null;
+
+function startFallBeep() {
+    if (fallBeepTimer) { return; }          // 이미 울리는 중이면 겹쳐 울리지 않는다
+    try {
+        if (!fallAudioCtx) {
+            fallAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+        // 브라우저는 사용자가 페이지를 조작하기 전에는 소리를 막아둔다.
+        // 로그인 클릭이 그 조건을 채우지만, 확실히 하려고 재개를 요청한다.
+        if (fallAudioCtx.state === "suspended") { fallAudioCtx.resume(); }
+    } catch (e) {
+        return;                              // 소리를 못 내는 환경이어도 팝업은 그대로 뜬다
+    }
+
+    const beep = () => {
+        const osc = fallAudioCtx.createOscillator();
+        const gain = fallAudioCtx.createGain();
+        osc.type = "square";
+        osc.frequency.value = 880;           // 소리 음 : 라(A5)
+        gain.gain.value = 0.12;              // 소리 크기
+        osc.connect(gain).connect(fallAudioCtx.destination);
+        const t = fallAudioCtx.currentTime;
+        osc.start(t);
+        osc.stop(t + 0.18);
+    };
+
+    beep();                                  // 첫 소리는 기다리지 않고 바로
+    fallBeepTimer = setInterval(beep, 700);
+}
+
+function stopFallBeep() {
+    if (fallBeepTimer) {
+        clearInterval(fallBeepTimer);
+        fallBeepTimer = null;
+    }
+}
+
 function showFallAlert(room) {  // * 팝업 부분 수정 *
     document.getElementById("fall-alert-room").innerText = "병실 " + room;  // * 팝업 부분 수정 *
     document.getElementById("fall-alert-overlay").style.display = "flex";  // * 팝업 부분 수정 *
+    startFallBeep();
 }  // * 팝업 부분 수정 *
 
 function closeFallAlert() {  // * 팝업 부분 수정 *
     document.getElementById("fall-alert-overlay").style.display = "none";  // * 팝업 부분 수정 *
+    stopFallBeep();
     // 팝업을 닫는 순간 = 사람이 확인했다는 뜻이라, 로봇에 붙은 부저를 끄라고 알려준다
     fetch("/api/fall-alert/ack", { method: "POST" }).catch(() => {});
 }  // * 팝업 부분 수정 *
