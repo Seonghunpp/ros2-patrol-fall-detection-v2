@@ -43,6 +43,8 @@ class BuzzerBridge(Node):
         self.create_subscription(Bool, "/fall_confirmed", self.fall_confirmed_callback, 10)
         self.create_subscription(String, "/buzzer_off", self.buzzer_off_callback, 10)
 
+        self.last_fall_state = False  # false→true로 바뀌는 순간만 잡아내기 위한 이전 상태 기억
+
         self.get_logger().info("buzzer_bridge started")
 
     def _write(self, cmd: bytes):
@@ -54,8 +56,12 @@ class BuzzerBridge(Node):
             self.get_logger().error(f"아두이노로 시리얼 쓰기 실패: {e}")
 
     def fall_confirmed_callback(self, msg):
-        if msg.data:
+        # 카메라 쪽은 낙상이 지속되는 동안 true를 반복해서 보낼 수 있음.
+        # 그때마다 반응하면, 사람이 확인(ack)해서 꺼도 바로 다음 true에 다시 켜져버린다.
+        # 그래서 false→true로 "새로 감지된 순간"에만 반응하고, true가 계속 이어지는 동안은 무시한다.
+        if msg.data and not self.last_fall_state:
             self._write(b"1")   # 부저 ON
+        self.last_fall_state = msg.data
 
     def buzzer_off_callback(self, msg):
         self._write(b"0")       # 부저 OFF
