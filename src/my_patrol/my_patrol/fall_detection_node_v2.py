@@ -218,7 +218,7 @@ class FallDetectionNode(Node):
             "/image_annotated/compressed",
             1,
         )
-        # 로봇 정지용: 완전히 보이는 fall_person이 한 프레임만 있어도 True다.
+        # 로봇 정지용: Track ID가 있고 완전히 보이는 fall_person이면 True다.
         self.fall_detected_pub = self.create_publisher(
             Bool,
             "/fall_detected",
@@ -256,7 +256,7 @@ class FallDetectionNode(Node):
             image,
             persist=True,
             imgsz=640,
-            conf=0.25,
+            conf=0.3,
             iou=0.20,
             verbose=False,
         )[0]
@@ -275,9 +275,9 @@ class FallDetectionNode(Node):
         )
 
     def _has_visible_fall_candidate(self, result, image_shape):
-        """Track ID 없이도 즉시 정지할 낙상 후보가 있는지 확인한다."""
+        """Track ID가 있는 즉시 정지용 낙상 후보가 있는지 확인한다."""
         boxes = result.boxes
-        if boxes is None or len(boxes) == 0:
+        if boxes is None or len(boxes) == 0 or boxes.id is None:
             return False
 
         boxes_xyxy = boxes.xyxy.cpu().numpy()
@@ -602,7 +602,7 @@ class FallDetectionNode(Node):
         if new_fall_ids:
             self._save_fall_image(image)
 
-        # 미확정 후보는 한 프레임만 보여도 즉시 정지한다.
+        # Track ID가 있는 미확정 후보는 한 프레임만 보여도 즉시 정지한다.
         # 확정된 Track ID는 상태가 만료될 때까지 정지를 유지한다.
         # 둘 다 사라진 뒤에는 fall_clear_wait 동안 기다렸다가 정지를 해제한다.
         current_fall = (

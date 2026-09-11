@@ -25,7 +25,7 @@ class ArucoBehaviorController:
     CHARGER_MARKER_ID = 249
     ROOM_MARKER_IDS = (0, 1, 2, 3)
     CONTROL_PERIOD = 0.05
-    SEEN_TIMEOUT = 0.4
+    SEEN_TIMEOUT = 1.0
 
     TARGET_OFFSET = 0.0
     CENTER_TOL = 0.03
